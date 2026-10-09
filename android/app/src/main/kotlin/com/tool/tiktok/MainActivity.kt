@@ -1,4 +1,4 @@
-package com.example.test_tiktok
+package com.tool.tiktok
 
 import android.view.View
 import android.view.ViewGroup

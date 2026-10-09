@@ -16,16 +16,7 @@ const String inlineVideoScript = r'''
 })();
 ''';
 
-const List<String> defaultAutoComments = [
-  'Video thú vị quá!',
-  'Cảm ơn bạn đã chia sẻ nhé!',
-  'Nội dung hay quá 👏',
-  'Hóng video tiếp theo của bạn!',
-  'Chúc bạn một ngày vui vẻ 😊',
-  'Xem cuốn thật đó!',
-  'Tiếp tục chia sẻ những video như này nhé!',
-  'Một video rất đáng xem 👍',
-];
+
 
 String buildAutoWatchScript(List<String> comments,
         {bool useClipboard = false}) =>

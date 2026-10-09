@@ -5,15 +5,22 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_expandable_fab/flutter_expandable_fab.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import 'auto_login_script.dart';
 import 'auto_watch_script.dart';
+import 'config.dart';
 
 const String tiktokHomeUrl = 'https://www.tiktok.com/';
 const String tiktokProfileUrl = 'https://www.tiktok.com/profile';
+const String tiktokLoginUrl =
+    'https://www.tiktok.com/login/phone-or-email/email';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, required this.userAgent});
+
+  final String userAgent;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -23,6 +30,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   static const _commentInputChannel =
       MethodChannel('test_tiktok/comment_input');
   InAppWebViewController? _webViewController;
+  final _autoFabKey = GlobalKey<ExpandableFabState>();
+  bool _autoLoginBusy = false;
+  int _autoLoginAttempt = 0;
 
   int _loadingProgress = 0;
 
@@ -42,6 +52,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _autoLoginAttempt++;
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_stopAutoWatch());
     super.dispose();
@@ -50,6 +61,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appActive = state == AppLifecycleState.resumed;
+    if (!_appActive && _autoLoginBusy) _cancelAutoLogin();
     if (_autoWatchEnabled && _appActive) {
       unawaited(_startAutoWatch());
     } else {
@@ -132,7 +144,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _toggleAutoWatch() async {
-    if (_autoWatchBusy || _webViewController == null) return;
+    if (_autoWatchBusy || _autoLoginBusy || _webViewController == null) return;
+    _autoFabKey.currentState?.close();
     if (!_autoWatchEnabled && !await _configureComments()) return;
     if (!mounted) return;
     setState(() {
@@ -145,6 +158,102 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       await _stopAutoWatch();
     }
     if (mounted) setState(() => _autoWatchBusy = false);
+  }
+
+  void _cancelAutoLogin() {
+    _autoLoginAttempt++;
+    if (mounted) setState(() => _autoLoginBusy = false);
+  }
+
+  Future<void> _autoLogin() async {
+    _autoFabKey.currentState?.close();
+    if (_autoLoginBusy) {
+      _cancelAutoLogin();
+      return;
+    }
+    final controller = _webViewController;
+    if (controller == null || _autoWatchBusy || !_appActive) return;
+    if (email.trim().isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Hãy nhập email và mật khẩu trong config.dart.')),
+      );
+      return;
+    }
+    final attempt = ++_autoLoginAttempt;
+    setState(() {
+      _autoLoginBusy = true;
+      _autoWatchEnabled = false;
+    });
+    bool isActive() => mounted && _appActive && attempt == _autoLoginAttempt;
+    var submitted = false;
+    var message = 'Không thể mở trang đăng nhập. Hãy thử tải lại TikTok.';
+    try {
+      await _stopAutoWatch();
+      if (!isActive()) return;
+      await controller.loadUrl(
+        urlRequest: URLRequest(url: WebUri(tiktokLoginUrl)),
+      );
+      final deadline = DateTime.now().add(const Duration(seconds: 45));
+      message =
+          'Không tìm thấy biểu mẫu đăng nhập. Bạn có thể đăng nhập thủ công.';
+      while (isActive() && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        if (!isActive()) return;
+        // A navigation can destroy the JavaScript context between polls.
+        dynamic result;
+        try {
+          final url = await controller.getUrl();
+          if (!isActive()) return;
+          if (url?.scheme != 'https' || url?.host != 'www.tiktok.com') {
+            message =
+                'Đã dừng tự đăng nhập vì trang hiện tại không phải TikTok.';
+            break;
+          }
+          result = await controller.evaluateJavascript(
+            source: buildAutoLoginScript(
+              email: email.trim(),
+              password: password,
+              allowSubmit: !submitted,
+              attempt: attempt,
+            ),
+          );
+        } catch (_) {
+          continue;
+        }
+        if (!isActive()) return;
+        if (result == 'submitted') {
+          submitted = true;
+          message = 'Đã gửi đăng nhập nhưng chưa xác nhận được kết quả. '
+              'Hãy kiểm tra trên TikTok.';
+        } else if (result == 'already-logged-in' || result == 'login-success') {
+          message = result == 'already-logged-in'
+              ? 'Tài khoản TikTok đã đăng nhập.'
+              : 'Đăng nhập TikTok thành công.';
+          break;
+        } else if (result == 'verification-required') {
+          message = 'TikTok yêu cầu CAPTCHA hoặc mã xác minh. '
+              'Hãy hoàn tất trên trang đăng nhập.';
+          break;
+        } else if (result == 'login-error') {
+          message =
+              'TikTok báo lỗi đăng nhập. Hãy kiểm tra thông tin trên trang.';
+          break;
+        } else if (result == 'wrong-origin') {
+          message = 'Đã dừng tự đăng nhập vì trang hiện tại không phải TikTok.';
+          break;
+        }
+      }
+    } catch (_) {
+      // Keep credentials and WebView exception details out of UI messages.
+    } finally {
+      if (mounted && isActive()) {
+        setState(() => _autoLoginBusy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
+    }
   }
 
   Future<bool> _configureComments() async {
@@ -249,6 +358,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _handleSystemBack() async {
+    if (_autoFabKey.currentState?.isOpen ?? false) {
+      _autoFabKey.currentState?.close();
+      return;
+    }
+    if (_autoLoginBusy) _cancelAutoLogin();
     if (await _webViewController?.canGoBack() ?? false) {
       await _webViewController?.goBack();
       await _updateNavigationState();
@@ -266,8 +380,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (!didPop) _handleSystemBack();
       },
       child: Scaffold(
-        // Keep TikTok's responsive comment sidebar mounted when iOS opens
-        // the keyboard for its editor.
         resizeToAvoidBottomInset: false,
         appBar: AppBar(
           backgroundColor: Colors.white,
@@ -316,8 +428,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
               ]),
               initialSettings: InAppWebViewSettings(
-                userAgent:
-                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                userAgent: widget.userAgent,
                 javaScriptEnabled: true,
                 mediaPlaybackRequiresUserGesture: false,
                 allowsInlineMediaPlayback: true,
@@ -375,24 +486,57 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               ),
           ],
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          heroTag: 'autoWatch',
-          tooltip: _autoWatchEnabled
-              ? 'Dừng tự động xem video'
-              : 'Tự xem, bình luận theo danh sách rồi chuyển khi xem hết',
-          backgroundColor:
-              _autoWatchEnabled ? const Color(0xFF25F4EE) : Colors.white,
-          foregroundColor: Colors.black,
-          onPressed: _webViewController == null ||
-                  _autoWatchBusy ||
-                  _loadingProgress < 100
-              ? null
-              : _toggleAutoWatch,
-          icon: Icon(
-            _autoWatchEnabled ? Icons.stop : Icons.play_arrow,
+        floatingActionButtonLocation: ExpandableFab.location,
+        floatingActionButton: ExpandableFab(
+          key: _autoFabKey,
+          type: ExpandableFabType.up,
+          distance: 70,
+          childrenAnimation: ExpandableFabAnimation.none,
+          overlayStyle: const ExpandableFabOverlayStyle(color: Colors.black54),
+          openButtonBuilder: RotateFloatingActionButtonBuilder(
+            foregroundColor: Colors.black,
+            backgroundColor: const Color(0xFF25F4EE),
+            child: const Icon(Icons.auto_awesome),
           ),
-          label:
-              Text(_autoWatchEnabled ? 'Dừng tự động' : 'Tự xem và bình luận'),
+          closeButtonBuilder: DefaultFloatingActionButtonBuilder(
+            foregroundColor: Colors.black,
+            backgroundColor: Colors.white,
+            child: const Icon(Icons.close),
+          ),
+          children: [
+            FloatingActionButton.extended(
+              heroTag: 'autoWatch',
+              tooltip: _autoWatchEnabled
+                  ? 'Dừng tự động xem video'
+                  : 'Tự xem, bình luận theo danh sách rồi chuyển khi xem hết',
+              backgroundColor:
+                  _autoWatchEnabled ? const Color(0xFF25F4EE) : Colors.white,
+              foregroundColor: Colors.black,
+              onPressed: _webViewController == null ||
+                      _autoWatchBusy ||
+                      _autoLoginBusy ||
+                      _loadingProgress < 100
+                  ? null
+                  : _toggleAutoWatch,
+              icon: Icon(
+                _autoWatchEnabled ? Icons.stop : Icons.play_arrow,
+              ),
+              label: Text(
+                  _autoWatchEnabled ? 'Dừng tự động' : 'Tự xem và bình luận'),
+            ),
+            FloatingActionButton.extended(
+              heroTag: 'autoLogin',
+              tooltip: 'Đăng nhập bằng tài khoản trong config.dart',
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              onPressed: _webViewController == null || _autoWatchBusy
+                  ? null
+                  : _autoLogin,
+              icon: Icon(_autoLoginBusy ? Icons.stop : Icons.login),
+              label:
+                  Text(_autoLoginBusy ? 'Dừng đăng nhập' : 'Tự động đăng nhập'),
+            ),
+          ],
         ),
       ),
     );

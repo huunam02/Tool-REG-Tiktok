@@ -29,7 +29,7 @@ class _TestWebView extends PlatformInAppWebViewWidget {
 }
 
 void main() {
-  testWidgets('Expandable menu exposes watch and login actions',
+  testWidgets('Expandable menu exposes watch, login and signup actions',
       (tester) async {
     final previousPlatform = InAppWebViewPlatform.instance;
     InAppWebViewPlatform.instance = _TestWebViewPlatform();
@@ -50,6 +50,7 @@ void main() {
     expect(menu.isOpen, isTrue);
     expect(find.text('Tự xem và bình luận'), findsOneWidget);
     expect(find.text('Tự động đăng nhập'), findsOneWidget);
+    expect(find.text('Tự động đăng ký'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.close));
     await tester.pumpAndSettle();

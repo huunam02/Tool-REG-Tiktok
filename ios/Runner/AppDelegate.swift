@@ -26,14 +26,25 @@ import WebKit
           result(false)
           return
         }
-        webView.evaluateJavaScript("""
+        let arguments = call.arguments as? [String: Any]
+        let context = arguments?["context"] as? String ?? "comment"
+        let guardScript: String
+        if context == "signup", let attempt = arguments?["attempt"] as? Int {
+          guardScript = "window.__flutterAutoSignup?.canPasteFromClipboard(\(attempt)) === true"
+        } else if context == "comment" {
+          guardScript = """
           (() => {
             if (document.hidden || window.__flutterAutoWatch?.getStatus?.().commentStage !== 'pasting') return false;
             const e = document.activeElement;
             return !!e && !!e.closest('[data-e2e="comment-text"], [data-e2e="comment-input"]') &&
               (e.isContentEditable || e.tagName === 'TEXTAREA');
           })()
-          """) { value, error in
+          """
+        } else {
+          result(false)
+          return
+        }
+        webView.evaluateJavaScript(guardScript) { value, error in
           guard error == nil, value as? Bool == true else {
             result(false)
             return

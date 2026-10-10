@@ -22,14 +22,28 @@ class MainActivity: FlutterActivity() {
                     result.success(false)
                     return@setMethodCallHandler
                 }
-                webView.evaluateJavascript("""
+                val context = call.argument<String>("context") ?: "comment"
+                val guardScript = if (context == "signup") {
+                    val attempt = call.argument<Int>("attempt")
+                    if (attempt == null) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    "window.__flutterAutoSignup?.canPasteFromClipboard($attempt) === true"
+                } else if (context == "comment") {
+                    """
                     (() => {
                       if (document.hidden || window.__flutterAutoWatch?.getStatus?.().commentStage !== 'pasting') return false;
                       const e = document.activeElement;
                       return !!e && !!e.closest('[data-e2e="comment-text"], [data-e2e="comment-input"]') &&
                         (e.isContentEditable || e.tagName === 'TEXTAREA');
                     })()
-                """.trimIndent()) { editable ->
+                    """.trimIndent()
+                } else {
+                    result.success(false)
+                    return@setMethodCallHandler
+                }
+                webView.evaluateJavascript(guardScript) { editable ->
                     if (editable != "true") {
                         result.success(false)
                     } else {

@@ -6,6 +6,9 @@ String buildAutoSignupScript({
   required DateTime birthday,
   required int attempt,
   required bool allowSubmit,
+  String otp = '',
+  int? otpRequestedAt,
+  bool allowOtpSubmit = true,
 }) =>
     '''
 ($autoSignupStepScript)(${jsonEncode({
@@ -15,6 +18,9 @@ String buildAutoSignupScript({
           'month': birthday.month,
           'day': birthday.day,
           'attempt': attempt,
+          'otp': otp.trim(),
+          'otpRequestedAt': otpRequestedAt,
+          'allowOtpSubmit': allowOtpSubmit,
         })}, $allowSubmit);
 ''';
 
@@ -37,13 +43,20 @@ const String autoSignupStepScript = r'''
   if (!location.pathname.startsWith('/signup')) return 'waiting-form';
   const emailInput = find('input[name="email"], input[type="email"], input[autocomplete="email"]');
   const passwordInput = find('input[type="password"]');
-  const phoneInput = find('input[type="tel"], input[name="phone"], input[name="mobile"], input[autocomplete="tel"]');
+  const findVerification = () => find('input[autocomplete="one-time-code"], input[name="code"], ' +
+    'input[name="verification_code"], input[name="otp"], input[name="verifyCode"], ' +
+    'input[placeholder*="code" i], input[placeholder*="mã" i]');
+  const verification = findVerification();
+  const findPhone = () => Array.from(document.querySelectorAll(
+    'input[type="tel"], input[name="phone"], input[name="mobile"], input[autocomplete="tel"]'
+  )).find(el => visible(el) && el !== findVerification());
+  const phoneInput = findPhone();
   if (find('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], ' +
       'iframe[src*="captcha"]')) {
     return 'verification-required';
   }
-  const verification = find('input[autocomplete="one-time-code"], input[name="code"], input[name="verification_code"]');
-  if (verification && verification.value?.trim()) {
+  const otp = (config.otp || '').trim();
+  if (verification && verification.value?.trim() && verification.value !== otp) {
     return 'verification-required';
   }
   // TikTok's existing-email warning is inline text rather than a role=alert.
@@ -55,7 +68,7 @@ const String autoSignupStepScript = r'''
   })) return 'email-registered';
   const error = find('[data-e2e="signup-error"], [role="alert"]');
   if (error?.textContent.trim()) return 'signup-error';
-  if (!allowSubmit) return 'waiting-result';
+  if (!allowSubmit && (!verification || !otp || config.allowOtpSubmit === false)) return 'waiting-result';
 
   let state = window.__flutterAutoSignup;
   if (!state || state.attempt !== config.attempt) {
@@ -65,6 +78,7 @@ const String autoSignupStepScript = r'''
       pasted: new WeakMap(), clicked: new WeakSet(), birthdayFields: new Set(),
       birthdayMenuIndex: null, birthdayMenuAt: 0,
       submitted: false, emailEntered: false,
+      otpRequestedAt: config.otpRequestedAt ?? null, otpSubmitted: false,
       canPasteFromClipboard(attempt, field, text) {
         const p = this.pending;
         return this.active && !document.hidden &&
@@ -77,15 +91,17 @@ const String autoSignupStepScript = r'''
           !p.editor.disabled && !p.editor.readOnly &&
           document.activeElement === p.editor &&
           p.editor.tagName === 'INPUT' &&
-          !find('input[type="tel"], input[name="phone"], input[name="mobile"], input[autocomplete="tel"]') &&
-          (p.field === 'email' || p.field === 'password' && this.emailEntered);
+          !findPhone() &&
+          (p.field === 'email' || p.field === 'password' && this.emailEntered ||
+            p.field === 'otp' && p.editor === findVerification() &&
+            this.otpRequestedAt != null && Date.now() - this.otpRequestedAt >= 5000);
       },
       stop() { this.active = false; this.pending = null; }
     };
     window.__flutterAutoSignup = state;
   }
   if (!state.active) return 'cancelled';
-  if (state.submitted) return 'submitted';
+  if (state.submitted && (!verification || !otp || state.otpSubmitted)) return 'submitted';
   if (state.pending) {
     return Date.now() - state.pending.at < 10000 ? 'waiting-paste' : 'paste-failed';
   }
@@ -99,9 +115,12 @@ const String autoSignupStepScript = r'''
   };
   const button = (pattern) => Array.from(document.querySelectorAll('button, [role="button"]'))
     .find((el) => enabled(el) && pattern.test(el.textContent.trim()));
+  if (state.otpRequestedAt == null && config.otpRequestedAt != null) {
+    state.otpRequestedAt = config.otpRequestedAt;
+  }
 
   // Switch method before processing birthday menus on the phone form.
-  if (phoneInput || !emailInput && !state.emailEntered) {
+  if (phoneInput || !emailInput && !state.emailEntered && state.otpRequestedAt == null) {
     const emailTab = Array.from(document.querySelectorAll(
       'a, button, [role="tab"], [role="button"], [data-e2e="signup-email-tab"]'
     )).find((el) => enabled(el) && /^(email|e-mail|sign up with (email|e-mail)|use (email|e-mail)|đăng ký bằng (email|e-mail)|sử dụng (email|e-mail))$/i.test(el.textContent.trim()));
@@ -112,13 +131,27 @@ const String autoSignupStepScript = r'''
     if (phoneInput) return 'waiting-form';
   }
 
+  // Opt in to the newsletter checkbox requested by the user. The input can
+  // be visually hidden; its visible label identifies this specific option.
+  if (emailInput && !phoneInput && state.otpRequestedAt == null) {
+    const newsletterLabel = Array.from(document.querySelectorAll('label')).find(el =>
+      visible(el) && /^(get trending content, newsletters|nhận.*(bản tin|khuyến mãi))/i.test(el.textContent.trim()));
+    const newsletterCheckbox = newsletterLabel?.control ||
+      newsletterLabel?.parentElement?.querySelector('input[type="checkbox"]');
+    if (newsletterCheckbox?.type === 'checkbox' && !newsletterCheckbox.checked) {
+      if (newsletterCheckbox.disabled) return 'waiting-form';
+      if (!clickOnce(newsletterCheckbox)) return 'checkbox-failed';
+      return 'waiting-form';
+    }
+  }
+
   // Birthday controls can share the same page as the email/password inputs.
   // Complete them before entering credentials on either layout.
   const birthdayRoot = find('[class*="DivAgeSelector"], [data-e2e="birthday-selector"]');
   const fields = Array.from((birthdayRoot || document).querySelectorAll(
     'select, [role="combobox"], [class*="DivSelectContainer"]'
   )).filter(visible);
-  if (fields.length === 3) {
+  if (fields.length === 3 && state.otpRequestedAt == null) {
     const values = [config.month, config.day, config.year];
     const months = ['January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'];
@@ -167,7 +200,7 @@ const String autoSignupStepScript = r'''
 
   // A phone signup form can also contain a password and a Send code button.
   // Always switch to email before pasting credentials or requesting a code.
-  if (phoneInput || !emailInput && !state.emailEntered) {
+  if (phoneInput || !emailInput && !state.emailEntered && state.otpRequestedAt == null && !verification) {
     if (phoneInput || passwordInput) return 'waiting-form';
     if (verification) return 'verification-required';
     const method = Array.from(document.querySelectorAll('a, button, [role="button"]'))
@@ -207,6 +240,29 @@ const String autoSignupStepScript = r'''
     request.then(complete).catch(() => complete(false));
     return 'waiting-paste';
   };
+  // Keep polling after Send code. Enter the supplied OTP only after the delay,
+  // including when navigation replaces the original email/password form.
+  const sendCodePattern = /^(send code|send verification code|gửi mã|gửi mã xác minh)$/i;
+  const sendCodeControl = Array.from(document.querySelectorAll('button, [role="button"]'))
+    .find(el => visible(el) && sendCodePattern.test(el.textContent.trim()));
+  const sendCode = sendCodeControl && enabled(sendCodeControl) ? sendCodeControl : null;
+  if (verification && state.otpRequestedAt == null && !sendCodeControl) {
+    if (!otp) return 'verification-required';
+    state.otpRequestedAt = Date.now();
+  }
+  if (state.otpRequestedAt != null) {
+    if (!otp) return 'waiting-result';
+    if (config.allowOtpSubmit === false) return 'waiting-result';
+    if (Date.now() - state.otpRequestedAt < 5000 || !verification) return 'waiting-otp';
+    const result = paste(verification, 'otp', otp);
+    if (result) return result;
+    const verify = button(/^(sign\s*up|register|verify|confirm|continue|next|đăng ký|xác minh|xác nhận|tiếp tục|tiếp theo)$/i);
+    if (!verify) return 'waiting-form';
+    state.submitted = true;
+    state.otpSubmitted = true;
+    verify.click();
+    return 'otp-submitted';
+  }
   if (emailInput) {
     const result = paste(emailInput, 'email', config.email);
     if (result) return result;
@@ -216,13 +272,16 @@ const String autoSignupStepScript = r'''
     const result = paste(passwordInput, 'password', config.password);
     if (result) return result;
   }
-  // Send the verification code at most once. Flutter hands further verification
-  // to the user and never reports success merely because this button was clicked.
-  const sendCode = button(/^(send code|send verification code|gửi mã|gửi mã xác minh)$/i);
+  // Latch the request time before clicking; never send another code on a poll.
   if (sendCode) {
-    if (clickOnce(sendCode)) return 'verification-requested';
+    if (!state.clicked.has(sendCode)) {
+      state.otpRequestedAt = Date.now();
+      clickOnce(sendCode);
+      return 'verification-requested';
+    }
     return 'waiting-result';
   }
+  if (sendCodeControl) return 'waiting-form';
   if (verification) return 'verification-required';
   const submit = button(/^(sign\s*up|register|đăng ký)$/i);
   if (submit && state.emailEntered && passwordInput) {

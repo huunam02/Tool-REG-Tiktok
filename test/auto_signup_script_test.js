@@ -48,7 +48,7 @@ function setup({ inputs = true, autoPaste = true, pasteResult = true } = {}) {
         return new Promise((resolve) => {
           const finish = () => {
             if (autoPaste && pasteResult) {
-              document.activeElement.value = args[2] === 'email' ? config.email : config.password;
+              document.activeElement.value = config[args[2]];
             }
             resolve(pasteResult);
           };
@@ -89,6 +89,57 @@ async function fill(env) {
   assert.equal(env.run(), 'waiting-paste');
   await env.resolvePaste();
 }
+
+function newsletter(env, checked = false) {
+  const label = env.add('label',
+    'Get trending content, newsletters, promotions, recommendations and account updates sent to your email', 'LABEL');
+  const checkbox = env.add('input[type="checkbox"]', '', 'INPUT');
+  checkbox.type = 'checkbox';
+  checkbox.checked = checked;
+  checkbox.click = () => { checkbox.clicks++; checkbox.checked = !checkbox.checked; };
+  // The actual TikTok label and hidden native checkbox share a parent div.
+  checkbox.hidden = true;
+  label.parentElement = { querySelector: () => checkbox };
+  return checkbox;
+}
+
+test('checks the newsletter option once before pasting and requesting a code', async () => {
+  const env = setup();
+  const checkbox = newsletter(env);
+  const unrelated = env.add('input[type="checkbox"]', '', 'INPUT');
+  const sendCode = env.add('button', 'Send code', 'BUTTON');
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(checkbox.checked, true);
+  assert.equal(env.requests.length, 0);
+  assert.equal(sendCode.clicks, 0);
+  await fill(env);
+  assert.equal(env.run(), 'verification-requested');
+  assert.equal(env.run(), 'waiting-result');
+  assert.equal(checkbox.checked, true);
+  assert.equal(checkbox.clicks, 1);
+  assert.equal(unrelated.clicks, 0);
+});
+
+test('keeps an already checked newsletter option checked', async () => {
+  const env = setup();
+  const checkbox = newsletter(env, true);
+  await fill(env);
+  assert.equal(env.run(), 'submitted');
+  assert.equal(checkbox.checked, true);
+  assert.equal(checkbox.clicks, 0);
+});
+
+test('stops if the newsletter checkbox rejects the change without requesting a code', () => {
+  const env = setup();
+  const checkbox = newsletter(env);
+  checkbox.click = () => { checkbox.clicks++; };
+  const sendCode = env.add('button', 'Send code', 'BUTTON');
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(env.run(), 'checkbox-failed');
+  assert.equal(checkbox.clicks, 1);
+  assert.equal(sendCode.clicks, 0);
+  assert.equal(env.requests.length, 0);
+});
 
 test('pastes each credential through the bridge and submits once', async () => {
   const env = setup();
@@ -376,4 +427,120 @@ test('reports an error and requires a visible profile to report success', () => 
   profile.hidden = false;
   assert.equal(env.run(), 'already-logged-in');
   assert.equal(env.run(false), 'signup-success');
+});
+
+
+test('waits five seconds after requesting a code, pastes OTP and submits once', async () => {
+  const env = setup();
+  env.config.otp = '012345';
+  const send = env.add('button', 'Send code', 'BUTTON');
+  await fill(env);
+  assert.equal(env.run(), 'verification-requested');
+  const otp = env.add('input[name="code"]', '', 'INPUT');
+  env.advance(4999);
+  assert.equal(env.run(), 'waiting-otp');
+  assert.equal(otp.value, '');
+  assert.equal(env.requests.length, 2);
+  env.advance(1);
+  assert.equal(env.run(), 'waiting-paste');
+  const state = env.window.__flutterAutoSignup;
+  assert.equal(state.canPasteFromClipboard(1, 'otp', env.config.otp), true);
+  assert.equal(state.canPasteFromClipboard(1, 'email', env.config.otp), false);
+  assert.equal(send.clicks, 1);
+  await env.resolvePaste();
+  assert.equal(otp.value, '012345');
+  env.submit.disabled = true;
+  assert.equal(env.run(), 'waiting-form');
+  env.submit.disabled = false;
+  assert.equal(env.run(), 'otp-submitted');
+  assert.equal(env.run(), 'submitted');
+  assert.equal(env.submit.clicks, 1);
+  assert.deepEqual(env.requests[2], ['FlutterSignupPaste', 1, 'otp']);
+  assert.equal(env.requests.length, 3);
+  assert.equal(send.clicks, 1);
+});
+
+test('continues on an OTP-only page after navigation without requesting again', async () => {
+  const env = setup();
+  env.config.otp = '123456';
+  const send = env.add('button', 'Send code', 'BUTTON');
+  await fill(env);
+  assert.equal(env.run(), 'verification-requested');
+  env.config.otpRequestedAt = 0;
+  delete env.window.__flutterAutoSignup;
+  env.email.hidden = true;
+  env.password.hidden = true;
+  const otp = env.add('input[autocomplete="one-time-code"]', '', 'INPUT');
+  env.advance(3000);
+  assert.equal(env.run(), 'waiting-otp');
+  env.advance(2000);
+  assert.equal(env.run(), 'waiting-paste');
+  assert.equal(env.window.__flutterAutoSignup.canPasteFromClipboard(), true);
+  await env.resolvePaste();
+  assert.equal(env.run(), 'otp-submitted');
+  assert.equal(otp.value, env.config.otp);
+  assert.equal(send.clicks, 1);
+  env.config.allowOtpSubmit = false;
+  delete env.window.__flutterAutoSignup;
+  otp.value = '';
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(env.submit.clicks, 1);
+});
+
+test('does not paste OTP while hidden or after cancellation', async () => {
+  const env = setup();
+  env.config.otp = '123456';
+  env.add('button', 'Send code', 'BUTTON');
+  await fill(env);
+  assert.equal(env.run(), 'verification-requested');
+  env.add('input[name="code"]', '', 'INPUT');
+  env.advance(5000);
+  env.document.hidden = true;
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(env.requests.length, 2);
+  env.document.hidden = false;
+  assert.equal(env.run(), 'waiting-paste');
+  const state = env.window.__flutterAutoSignup;
+  state.stop();
+  assert.equal(state.canPasteFromClipboard(), false);
+  assert.equal(env.run(), 'cancelled');
+  assert.equal(env.submit.clicks, 0);
+});
+
+
+test('fills credentials before waiting for Send code to become enabled', async () => {
+  const env = setup();
+  env.config.otp = '123456';
+  const otp = env.add('input[name="code"]', '', 'INPUT');
+  const send = env.add('button', 'Send code', 'BUTTON');
+  send.disabled = true;
+  await fill(env);
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(env.window.__flutterAutoSignup.otpRequestedAt, null);
+  env.advance(10000);
+  send.disabled = false;
+  assert.equal(env.run(), 'verification-requested');
+  assert.equal(env.run(), 'waiting-otp');
+  assert.equal(otp.value, '');
+  assert.equal(env.requests.length, 2);
+});
+
+test('supports a delayed OTP challenge after initial signup submission', async () => {
+  const env = setup();
+  env.config.otp = '123456';
+  await fill(env);
+  assert.equal(env.run(), 'submitted');
+  const otp = env.add('input[name="code"]', '', 'INPUT');
+  assert.equal(env.run(false), 'waiting-otp');
+  env.advance(5000);
+  assert.equal(env.run(false), 'waiting-paste');
+  await env.resolvePaste();
+  assert.equal(otp.value, env.config.otp);
+  env.submit.disabled = true;
+  assert.equal(env.run(false), 'waiting-form');
+  assert.equal(env.run(false), 'waiting-form');
+  env.submit.disabled = false;
+  assert.equal(env.run(false), 'otp-submitted');
+  assert.equal(env.run(false), 'submitted');
+  assert.equal(env.submit.clicks, 2);
 });

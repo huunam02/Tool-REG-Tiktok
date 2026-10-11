@@ -4,7 +4,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'desktop_user_agents.dart';
 
 /// Hoàn tất xóa phiên cũ trước khi tạo WebView hoặc tải TikTok.
-Future<String> prepareAppSession() async {
+Future<String> prepareAppSession() async { 
   if (kIsWeb) throw UnsupportedError('Native WebView session required');
 
   await CookieManager.instance().deleteAllCookies();

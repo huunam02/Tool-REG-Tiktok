@@ -1,0 +1,95 @@
+import 'config.dart' as defaults;
+
+/// A snapshot of Home's configuration for one TikTok screen.
+class AppConfiguration {
+  AppConfiguration({
+    required this.userAgent,
+    required this.signupEmail,
+    required this.signupPassword,
+    required this.loginUsername,
+    required this.loginPassword,
+    required List<String> comments,
+    this.signupOtp = '',
+    this.loginOtp = '',
+    this.birthday,
+    this.proxy,
+  }) : comments = List.unmodifiable(comments);
+
+  factory AppConfiguration.defaults(String userAgent) => AppConfiguration(
+        userAgent: userAgent,
+        signupEmail: defaults.emailSignup,
+        signupPassword: defaults.passwordSignup,
+        loginUsername: defaults.email,
+        loginPassword: defaults.password,
+        comments: defaults.defaultAutoComments,
+        birthday: parseBirthday(defaults.signupBirthday),
+      );
+
+  final String userAgent;
+  final String signupEmail;
+  final String signupPassword;
+  final String loginUsername;
+  final String loginPassword;
+  final String signupOtp;
+  final String loginOtp;
+  final List<String> comments;
+  final DateTime? birthday;
+  final WebViewProxy? proxy;
+
+  static List<String> parseComments(String value) => value
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toList();
+
+  static DateTime? parseBirthday(String value) {
+    final date = DateTime.tryParse(value);
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value) ||
+        date == null ||
+        date.year < 1900 ||
+        date.isAfter(DateTime.now()) ||
+        formatBirthday(date) != value) {
+      return null;
+    }
+    return date;
+  }
+
+  static String formatBirthday(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
+}
+
+class WebViewProxy {
+  const WebViewProxy(
+      {required this.uri, this.username = '', this.password = ''});
+
+  final Uri uri;
+  final String username;
+  final String password;
+
+  static WebViewProxy? parse(String value,
+      {String username = '', String password = ''}) {
+    value = value.trim();
+    if (value.isEmpty) return null;
+    final uri = Uri.tryParse(value.contains('://') ? value : 'http://$value');
+    if (uri == null ||
+        !const ['http', 'https'].contains(uri.scheme) ||
+        uri.host.isEmpty ||
+        RegExp(r'\s').hasMatch(value) ||
+        !RegExp(r':\d+/?$').hasMatch(value) ||
+        uri.port < 1 ||
+        uri.port > 65535 ||
+        uri.userInfo.isNotEmpty ||
+        (uri.path.isNotEmpty && uri.path != '/') ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      throw const FormatException('Nhập proxy HTTP/HTTPS dạng host:port.');
+    }
+    return WebViewProxy(
+      uri: uri.replace(path: ''),
+      username: username.trim(),
+      password: password,
+    );
+  }
+}

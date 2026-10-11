@@ -1,4 +1,4 @@
-package com.tool.tiktok
+package com.stalliondz.tool.tiktok
 
 import android.view.View
 import android.view.ViewGroup
@@ -23,13 +23,14 @@ class MainActivity: FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 val context = call.argument<String>("context") ?: "comment"
-                val guardScript = if (context == "signup") {
+                val guardScript = if (context == "signup" || context == "login") {
                     val attempt = call.argument<Int>("attempt")
                     if (attempt == null) {
                         result.success(false)
                         return@setMethodCallHandler
                     }
-                    "window.__flutterAutoSignup?.canPasteFromClipboard($attempt) === true"
+                    val stateName = if (context == "signup") "__flutterAutoSignup" else "__flutterAutoLogin"
+                    "window.$stateName?.canPasteFromClipboard($attempt) === true"
                 } else if (context == "comment") {
                     """
                     (() => {

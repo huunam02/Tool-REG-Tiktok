@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -110,7 +111,12 @@ void main() {
     _platform.webViewUserAgent = null;
   });
 
-  tearDown(() => debugDefaultTargetPlatformOverride = null);
+  tearDown(() {
+    debugDefaultTargetPlatformOverride = null;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('test_tiktok/webview_proxy'), null);
+  });
 
   test(
       'uses every desktop UA before repeating, including across cycle boundaries',
@@ -136,8 +142,11 @@ void main() {
     expect(desktopUserAgents, contains(userAgent));
   });
 
-  testWidgets('waits for cookie deletion before creating the TikTok WebView',
+  testWidgets('waits for session reset then opens WebView only from Home',
       (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('test_tiktok/webview_proxy'), (call) async => null);
     _platform.cookieGate = Completer<bool>();
     await tester.pumpWidget(const MyApp());
     expect(_platform.calls, ['cookies']);
@@ -146,13 +155,20 @@ void main() {
     // false means there were no cookies, not that deletion failed.
     _platform.cookieGate!.complete(false);
     await tester.pumpAndSettle();
-    expect(_platform.calls, ['cookies', 'android-storage', 'cache']);
+    expect(_platform.calls, ['cookies', 'apple-storage', 'cache']);
+    expect(_platform.webViewsCreated, 0);
+    await tester.tap(find.byKey(const Key('openTikTok')));
+    await tester.pumpAndSettle();
     expect(_platform.webViewsCreated, 1);
     expect(desktopUserAgents, contains(_platform.webViewUserAgent));
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('blocks TikTok if reset fails and allows a clean retry',
       (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('test_tiktok/webview_proxy'), (call) async => null);
     _platform.cookieGate = Completer<bool>();
     await tester.pumpWidget(const MyApp());
     _platform.cookieGate!.completeError(StateError('Cookie deletion failed'));
@@ -163,7 +179,11 @@ void main() {
     _platform.cookieGate = null;
     await tester.tap(find.text('Thử lại'));
     await tester.pumpAndSettle();
+    expect(_platform.webViewsCreated, 0);
+    expect(_platform.calls, ['cookies', 'cookies', 'apple-storage', 'cache']);
+    await tester.tap(find.byKey(const Key('openTikTok')));
+    await tester.pumpAndSettle();
     expect(_platform.webViewsCreated, 1);
-    expect(_platform.calls, ['cookies', 'cookies', 'android-storage', 'cache']);
+    debugDefaultTargetPlatformOverride = null;
   });
 }

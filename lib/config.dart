@@ -9,8 +9,9 @@ const List<String> defaultAutoComments = [
   'Hóng video tiếp theo của bạn!',
   'Chúc bạn một ngày vui vẻ 😊',
   'Xem cuốn thật đó!',
+  'Cảm ơn bạn đã xem video của tôi!',
   'Tiếp tục chia sẻ những video như này nhé!',
   'Một video rất đáng xem 👍',
 ];
-const String emailSignup = 'namtanhoa2k222222@gmail.com';
+const String emailSignup = 'dtc2054802010017@ictu.edu.vn';
 const String passwordSignup = 'Minhvaban156@';

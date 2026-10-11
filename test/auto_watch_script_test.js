@@ -22,18 +22,13 @@ function setup() {
   const responses = [];
   let focusedEditor;
   let randomValue = 0;
-  let directInput = true;
-  let pasteBehavior = () => false;
+  let pasteBehavior = text => { focusedEditor.textContent = text; return true; };
   const fetch = () => new Promise((resolve) => responses.push(resolve));
   let now = 0;
   const document = {
     hidden: false,
     createRange: () => ({ selectNodeContents: () => {} }),
-    execCommand: (command, _, text) => {
-      assert.equal(command, 'insertText');
-      if (directInput) focusedEditor.textContent = text;
-      return directInput;
-    },
+    execCommand: () => assert.fail('Comments must use native clipboard paste'),
     querySelectorAll: (selector) => selector === 'video' ? videos
       : selector.startsWith('article') ? cards
       : selector.startsWith('[role="dialog"]') ? dialogs
@@ -102,7 +97,6 @@ function setup() {
     addVideo, videos, scrolls, buttons, cards, dialogs, messages, document, window, intervals,
     editors, responses, fetch,
     focus: (editor) => { focusedEditor = editor; document.activeElement = editor; },
-    rejectDirectInput: () => { directInput = false; },
     paste: (callback) => { pasteBehavior = callback; },
     random: (value) => { randomValue = value; },
     configure: (comments) => {
@@ -320,7 +314,7 @@ test('accepts caption overlays outside the media section but inside the article'
   assert.equal(video.plays, 1);
 });
 
-test('watches TikTok decoder videos with opacity zero inside a visible player', () => {
+test('watches TikTok decoder videos with opacity zero inside a visible player', async () => {
   const env = setup();
   const video = env.addVideo();
   video.opacity = '0';
@@ -376,12 +370,13 @@ function attachComments(env, video) {
   return {submit, close, editor, control, article, panel};
 }
 
-function beginComment(env, video) {
+async function beginComment(env, video, settlePaste = true) {
   video.currentTime = 2;
   env.elapse(2000);
-  env.tick(); // Open and pause.
-  env.tick(); // Fill Draft.js editor.
-  env.tick(); // Submit once.
+  env.tick(); // Open the panel.
+  env.tick(); // Request native clipboard paste.
+  if (settlePaste) await new Promise(setImmediate);
+  env.tick(); // Verify the pasted text and submit once.
 }
 
 const saved = (text) => ({ status_code: 0, comment: { cid: 'saved', text } });
@@ -395,7 +390,7 @@ test('randomly selects user comments, confirms saving and watches to the end', a
   for (let i = 0; i < videos.length; i++) {
     const video = videos[i];
     const controlsForPost = controls[i];
-    beginComment(env, video);
+    await beginComment(env, video);
     const expected = i % 2 ? 'Bình luận hai' : 'Bình luận một';
     assert.equal(controlsForPost.editor.textContent, expected);
     assert.equal(controlsForPost.submit.clicks, 1);
@@ -428,6 +423,7 @@ test('waits for a comment on a short video before advancing', async () => {
   env.start();
   video.finish();
   env.tick();
+  await new Promise(setImmediate);
   env.tick();
   assert.equal(ui.submit.clicks, 1);
   assert.equal(env.scrolls.length, 0);
@@ -436,19 +432,19 @@ test('waits for a comment on a short video before advancing', async () => {
   assert.equal(env.scrolls.length, 1);
 });
 
-test('stops on an unconfirmed submission and does not submit again after restart', () => {
+test('stops on an unconfirmed submission and does not submit again after restart', async () => {
   const env = setup();
   env.configure(['Hello']);
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   ui.editor.textContent = ''; // Clearing alone cannot prove saving.
   env.elapse(15000);
   env.tick();
   assert.equal(ui.submit.clicks, 1);
   assert.equal(env.intervals.size, 0);
-  assert.equal(env.messages[0].message, 'comment-failed');
+  assert.equal(env.messages.at(-1).message, 'comment-failed');
   assert.equal(env.window.fetch, env.fetch);
   env.start();
   video.currentTime = 3;
@@ -474,14 +470,14 @@ test('does not overwrite a comment draft', () => {
   assert.equal(env.intervals.size, 0);
 });
 
-test('waits for the submit button to become enabled', () => {
+test('waits for the submit button to become enabled', async () => {
   const env = setup();
   env.configure(['Hello']);
   const video = env.addVideo();
   const ui = attachComments(env, video);
   ui.submit.disabled = true;
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   assert.equal(ui.submit.clicks, 0);
   ui.submit.disabled = false;
   env.tick(); env.tick();
@@ -494,13 +490,13 @@ test('server rejection stops automation without repeating the comment', async ()
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   await env.respond({status_code: 1});
   env.tick();
   assert.equal(ui.submit.clicks, 1);
   assert.equal(env.intervals.size, 0);
   assert.equal(env.scrolls.length, 0);
-  assert.equal(env.messages[0].message, 'comment-failed');
+  assert.equal(env.messages.at(-1).message, 'comment-failed');
 });
 
 test('stopping before submission cancels it and restores the page fetch', () => {
@@ -574,35 +570,34 @@ test('avoids consecutive repeated comments across script restarts', async () => 
   const video = env.addVideo();
   let ui = attachComments(env, video);
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   await env.respond(saved('First'));
   env.tick();
   env.stop();
   video.currentSrc = 'new-source';
   ui = attachComments(env, video);
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   assert.equal(ui.editor.textContent, 'Second');
 });
 
 
-test('uses the random value to choose from the array rather than sequential order', () => {
+test('uses the random value to choose from the array rather than sequential order', async () => {
   const env = setup();
   env.configure(['First', 'Second', 'Third', 'Fourth']);
   env.random(0.99);
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   assert.equal(ui.editor.textContent, 'Fourth');
 });
 
 
-test('copies and pastes once when direct insertion fails, verifying text before submit', async () => {
+test('pastes once through the native bridge and verifies text before submit', async () => {
   const env = setup();
   const text = 'Cảm ơn bạn 😊';
   env.configure([text]);
-  env.rejectDirectInput();
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.paste((clipboardText) => {
@@ -612,7 +607,7 @@ test('copies and pastes once when direct insertion fails, verifying text before 
     return true;
   });
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video, false);
   assert.equal(ui.submit.clicks, 0);
   await new Promise(resolve => setImmediate(resolve));
   env.tick(); env.tick();
@@ -625,12 +620,12 @@ test('copies and pastes once when direct insertion fails, verifying text before 
 
 test('a native paste failure stops without submitting or retrying', async () => {
   const env = setup();
+  env.paste(() => false);
   env.configure(['Hello']);
-  env.rejectDirectInput();
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   await new Promise(resolve => setImmediate(resolve));
   env.tick();
   assert.equal(ui.submit.clicks, 0);
@@ -641,12 +636,11 @@ test('a native paste failure stops without submitting or retrying', async () => 
 test('does not submit if paste reports success but no text appears', async () => {
   const env = setup();
   env.configure(['Hello']);
-  env.rejectDirectInput();
   env.paste(() => true);
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   await new Promise(resolve => setImmediate(resolve));
   env.elapse(2000); env.tick();
   assert.equal(ui.submit.clicks, 0);
@@ -656,13 +650,12 @@ test('does not submit if paste reports success but no text appears', async () =>
 test('cancellation during clipboard paste cannot submit after the callback resolves', async () => {
   const env = setup();
   env.configure(['Hello']);
-  env.rejectDirectInput();
   let resolvePaste;
   env.paste(() => new Promise(resolve => { resolvePaste = resolve; }));
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   env.stop();
   resolvePaste(true);
   await new Promise(resolve => setImmediate(resolve));
@@ -678,7 +671,7 @@ test('brings an offscreen desktop comment panel into view and restores its layou
   const ui = attachComments(env, video);
   ui.editor.offscreen = true;
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   assert.ok(ui.panel.style.cssText.includes('translateX'));
   assert.equal(ui.submit.clicks, 1);
   await env.respond(saved('Hello'));
@@ -687,22 +680,22 @@ test('brings an offscreen desktop comment panel into view and restores its layou
 });
 
 
-test('can use native clipboard insertion first for iOS without direct editing', async () => {
+test('always pastes natively even when a legacy configuration disables clipboard', async () => {
   const env = setup();
   env.configure(['Hello']);
-  env.window.__flutterAutoWatchConfig.useClipboard = true;
+  env.window.__flutterAutoWatchConfig.useClipboard = false;
   const video = env.addVideo();
   const ui = attachComments(env, video);
-  env.document.execCommand = () => assert.fail('iOS should use native paste');
+  env.document.execCommand = () => assert.fail('All platforms must use native paste');
   env.paste(text => { ui.editor.textContent = text; return true; });
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   await new Promise(resolve => setImmediate(resolve));
   env.tick();
   assert.equal(ui.submit.clicks, 1);
 });
 
-test('uses clipboard when controlled editor does not enable Post after direct input', async () => {
+test('uses clipboard to update controlled editor state before posting', async () => {
   const env = setup();
   env.configure(['Hello']);
   const video = env.addVideo();
@@ -714,7 +707,7 @@ test('uses clipboard when controlled editor does not enable Post after direct in
     return true;
   });
   env.start();
-  beginComment(env, video);
+  await beginComment(env, video);
   env.elapse(1000); env.tick();
   await new Promise(resolve => setImmediate(resolve));
   env.tick();
@@ -722,7 +715,7 @@ test('uses clipboard when controlled editor does not enable Post after direct in
   assert.equal(env.messages.filter(m => m.handler === 'FlutterCommentPaste').length, 1);
 });
 
-test('tries the accessible Enter action once when the comment click is ignored', () => {
+test('tries the accessible Enter action once when the comment click is ignored', async () => {
   const env = setup();
   env.configure(['Hello']);
   const video = env.addVideo();
@@ -733,7 +726,9 @@ test('tries the accessible Enter action once when the comment click is ignored',
   env.elapse(2000); env.tick();
   assert.equal(env.editors.length, 0);
   env.elapse(2000); env.tick();
-  env.tick(); env.tick();
+  env.tick();
+  await new Promise(setImmediate);
+  env.tick();
   assert.equal(ui.submit.clicks, 1);
   assert.equal(env.editors.length, 1);
 });

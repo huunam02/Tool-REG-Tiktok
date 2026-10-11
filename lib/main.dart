@@ -6,16 +6,6 @@ import 'home_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // // -- Bỏ comment đoạn này nếu bạn muốn set Proxy cho toàn bộ Webview --
-  // if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-  //   await ProxyController.instance().setProxyOverride(
-  //     settings: ProxySettings(
-  //       proxyRules: [ProxyRule(url: "http://192.168.1.1:8888")], // Đổi lại IP của bạn
-  //       bypassRules: ["www.google.com"]
-  //     )
-  //   );
-  // }
-
   runApp(const MyApp());
 }
 

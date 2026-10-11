@@ -16,14 +16,8 @@ const String inlineVideoScript = r'''
 })();
 ''';
 
-
-
-String buildAutoWatchScript(List<String> comments,
-        {bool useClipboard = false}) =>
-    'window.__flutterAutoWatchConfig = ${jsonEncode({
-          'comments': comments,
-          'useClipboard': useClipboard
-        })};\n'
+String buildAutoWatchScript(List<String> comments) =>
+    'window.__flutterAutoWatchConfig = ${jsonEncode({'comments': comments})};\n'
     '$autoWatchStartScript';
 
 /// Runs inside the WebView. Calling it again replaces the previous watcher.
@@ -351,51 +345,21 @@ const String autoWatchStartScript = r'''
       if (editorText(editor)) { failComment('comment-draft-exists'); return; }
       comment.editor = editor;
       comment.panel = editor.closest(panelSelector) || editor.parentElement;
-      exposePanel(editor);
-      editor.focus();
-      if (config.useClipboard) { pasteComment(editor); return; }
-      if (editor.getAttribute('contenteditable') === 'true') {
-        // Draft.js requires an editing operation, not replacing innerHTML.
-        const selection = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(editor);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        if (!document.execCommand('insertText', false, comment.text)) {
-          pasteComment(editor); return;
-        }
-      } else {
-        const setter = Object.getOwnPropertyDescriptor(
-          HTMLTextAreaElement.prototype, 'value'
-        )?.set;
-        if (!setter) { pasteComment(editor); return; }
-        setter.call(editor, comment.text);
-        editor.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      comment.stage = 'filled';
-      comment.filledAt = Date.now();
+      pasteComment(editor);
       return;
     }
-    if (comment.stage === 'filled' || comment.stage === 'paste-verify') {
+    if (comment.stage === 'paste-verify') {
       const editor = findEditor();
       // React can replace the editor while handling an input/viewport update.
       if (!editor) return;
       if (editorText(editor) !== comment.text) {
-        if (comment.stage === 'paste-verify') {
-          if (Date.now() - comment.at >= 2000) failComment('comment-paste-failed');
-        } else {
-          pasteComment(editor);
-        }
+        if (Date.now() - comment.at >= 2000) failComment('comment-paste-failed');
         return;
       }
       comment.editor = editor;
       comment.panel = editor.closest(panelSelector) || editor.parentElement;
       const submit = comment.panel.querySelector('[data-e2e="comment-post"]');
       if (!submit || submit.disabled || submit.getAttribute('aria-disabled') === 'true') {
-        // Text can appear in Draft.js without updating its controlled state.
-        if (comment.stage === 'filled' && Date.now() - comment.filledAt >= 1000) {
-          pasteComment(editor);
-        }
         return;
       }
       attemptedPosts.add(comment.key);

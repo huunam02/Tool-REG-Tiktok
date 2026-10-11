@@ -1,10 +1,12 @@
 import Flutter
 import UIKit
 import WebKit
+import Network
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   private var commentInputChannel: FlutterMethodChannel?
+  private var proxyChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
@@ -12,6 +14,52 @@ import WebKit
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     if let controller = window?.rootViewController as? FlutterViewController {
+      proxyChannel = FlutterMethodChannel(
+        name: "test_tiktok/webview_proxy", binaryMessenger: controller.binaryMessenger
+      )
+      proxyChannel?.setMethodCallHandler { call, result in
+        guard call.method == "configure" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        let arguments = call.arguments as? [String: Any]
+        let host = arguments?["host"] as? String
+        guard #available(iOS 17.0, *) else {
+          if host == nil {
+            result(nil)
+          } else {
+            result(FlutterError(code: "proxy_unsupported",
+              message: "Cấu hình proxy cần iOS 17 trở lên.", details: nil))
+          }
+          return
+        }
+        // Use the Objective-C API: the Swift WebKit overlay can be missing
+        // on iOS 17/18 runtimes when this app is built with the iOS 26 SDK.
+        guard let host = host, !host.isEmpty else {
+          WKWebsiteDataStore.default().__proxyConfigurations = []
+          result(nil)
+          return
+        }
+        guard let port = arguments?["port"] as? Int,
+              (1...65535).contains(port),
+              let endpointPort = NWEndpoint.Port(rawValue: UInt16(port)),
+              let scheme = arguments?["scheme"] as? String,
+              scheme == "http" || scheme == "https" else {
+          result(FlutterError(code: "proxy_invalid",
+            message: "Proxy không hợp lệ.", details: nil))
+          return
+        }
+        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: endpointPort)
+        let proxy = ProxyConfiguration(httpCONNECTProxy: endpoint,
+          tlsOptions: scheme == "https" ? NWProtocolTLS.Options() : nil)
+        let username = arguments?["username"] as? String ?? ""
+        if !username.isEmpty {
+          proxy.applyCredential(username: username,
+            password: arguments?["password"] as? String ?? "")
+        }
+        WKWebsiteDataStore.default().__proxyConfigurations = [proxy._nw]
+        result(nil)
+      }
       commentInputChannel = FlutterMethodChannel(
         name: "test_tiktok/comment_input", binaryMessenger: controller.binaryMessenger
       )
@@ -29,8 +77,9 @@ import WebKit
         let arguments = call.arguments as? [String: Any]
         let context = arguments?["context"] as? String ?? "comment"
         let guardScript: String
-        if context == "signup", let attempt = arguments?["attempt"] as? Int {
-          guardScript = "window.__flutterAutoSignup?.canPasteFromClipboard(\(attempt)) === true"
+        if (context == "signup" || context == "login"), let attempt = arguments?["attempt"] as? Int {
+          let stateName = context == "signup" ? "__flutterAutoSignup" : "__flutterAutoLogin"
+          guardScript = "window.\(stateName)?.canPasteFromClipboard(\(attempt)) === true"
         } else if context == "comment" {
           guardScript = """
           (() => {

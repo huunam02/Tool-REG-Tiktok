@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 126 User-Agent desktop: Chrome và Edge phiên bản 120–140,
@@ -38,6 +39,10 @@ Future<String> selectNextDesktopUserAgent() async {
   if (!await preferences
       .setStringList(_usedUserAgentsKey, [...used, selected])) {
     throw StateError('Cannot persist User-Agent history');
+  }
+  if (kDebugMode) {
+    debugPrint(
+        '[User-Agent] New session (${used.length + 1}/${desktopUserAgents.length}): $selected');
   }
   return selected;
 }

@@ -2,6 +2,9 @@
 
 ## OTP API
 
+Trong tab **Thiết lập chung**, nút **Xóa phiên và đổi User-Agent** xóa cookie,
+dữ liệu WebView và cache, rồi chọn User-Agent mới cho lần mở TikTok tiếp theo.
+
 Khi chạy đăng ký, app tự tạo ngày sinh ngẫu nhiên trong khoảng 1960–2004,
 bao gồm ngày hợp lệ theo số ngày của từng tháng và năm nhuận.
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_configuration.dart';
+import 'app_session.dart';
 import 'config.dart' as config;
 import 'otp_api.dart';
 import 'tiktok_page.dart';
@@ -23,6 +24,8 @@ class _HomePageState extends State<HomePage>
   final _loginFormKey = GlobalKey<FormState>();
   late final TabController _tabs;
   int _selectedTab = 0;
+  late String _userAgent;
+  bool _resettingSession = false;
   final _proxy = TextEditingController();
   final _proxyUsername = TextEditingController();
   final _proxyPassword = TextEditingController();
@@ -34,13 +37,15 @@ class _HomePageState extends State<HomePage>
   final _signupMailboxPassword = TextEditingController();
   final _loginMailboxPassword = TextEditingController();
   bool _opening = false;
+  bool get _busy => _opening || _resettingSession;
   TikTokLaunchAction _requestedAction = TikTokLaunchAction.browse;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 3, vsync: this)..addListener(_tabChanged);
-    final defaults = AppConfiguration.defaults(widget.userAgent);
+    _userAgent = widget.userAgent;
+    final defaults = AppConfiguration.defaults(_userAgent);
     _comments = TextEditingController(text: defaults.comments.join('\n'));
     _signupEmail = TextEditingController(text: defaults.signupEmail);
     _signupPassword = TextEditingController(text: defaults.signupPassword);
@@ -76,7 +81,7 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _openTikTok(TikTokLaunchAction action) async {
-    if (_opening) return;
+    if (_busy) return;
     setState(() => _requestedAction = action);
     final forms = [
       (0, _formKey),
@@ -98,7 +103,7 @@ class _HomePageState extends State<HomePage>
     setState(() => _opening = true);
     try {
       final configuration = AppConfiguration(
-        userAgent: widget.userAgent,
+        userAgent: _userAgent,
         proxy: WebViewProxy.parse(_proxy.text,
             username: _proxyUsername.text, password: _proxyPassword.text),
         comments: AppConfiguration.parseComments(_comments.text),
@@ -138,6 +143,27 @@ class _HomePageState extends State<HomePage>
       ));
     } finally {
       if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  Future<void> _resetSession() async {
+    if (_busy) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _resettingSession = true);
+    try {
+      final userAgent = await prepareAppSession();
+      if (!mounted) return;
+      setState(() => _userAgent = userAgent);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Đã xóa phiên và đổi User-Agent.'),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Không thể xóa phiên. Hãy thử lại.'),
+      ));
+    } finally {
+      if (mounted) setState(() => _resettingSession = false);
     }
   }
 
@@ -325,7 +351,7 @@ class _HomePageState extends State<HomePage>
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(48),
               child: AbsorbPointer(
-                absorbing: _opening,
+                absorbing: _busy,
                 child: TabBar(
                   key: const Key('homeTabs'),
                   controller: _tabs,
@@ -349,7 +375,7 @@ class _HomePageState extends State<HomePage>
           body: SafeArea(
             bottom: false,
             child: AbsorbPointer(
-              absorbing: _opening,
+              absorbing: _busy,
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final wide = constraints.maxWidth >= 760;
@@ -420,7 +446,7 @@ class _HomePageState extends State<HomePage>
                     child: switch (_selectedTab) {
                       2 => FilledButton.icon(
                           key: const Key('runAutoLogin'),
-                          onPressed: _opening
+                          onPressed: _busy
                               ? null
                               : () => _openTikTok(TikTokLaunchAction.login),
                           style: FilledButton.styleFrom(
@@ -433,7 +459,7 @@ class _HomePageState extends State<HomePage>
                         ),
                       1 => FilledButton.icon(
                           key: const Key('runAutoSignup'),
-                          onPressed: _opening
+                          onPressed: _busy
                               ? null
                               : () => _openTikTok(TikTokLaunchAction.signup),
                           style: FilledButton.styleFrom(
@@ -446,7 +472,7 @@ class _HomePageState extends State<HomePage>
                         ),
                       _ => OutlinedButton.icon(
                           key: const Key('openTikTok'),
-                          onPressed: _opening
+                          onPressed: _busy
                               ? null
                               : () => _openTikTok(TikTokLaunchAction.browse),
                           icon: _launchIcon(TikTokLaunchAction.browse,
@@ -598,10 +624,27 @@ class _HomePageState extends State<HomePage>
   Widget _userAgentSection() => _section('User-Agent',
           'Thông tin trình duyệt của phiên hiện tại.', Icons.computer, [
         SelectableText(
-          widget.userAgent,
+          _userAgent,
           key: const Key('userAgent'),
           style: const TextStyle(
               fontSize: 12, height: 1.7, fontFamily: 'monospace'),
+        ),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          key: const Key('resetSession'),
+          onPressed: _busy ? null : _resetSession,
+          icon: _resettingSession
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.restart_alt),
+          label: Text(
+              _resettingSession
+                  ? 'Đang xóa phiên…'
+                  : 'Xóa phiên và đổi User-Agent',
+              textAlign: TextAlign.center),
         ),
       ]);
 

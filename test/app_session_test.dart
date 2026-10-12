@@ -164,6 +164,94 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets('restarting the app changes the displayed and WebView User-Agent',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('test_tiktok/webview_proxy'), (call) async => null);
+    final selected = <String>[];
+    for (var launch = 0; launch < 2; launch++) {
+      await tester.pumpWidget(const MyApp());
+      await tester.pumpAndSettle();
+      final userAgent = tester
+          .widget<SelectableText>(find.byKey(const Key('userAgent')))
+          .data!;
+      selected.add(userAgent);
+      await tester.tap(find.byKey(const Key('openTikTok')));
+      await tester.pumpAndSettle();
+      expect(_platform.webViewUserAgent, userAgent);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await (await SharedPreferences.getInstance()).reload();
+    }
+    expect(selected.last, isNot(selected.first));
+    expect(_platform.calls, [
+      'cookies',
+      'apple-storage',
+      'cache',
+      'cookies',
+      'apple-storage',
+      'cache'
+    ]);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets(
+      'Home resets session, retries failures and uses the new User-Agent',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('test_tiktok/webview_proxy'), (call) async => null);
+    await tester.binding.setSurfaceSize(const Size(800, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MyApp());
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('comments')), 'Keep this comment');
+    final original =
+        tester.widget<SelectableText>(find.byKey(const Key('userAgent'))).data!;
+    _platform.calls.clear();
+    _platform.cookieGate = Completer<bool>();
+    await tester.ensureVisible(find.byKey(const Key('resetSession')));
+    await tester.tap(find.byKey(const Key('resetSession')));
+    await tester.pump();
+    expect(
+        tester
+            .widget<OutlinedButton>(find.byKey(const Key('resetSession')))
+            .onPressed,
+        isNull);
+    expect(
+        tester
+            .widget<OutlinedButton>(find.byKey(const Key('openTikTok')))
+            .onPressed,
+        isNull);
+    _platform.cookieGate!.completeError(StateError('Cannot reset cookies'));
+    await tester.pumpAndSettle();
+    expect(find.text('Không thể xóa phiên. Hãy thử lại.'), findsOneWidget);
+    expect(
+        tester.widget<SelectableText>(find.byKey(const Key('userAgent'))).data,
+        original);
+    expect(_platform.calls, ['cookies']);
+    _platform.calls.clear();
+    _platform.cookieGate = null;
+    await tester.tap(find.byKey(const Key('resetSession')));
+    await tester.pumpAndSettle();
+    final updated =
+        tester.widget<SelectableText>(find.byKey(const Key('userAgent'))).data!;
+    expect(updated, isNot(original));
+    expect(_platform.calls, ['cookies', 'apple-storage', 'cache']);
+    expect(
+        tester
+            .widget<TextFormField>(find.byKey(const Key('comments')))
+            .controller!
+            .text,
+        'Keep this comment');
+    await tester.tap(find.byKey(const Key('openTikTok')));
+    await tester.pumpAndSettle();
+    expect(_platform.webViewUserAgent, updated);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('blocks TikTok if reset fails and allows a clean retry',
       (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;

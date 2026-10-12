@@ -2,7 +2,6 @@ package com.stalliondz.tool.tiktok
 
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
 import android.webkit.WebView
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -18,7 +17,7 @@ class MainActivity: FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 val webView = findWebView(window.decorView)
-                if (webView == null || !webView.hasFocus()) {
+                if (webView == null) {
                     result.success(false)
                     return@setMethodCallHandler
                 }
@@ -44,14 +43,7 @@ class MainActivity: FlutterActivity() {
                     result.success(false)
                     return@setMethodCallHandler
                 }
-                webView.evaluateJavascript(guardScript) { editable ->
-                    if (editable != "true") {
-                        result.success(false)
-                    } else {
-                        val connection = webView.onCreateInputConnection(EditorInfo())
-                        result.success(connection?.performContextMenuAction(android.R.id.paste) == true)
-                    }
-                }
+                NativeClipboardPaste.paste(webView, guardScript) { result.success(it) }
             }
     }
 

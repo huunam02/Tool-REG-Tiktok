@@ -1,4 +1,7 @@
+import 'dart:math';
+
 import 'config.dart' as defaults;
+import 'otp_api.dart';
 
 /// A snapshot of Home's configuration for one TikTok screen.
 class AppConfiguration {
@@ -11,6 +14,9 @@ class AppConfiguration {
     required List<String> comments,
     this.signupOtp = '',
     this.loginOtp = '',
+    this.signupMailboxPassword = '',
+    this.loginMailboxPassword = '',
+    this.otpApi,
     this.birthday,
     this.proxy,
   }) : comments = List.unmodifiable(comments);
@@ -22,7 +28,6 @@ class AppConfiguration {
         loginUsername: defaults.email,
         loginPassword: defaults.password,
         comments: defaults.defaultAutoComments,
-        birthday: parseBirthday(defaults.signupBirthday),
       );
 
   final String userAgent;
@@ -32,6 +37,9 @@ class AppConfiguration {
   final String loginPassword;
   final String signupOtp;
   final String loginOtp;
+  final String signupMailboxPassword;
+  final String loginMailboxPassword;
+  final OtpApiConfiguration? otpApi;
   final List<String> comments;
   final DateTime? birthday;
   final WebViewProxy? proxy;
@@ -41,6 +49,14 @@ class AppConfiguration {
       .map((line) => line.trim())
       .where((line) => line.isNotEmpty)
       .toList();
+
+  static DateTime randomSignupBirthday({Random? random}) {
+    final generator = random ?? Random();
+    final year = 1960 + generator.nextInt(2004 - 1960 + 1);
+    final month = 1 + generator.nextInt(12);
+    final daysInMonth = DateTime.utc(year, month + 1, 0).day;
+    return DateTime(year, month, 1 + generator.nextInt(daysInMonth));
+  }
 
   static DateTime? parseBirthday(String value) {
     final date = DateTime.tryParse(value);

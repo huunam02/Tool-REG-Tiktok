@@ -544,3 +544,37 @@ test('supports a delayed OTP challenge after initial signup submission', async (
   assert.equal(env.run(false), 'submitted');
   assert.equal(env.submit.clicks, 2);
 });
+
+test('waits for an API OTP after Send code without requesting another code', async () => {
+  const env = setup();
+  env.config.waitForOtpApi = true;
+  const send = env.add('button', 'Send code', 'BUTTON');
+  const otp = env.add('input[name="code"]', '', 'INPUT');
+  await fill(env);
+  assert.equal(env.run(), 'verification-requested');
+  assert.equal(env.run(), 'otp-required');
+  env.advance(180000);
+  assert.equal(env.run(), 'otp-required');
+  assert.equal(send.clicks, 1);
+  assert.equal(env.requests.length, 2);
+  env.config.otp = '012345';
+  assert.equal(env.run(), 'waiting-paste');
+  await env.resolvePaste();
+  assert.equal(otp.value, '012345');
+  assert.equal(env.run(), 'otp-submitted');
+});
+
+test('reports an API OTP challenge after initial signup submission', async () => {
+  const env = setup();
+  env.config.waitForOtpApi = true;
+  await fill(env);
+  assert.equal(env.run(), 'submitted');
+  const otp = env.add('input[name="code"]', '', 'INPUT');
+  assert.equal(env.run(false), 'otp-required');
+  env.advance(5000);
+  env.config.otp = '012345';
+  assert.equal(env.run(false), 'waiting-paste');
+  await env.resolvePaste();
+  assert.equal(otp.value, '012345');
+  assert.equal(env.run(false), 'otp-submitted');
+});

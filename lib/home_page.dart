@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_configuration.dart';
+import 'config.dart' as config;
+import 'otp_api.dart';
 import 'tiktok_page.dart';
 import 'webview_proxy.dart';
 
@@ -14,36 +16,42 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
+  final _signupFormKey = GlobalKey<FormState>();
+  final _loginFormKey = GlobalKey<FormState>();
+  late final TabController _tabs;
+  int _selectedTab = 0;
   final _proxy = TextEditingController();
   final _proxyUsername = TextEditingController();
   final _proxyPassword = TextEditingController();
   late final TextEditingController _comments;
   late final TextEditingController _signupEmail;
   late final TextEditingController _signupPassword;
-  final _signupOtp = TextEditingController();
   late final TextEditingController _loginUsername;
   late final TextEditingController _loginPassword;
-  final _loginOtp = TextEditingController();
-  DateTime? _birthday;
+  final _signupMailboxPassword = TextEditingController();
+  final _loginMailboxPassword = TextEditingController();
   bool _opening = false;
   TikTokLaunchAction _requestedAction = TikTokLaunchAction.browse;
 
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 3, vsync: this)..addListener(_tabChanged);
     final defaults = AppConfiguration.defaults(widget.userAgent);
     _comments = TextEditingController(text: defaults.comments.join('\n'));
     _signupEmail = TextEditingController(text: defaults.signupEmail);
     _signupPassword = TextEditingController(text: defaults.signupPassword);
     _loginUsername = TextEditingController(text: defaults.loginUsername);
     _loginPassword = TextEditingController(text: defaults.loginPassword);
-    _birthday = defaults.birthday;
   }
 
   @override
   void dispose() {
+    _tabs.removeListener(_tabChanged);
+    _tabs.dispose();
     for (final controller in [
       _proxy,
       _proxyUsername,
@@ -51,38 +59,37 @@ class _HomePageState extends State<HomePage> {
       _comments,
       _signupEmail,
       _signupPassword,
-      _signupOtp,
       _loginUsername,
       _loginPassword,
-      _loginOtp,
+      _signupMailboxPassword,
+      _loginMailboxPassword,
     ]) {
       controller.dispose();
     }
     super.dispose();
   }
 
-  Future<void> _pickBirthday() async {
-    final birthday = await showDatePicker(
-      context: context,
-      initialDate: _birthday,
-      firstDate: DateTime(1900),
-      lastDate: DateUtils.dateOnly(DateTime.now()),
-      helpText: 'Chọn ngày sinh thật của bạn',
-      cancelText: 'Huỷ',
-      confirmText: 'Chọn',
-      builder: (context, child) => Theme(
-        data: _HomeStyle.theme(context),
-        child: child!,
-      ),
-    );
-    if (mounted && birthday != null) setState(() => _birthday = birthday);
+  void _tabChanged() {
+    if (_tabs.index == _selectedTab) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _selectedTab = _tabs.index);
   }
 
   Future<void> _openTikTok(TikTokLaunchAction action) async {
     if (_opening) return;
     setState(() => _requestedAction = action);
-    final invalidFields = _formKey.currentState!.validateGranularly();
-    if (invalidFields.isNotEmpty) {
+    final forms = [
+      (0, _formKey),
+      if (action == TikTokLaunchAction.signup) (1, _signupFormKey),
+      if (action == TikTokLaunchAction.login) (2, _loginFormKey),
+    ];
+    for (final (tab, form) in forms) {
+      final invalidFields = form.currentState!.validateGranularly();
+      if (invalidFields.isEmpty) continue;
+      _tabs.index = tab;
+      // The invalid setting may live in another tab. Lay it out before scrolling.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
       await Scrollable.ensureVisible(invalidFields.first.context,
           duration: const Duration(milliseconds: 250), alignment: 0.2);
       return;
@@ -90,10 +97,6 @@ class _HomePageState extends State<HomePage> {
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _opening = true);
     try {
-      if (action == TikTokLaunchAction.signup && _birthday == null) {
-        await _pickBirthday();
-        if (!mounted || _birthday == null) return;
-      }
       final configuration = AppConfiguration(
         userAgent: widget.userAgent,
         proxy: WebViewProxy.parse(_proxy.text,
@@ -101,17 +104,25 @@ class _HomePageState extends State<HomePage> {
         comments: AppConfiguration.parseComments(_comments.text),
         signupEmail: _signupEmail.text.trim(),
         signupPassword: _signupPassword.text,
-        signupOtp: _signupOtp.text.trim(),
         loginUsername: _loginUsername.text.trim(),
         loginPassword: _loginPassword.text,
-        loginOtp: _loginOtp.text.trim(),
-        birthday: _birthday,
+        signupMailboxPassword: _signupMailboxPassword.text,
+        loginMailboxPassword: _loginMailboxPassword.text,
+        otpApi: _otpApiFor(action),
+        birthday: action == TikTokLaunchAction.signup
+            ? AppConfiguration.randomSignupBirthday()
+            : null,
       );
       await configureWebViewProxy(configuration.proxy);
       if (!mounted) return;
       await Navigator.of(context).push<void>(MaterialPageRoute(
         builder: (_) =>
             TikTokPage(configuration: configuration, launchAction: action),
+      ));
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error.message),
       ));
     } on PlatformException catch (error) {
       if (!mounted) return;
@@ -128,6 +139,24 @@ class _HomePageState extends State<HomePage> {
     } finally {
       if (mounted) setState(() => _opening = false);
     }
+  }
+
+  OtpApiConfiguration? _otpApiFor(TikTokLaunchAction action) {
+    if (action == TikTokLaunchAction.browse) return null;
+    if (config.otpApiToken.trim().isEmpty) {
+      throw const FormatException('Điền otpApiToken trong lib/config.dart.');
+    }
+    final Uri url;
+    try {
+      url = OtpApiConfiguration.parseUrl(config.otpApiUrl);
+    } on FormatException {
+      throw const FormatException(
+          'Cấu hình otpApiUrl HTTPS hợp lệ trong lib/config.dart.');
+    }
+    return OtpApiConfiguration(
+      url: url,
+      readerToken: config.otpApiToken.trim(),
+    );
   }
 
   InputDecoration _decoration(String label,
@@ -226,9 +255,6 @@ class _HomePageState extends State<HomePage> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                const _StatusChip(
-                    icon: Icons.desktop_windows_outlined,
-                    label: 'Trình duyệt desktop'),
                 ValueListenableBuilder<TextEditingValue>(
                   valueListenable: _proxy,
                   builder: (context, value, _) {
@@ -289,70 +315,90 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(width: 12),
               const Expanded(
-                child: Text('TikTok Studio',
+                child: Text('Tool TikTok',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style:
                         TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
               ),
             ]),
-          ),
-          body: SafeArea(
-            bottom: false,
-            child: Form(
-              key: _formKey,
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(48),
               child: AbsorbPointer(
                 absorbing: _opening,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final wide = constraints.maxWidth >= 760;
-                    return SingleChildScrollView(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: EdgeInsets.fromLTRB(
-                          wide ? 28 : 16, 8, wide ? 28 : 16, 24),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 1080),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _hero(),
-                              const SizedBox(height: 26),
-                              const Padding(
-                                padding: EdgeInsets.only(left: 4, bottom: 12),
-                                child: Text('THIẾT LẬP CHUNG',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        letterSpacing: 1.6,
-                                        fontWeight: FontWeight.w700,
-                                        color: _HomeStyle.muted)),
-                              ),
-                              _pair(_proxySection(), _commentsSection(), wide),
-                              const SizedBox(height: 26),
-                              const Padding(
-                                padding: EdgeInsets.only(left: 4, bottom: 12),
-                                child: Text('TÀI KHOẢN',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        letterSpacing: 1.6,
-                                        fontWeight: FontWeight.w700,
-                                        color: _HomeStyle.muted)),
-                              ),
-                              _pair(_signupSection(), _loginSection(), wide),
-                              const SizedBox(height: 18),
-                              _userAgentSection(),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+                child: TabBar(
+                  key: const Key('homeTabs'),
+                  controller: _tabs,
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  labelColor: _HomeStyle.cyan,
+                  unselectedLabelColor: _HomeStyle.muted,
+                  indicatorColor: _HomeStyle.cyan,
+                  dividerColor: _HomeStyle.border,
+                  labelStyle: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700),
+                  tabs: const [
+                    Tab(key: Key('generalTab'), text: 'Thiết lập chung'),
+                    Tab(key: Key('signupTab'), text: 'Đăng ký'),
+                    Tab(key: Key('loginTab'), text: 'Đăng nhập'),
+                  ],
                 ),
               ),
             ),
           ),
+          body: SafeArea(
+            bottom: false,
+            child: AbsorbPointer(
+              absorbing: _opening,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 760;
+                  return IndexedStack(
+                    index: _selectedTab,
+                    children: [
+                      _tabPage(_formKey, 'general', wide, [
+                        _hero(),
+                        const SizedBox(height: 26),
+                        _pair(_proxySection(), _commentsSection(), wide),
+                        const SizedBox(height: 18),
+                        _userAgentSection(),
+                      ]),
+                      _tabPage(_signupFormKey, 'signup', wide, [
+                        _signupSection(),
+                        const SizedBox(height: 20),
+                        _otpApiSection(signup: true),
+                      ]),
+                      _tabPage(_loginFormKey, 'login', wide, [
+                        _loginSection(),
+                        const SizedBox(height: 20),
+                        _otpApiSection(signup: false),
+                      ]),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
           bottomNavigationBar: _actionBar(context),
+        ),
+      );
+
+  Widget _tabPage(GlobalKey<FormState> formKey, String name, bool wide,
+          List<Widget> sections) =>
+      Form(
+        key: formKey,
+        child: SingleChildScrollView(
+          key: PageStorageKey('home-$name'),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(wide ? 28 : 16, 16, wide ? 28 : 16, 24),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1080),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: sections),
+            ),
+          ),
         ),
       );
 
@@ -369,92 +415,60 @@ class _HomePageState extends State<HomePage> {
               heightFactor: 1,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1080),
-                child: LayoutBuilder(builder: (context, constraints) {
-                  final buttons = [
-                    FilledButton.icon(
-                      key: const Key('runAutoLogin'),
-                      onPressed: _opening
-                          ? null
-                          : () => _openTikTok(TikTokLaunchAction.login),
-                      style: FilledButton.styleFrom(
-                          backgroundColor: _HomeStyle.cyan,
-                          foregroundColor: _HomeStyle.background),
-                      icon: _launchIcon(
-                          TikTokLaunchAction.login, Icons.login_rounded),
-                      label: const Text('Chạy đăng nhập tự động',
-                          textAlign: TextAlign.center),
-                    ),
-                    FilledButton.icon(
-                      key: const Key('runAutoSignup'),
-                      onPressed: _opening
-                          ? null
-                          : () => _openTikTok(TikTokLaunchAction.signup),
-                      style: FilledButton.styleFrom(
-                          backgroundColor: _HomeStyle.pink,
-                          foregroundColor: _HomeStyle.background),
-                      icon: _launchIcon(
-                          TikTokLaunchAction.signup, Icons.person_add_alt_1),
-                      label: const Text('Chạy đăng ký tự động',
-                          textAlign: TextAlign.center),
-                    ),
-                    OutlinedButton.icon(
-                      key: const Key('openTikTok'),
-                      onPressed: _opening
-                          ? null
-                          : () => _openTikTok(TikTokLaunchAction.browse),
-                      icon: _launchIcon(
-                          TikTokLaunchAction.browse, Icons.open_in_new_rounded),
-                      label:
-                          const Text('Mở TikTok', textAlign: TextAlign.center),
-                    ),
-                  ];
-                  // Stack actions for large text so every label stays readable.
-                  if (constraints.maxWidth < 340 ||
-                      MediaQuery.textScalerOf(context).scale(14) > 18) {
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        buttons[0],
-                        const SizedBox(height: 8),
-                        buttons[1],
-                        const SizedBox(height: 8),
-                        buttons[2]
-                      ],
-                    );
-                  }
-                  if (constraints.maxWidth >= 700) {
-                    return Row(children: [
-                      Expanded(child: buttons[0]),
-                      const SizedBox(width: 12),
-                      Expanded(child: buttons[1]),
-                      const SizedBox(width: 12),
-                      Expanded(child: buttons[2]),
-                    ]);
-                  }
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      IntrinsicHeight(
-                        child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(child: buttons[0]),
-                              const SizedBox(width: 10),
-                              Expanded(child: buttons[1])
-                            ]),
-                      ),
-                      const SizedBox(height: 8),
-                      buttons[2],
-                    ],
-                  );
-                }),
+                child: SizedBox(
+                    width: double.infinity,
+                    child: switch (_selectedTab) {
+                      2 => FilledButton.icon(
+                          key: const Key('runAutoLogin'),
+                          onPressed: _opening
+                              ? null
+                              : () => _openTikTok(TikTokLaunchAction.login),
+                          style: FilledButton.styleFrom(
+                              backgroundColor: _HomeStyle.cyan,
+                              foregroundColor: _HomeStyle.background),
+                          icon: _launchIcon(
+                              TikTokLaunchAction.login, Icons.login_rounded),
+                          label: const Text('Chạy đăng nhập tự động',
+                              textAlign: TextAlign.center),
+                        ),
+                      1 => FilledButton.icon(
+                          key: const Key('runAutoSignup'),
+                          onPressed: _opening
+                              ? null
+                              : () => _openTikTok(TikTokLaunchAction.signup),
+                          style: FilledButton.styleFrom(
+                              backgroundColor: _HomeStyle.pink,
+                              foregroundColor: _HomeStyle.background),
+                          icon: _launchIcon(TikTokLaunchAction.signup,
+                              Icons.person_add_alt_1),
+                          label: const Text('Chạy đăng ký tự động',
+                              textAlign: TextAlign.center),
+                        ),
+                      _ => OutlinedButton.icon(
+                          key: const Key('openTikTok'),
+                          onPressed: _opening
+                              ? null
+                              : () => _openTikTok(TikTokLaunchAction.browse),
+                          icon: _launchIcon(TikTokLaunchAction.browse,
+                              Icons.open_in_new_rounded),
+                          label: const Text('Mở TikTok',
+                              textAlign: TextAlign.center),
+                        ),
+                    }),
               ),
             ),
           ),
         ),
       );
+
+  Widget _otpApiSection({required bool signup}) {
+    return _section(
+        'API lấy OTP',
+        'Tự lấy mã từ hộp thư sau khi TikTok yêu cầu OTP. Chờ tối đa 180 giây.',
+        Icons.mark_email_read_outlined, [
+      _mailboxPasswordField(signup: signup),
+    ]);
+  }
 
   Widget _proxySection() =>
       _section('Proxy', 'Kết nối mạng cho phiên TikTok.', Icons.public, [
@@ -517,7 +531,7 @@ class _HomePageState extends State<HomePage> {
             if (_requestedAction != TikTokLaunchAction.signup) {
               return null;
             }
-            return RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+            return RegExp(r'^[^\s@|]+@[^\s@|]+\.[^\s@|]+$')
                     .hasMatch(value?.trim() ?? '')
                 ? null
                 : 'Nhập email đăng ký hợp lệ.';
@@ -533,33 +547,6 @@ class _HomePageState extends State<HomePage> {
               ? 'Nhập mật khẩu đăng ký.'
               : null,
         ),
-        const SizedBox(height: 16),
-        ListTile(
-          key: const Key('signupBirthday'),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          tileColor: _HomeStyle.input,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: const BorderSide(color: _HomeStyle.border),
-          ),
-          leading: const Icon(Icons.cake_outlined),
-          title: const Text('Ngày sinh',
-              style: TextStyle(fontSize: 13, color: _HomeStyle.muted)),
-          subtitle: Text(_birthday == null
-              ? 'Chọn ngày sinh'
-              : AppConfiguration.formatBirthday(_birthday!)),
-          onTap: _pickBirthday,
-          trailing: _birthday == null
-              ? const Icon(Icons.calendar_month_outlined)
-              : IconButton(
-                  tooltip: 'Xoá ngày sinh',
-                  onPressed: () => setState(() => _birthday = null),
-                  icon: const Icon(Icons.close),
-                ),
-        ),
-        const SizedBox(height: 16),
-        _otpField('signupOtp', _signupOtp, 'Mã OTP đăng ký'),
       ]);
 
   Widget _loginSection() =>
@@ -570,10 +557,16 @@ class _HomePageState extends State<HomePage> {
           autocorrect: false,
           decoration: _decoration('Email / username đăng nhập',
               icon: Icons.person_outline),
-          validator: (value) => _requestedAction == TikTokLaunchAction.login &&
-                  (value == null || value.trim().isEmpty)
-              ? 'Nhập tài khoản đăng nhập.'
-              : null,
+          validator: (value) {
+            if (_requestedAction != TikTokLaunchAction.login) return null;
+            if (value == null || value.trim().isEmpty) {
+              return 'Nhập tài khoản đăng nhập.';
+            }
+            if (!OtpApiConfiguration.isEmail(value)) {
+              return 'Dùng email đăng nhập khi lấy OTP qua API.';
+            }
+            return null;
+          },
         ),
         const SizedBox(height: 16),
         _PasswordField(
@@ -585,19 +578,31 @@ class _HomePageState extends State<HomePage> {
               ? 'Nhập mật khẩu đăng nhập.'
               : null,
         ),
-        const SizedBox(height: 16),
-        _otpField('loginOtp', _loginOtp, 'Mã OTP đăng nhập'),
       ]);
 
-  Widget _userAgentSection() => _section('User Agent',
+  Widget _mailboxPasswordField({required bool signup}) => _PasswordField(
+        fieldKey:
+            Key(signup ? 'signupMailboxPassword' : 'loginMailboxPassword'),
+        controller: signup ? _signupMailboxPassword : _loginMailboxPassword,
+        label: 'Mật khẩu hộp thư lấy OTP',
+        validator: (value) {
+          final action =
+              signup ? TikTokLaunchAction.signup : TikTokLaunchAction.login;
+          if (_requestedAction == action && (value == null || value.isEmpty)) {
+            return 'Nhập mật khẩu hộp thư của email ${signup ? 'đăng ký' : 'đăng nhập'}.';
+          }
+          return null;
+        },
+      );
+
+  Widget _userAgentSection() => _section('User-Agent',
           'Thông tin trình duyệt của phiên hiện tại.', Icons.computer, [
-        SelectableText(widget.userAgent,
-            key: const Key('userAgent'),
-            style: const TextStyle(
-                fontSize: 12,
-                height: 1.7,
-                color: _HomeStyle.muted,
-                fontFamily: 'monospace')),
+        SelectableText(
+          widget.userAgent,
+          key: const Key('userAgent'),
+          style: const TextStyle(
+              fontSize: 12, height: 1.7, fontFamily: 'monospace'),
+        ),
       ]);
 
   Widget _launchIcon(TikTokLaunchAction action, IconData icon) =>
@@ -612,21 +617,6 @@ class _HomePageState extends State<HomePage> {
                     : _HomeStyle.background,
               ))
           : Icon(icon);
-
-  Widget _otpField(
-          String key, TextEditingController controller, String label) =>
-      TextFormField(
-        key: Key(key),
-        controller: controller,
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        autocorrect: false,
-        enableSuggestions: false,
-        decoration: _decoration(label,
-            icon: Icons.pin_outlined,
-            helper: 'Tự nhập sau khoảng 5 giây khi yêu cầu mã. '
-                'Để trống để nhập thủ công.'),
-      );
 }
 
 class _PasswordField extends StatefulWidget {

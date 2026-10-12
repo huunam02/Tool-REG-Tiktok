@@ -1,7 +1,5 @@
-const String email = 'namtanhoa2k2@gmail.com';
-const String password = 'Minhvaban156@';
-// Ngày sinh thật, định dạng YYYY-MM-DD. Để trống để chọn khi bấm đăng ký.
-const String signupBirthday = '';
+const String email = '';
+const String password = '';
 const List<String> defaultAutoComments = [
   'Video thú vị quá!',
   'Cảm ơn bạn đã chia sẻ nhé!',
@@ -13,5 +11,9 @@ const List<String> defaultAutoComments = [
   'Tiếp tục chia sẻ những video như này nhé!',
   'Một video rất đáng xem 👍',
 ];
-const String emailSignup = 'dtc2054802010017@ictu.edu.vn';
-const String passwordSignup = 'Minhvaban156@';
+const String emailSignup = '';
+const String passwordSignup = '';
+// API lấy OTP dùng chung cho đăng ký và đăng nhập.
+const String otpApiUrl =
+    'https://deludedly-colorific-angila.ngrok-free.dev/api/code';
+const String otpApiToken = 'f3ef211b03e0da6ea10e3bbf91e0647c';

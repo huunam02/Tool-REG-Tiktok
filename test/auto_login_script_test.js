@@ -310,3 +310,48 @@ test('preserves an existing login draft without pasting over it', () => {
   assert.equal(env.requests.length, 0);
   assert.equal(env.submit.clicks, 0);
 });
+
+test('waits for an API code without sending another challenge and pastes it natively', async () => {
+  const env = setup();
+  env.config.waitForOtpApi = true;
+  const otp = new env.Input('input[name="code"]');
+  const send = env.add('button', 'Send code');
+  await fill(env);
+  assert.equal(env.run(), 'verification-requested');
+  assert.equal(env.run(), 'otp-required');
+  env.advance(180000);
+  assert.equal(env.run(), 'otp-required');
+  assert.equal(send.clicks, 1);
+  assert.equal(env.requests.length, 2);
+  assert.equal(env.submit.clicks, 0);
+  env.config.otp = '012345';
+  assert.equal(env.run(), 'waiting-paste');
+  await env.resolvePaste();
+  assert.equal(otp.value, '012345');
+  assert.equal(env.run(), 'otp-submitted');
+  assert.equal(env.submit.clicks, 1);
+});
+
+test('reports the OTP challenge after password login while waiting for the API', async () => {
+  const env = setup();
+  env.config.waitForOtpApi = true;
+  await fill(env);
+  assert.equal(env.run(), 'submitted');
+  const otp = new env.Input('input[name="code"]');
+  assert.equal(env.run(false), 'otp-required');
+  env.advance(5000);
+  env.config.otp = '012345';
+  assert.equal(env.run(false), 'waiting-paste');
+  await env.resolvePaste();
+  assert.equal(otp.value, '012345');
+  assert.equal(env.run(false), 'otp-submitted');
+});
+
+test('still stops at CAPTCHA before fetching an API OTP', () => {
+  const env = setup();
+  env.config.waitForOtpApi = true;
+  new env.Input('input[name="code"]');
+  env.add('#captcha-verify-container');
+  assert.equal(env.run(), 'verification-required');
+  assert.equal(env.requests.length, 0);
+});

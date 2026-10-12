@@ -1,7 +1,27 @@
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/app_configuration.dart';
 
 void main() {
+  test('random signup birthdays are valid dates from 1960 through 2004', () {
+    final random = Random(42);
+    final birthdays = List.generate(
+        10000, (_) => AppConfiguration.randomSignupBirthday(random: random));
+    for (final birthday in birthdays) {
+      expect(birthday.year, inInclusiveRange(1960, 2004));
+      expect(
+          AppConfiguration.parseBirthday(
+              AppConfiguration.formatBirthday(birthday)),
+          birthday);
+    }
+    expect(birthdays.any((birthday) => birthday.year == 1960), isTrue);
+    expect(birthdays.any((birthday) => birthday.year == 2004), isTrue);
+    expect(
+        birthdays.any((birthday) => birthday.month == 2 && birthday.day == 29),
+        isTrue);
+  });
+
   test('proxy accepts explicit ports and rejects unsafe or malformed endpoints',
       () {
     expect(WebViewProxy.parse(' 127.0.0.1:8080 ')!.uri.toString(),

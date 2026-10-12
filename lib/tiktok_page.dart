@@ -10,6 +10,7 @@ import 'auto_login_script.dart';
 import 'auto_signup_script.dart';
 import 'auto_watch_script.dart';
 import 'app_configuration.dart';
+import 'otp_api.dart';
 
 const String tiktokHomeUrl = 'https://www.tiktok.com/';
 const String tiktokProfileUrl = 'https://www.tiktok.com/profile';
@@ -24,10 +25,12 @@ class TikTokPage extends StatefulWidget {
   const TikTokPage(
       {super.key,
       required this.configuration,
-      this.launchAction = TikTokLaunchAction.browse});
+      this.launchAction = TikTokLaunchAction.browse,
+      this.otpReaderFactory});
 
   final AppConfiguration configuration;
   final TikTokLaunchAction launchAction;
+  final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
 
   String get initialUrl => switch (launchAction) {
         TikTokLaunchAction.browse => tiktokHomeUrl,
@@ -49,6 +52,10 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
   int _autoLoginAttempt = 0;
   bool _autoSignupBusy = false;
   int _autoSignupAttempt = 0;
+  String _activeLoginOtp = '';
+  String _activeSignupOtp = '';
+  OtpCodeRequest? _loginOtpRequest;
+  OtpCodeRequest? _signupOtpRequest;
 
   int _loadingProgress = 0;
 
@@ -213,6 +220,8 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
   }
 
   void _cancelAutoLogin({bool updateUi = true}) {
+    _loginOtpRequest?.cancel();
+    _loginOtpRequest = null;
     final attempt = _autoLoginAttempt++;
     unawaited(_stopAutoLogin(attempt));
     if (updateUi && mounted) setState(() => _autoLoginBusy = false);
@@ -229,6 +238,8 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
   }
 
   void _cancelAutoSignup({bool updateUi = true}) {
+    _signupOtpRequest?.cancel();
+    _signupOtpRequest = null;
     final attempt = _autoSignupAttempt++;
     unawaited(_stopAutoSignup(attempt));
     if (updateUi && mounted) setState(() => _autoSignupBusy = false);
@@ -266,10 +277,7 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
               ? widget.configuration.signupEmail
               : widget.configuration.loginUsername)
           .trim(),
-      'otp' => (signup
-              ? widget.configuration.signupOtp
-              : widget.configuration.loginOtp)
-          .trim(),
+      'otp' => signup ? _activeSignupOtp : _activeLoginOtp,
       _ => signup
           ? widget.configuration.signupPassword
           : widget.configuration.loginPassword,
@@ -316,6 +324,36 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
     }
   }
 
+  bool _validateOtpMailbox({required bool signup}) {
+    final configuration = widget.configuration;
+    final otp = signup ? configuration.signupOtp : configuration.loginOtp;
+    if (configuration.otpApi == null || otp.trim().isNotEmpty) return true;
+    final email =
+        signup ? configuration.signupEmail : configuration.loginUsername;
+    final password = signup
+        ? configuration.signupMailboxPassword
+        : configuration.loginMailboxPassword;
+    if (OtpApiConfiguration.isEmail(email) && password.isNotEmpty) return true;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content:
+          Text('Hãy nhập email và mật khẩu hộp thư lấy OTP ở màn Cấu hình.'),
+    ));
+    return false;
+  }
+
+  OtpCodeRequest _requestOtp({required bool signup}) {
+    final configuration = widget.configuration;
+    final api = configuration.otpApi!;
+    final reader = widget.otpReaderFactory?.call(api) ?? OtpApiClient(api);
+    return OtpCodeRequest.start(
+      reader,
+      email: signup ? configuration.signupEmail : configuration.loginUsername,
+      password: signup
+          ? configuration.signupMailboxPassword
+          : configuration.loginMailboxPassword,
+    );
+  }
+
   Future<void> _autoSignup() async {
     if (_autoSignupBusy) {
       _cancelAutoSignup();
@@ -332,6 +370,8 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
       ));
       return;
     }
+    if (!_validateOtpMailbox(signup: true)) return;
+    _activeSignupOtp = widget.configuration.signupOtp.trim();
     final attempt = ++_autoSignupAttempt;
     setState(() {
       _autoSignupBusy = true;
@@ -346,22 +386,14 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
     var submitted = false;
     var otpSubmitted = false;
     int? otpRequestedAt;
+    OtpCodeRequest? otpRequest;
     try {
       await _stopAutoWatch();
       if (!mounted || !isActive()) return;
-      final today = DateUtils.dateOnly(DateTime.now());
-      DateTime? birthday = widget.configuration.birthday;
-      birthday ??= await showDatePicker(
-        context: context,
-        firstDate: DateTime(1900),
-        lastDate: today,
-        helpText: 'Chọn ngày sinh thật của bạn',
-        cancelText: 'Huỷ',
-        confirmText: 'Tiếp tục đăng ký',
-      );
-      if (birthday == null || !isActive()) return;
+      final birthday = widget.configuration.birthday ??
+          AppConfiguration.randomSignupBirthday();
       message = 'Không thể mở trang đăng ký. Hãy thử tải lại TikTok.';
-      final deadline = DateTime.now().add(const Duration(seconds: 120));
+      var deadline = DateTime.now().add(const Duration(seconds: 120));
       var evaluationFailures = 0;
       String? lastStep;
       message = 'Chưa hoàn tất đăng ký. Hãy kiểm tra biểu mẫu trên TikTok; '
@@ -369,6 +401,13 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
       while (isActive() && DateTime.now().isBefore(deadline)) {
         await Future<void>.delayed(const Duration(milliseconds: 700));
         if (!isActive()) return;
+        if (otpRequest?.error != null) {
+          message = otpRequest!.error;
+          break;
+        }
+        if (_activeSignupOtp.isEmpty && otpRequest?.code != null) {
+          setState(() => _activeSignupOtp = otpRequest!.code!);
+        }
         dynamic result;
         try {
           final url = await controller.getUrl();
@@ -384,9 +423,11 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
               birthday: birthday,
               attempt: attempt,
               allowSubmit: !submitted,
-              otp: widget.configuration.signupOtp,
+              otp: _activeSignupOtp,
               otpRequestedAt: otpRequestedAt,
               allowOtpSubmit: !otpSubmitted,
+              waitForOtpApi: widget.configuration.otpApi != null &&
+                  _activeSignupOtp.isEmpty,
             ),
           );
           evaluationFailures = 0;
@@ -400,6 +441,18 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
           continue;
         }
         if (!isActive()) return;
+        if ((result == 'verification-requested' || result == 'otp-required') &&
+            _activeSignupOtp.isEmpty &&
+            widget.configuration.otpApi != null &&
+            otpRequest == null) {
+          otpRequestedAt ??= DateTime.now().millisecondsSinceEpoch;
+          otpRequest = _requestOtp(signup: true);
+          setState(() => _signupOtpRequest = otpRequest);
+          deadline = DateTime.now().add(
+              Duration(seconds: widget.configuration.otpApi!.waitSeconds + 45));
+          message = 'Đã yêu cầu mã. Đang lấy OTP đăng ký từ API…';
+          continue;
+        }
         if (result is String && result != lastStep) {
           debugPrint('Auto signup: $result.');
           lastStep = result;
@@ -421,12 +474,14 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
           break;
         } else if (result == 'verification-requested') {
           otpRequestedAt ??= DateTime.now().millisecondsSinceEpoch;
-          if (widget.configuration.signupOtp.trim().isEmpty) {
+          if (_activeSignupOtp.isEmpty && otpRequest == null) {
             message = 'Đã gửi mã. Hãy nhập OTP trên trang đăng ký, '
                 'hoặc điền Mã OTP đăng ký ở màn Cấu hình rồi chạy lại.';
             break;
           }
           message = 'Đã yêu cầu mã. Đang chờ 5 giây để tự nhập OTP đăng ký.';
+        } else if (result == 'otp-required') {
+          message = 'Đang lấy OTP đăng ký từ API…';
         } else if (result == 'waiting-otp') {
           otpRequestedAt ??= DateTime.now().millisecondsSinceEpoch;
           message = 'Đang chờ ô OTP đăng ký để tự nhập mã.';
@@ -462,6 +517,8 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
     } catch (_) {
       message = 'Không thể tự động đăng ký. Hãy thử lại trên TikTok.';
     } finally {
+      otpRequest?.cancel();
+      if (identical(_signupOtpRequest, otpRequest)) _signupOtpRequest = null;
       await _stopAutoSignup(attempt);
       if (mounted && isActive()) {
         setState(() => _autoSignupBusy = false);
@@ -494,6 +551,8 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
       );
       return;
     }
+    if (!_validateOtpMailbox(signup: false)) return;
+    _activeLoginOtp = widget.configuration.loginOtp.trim();
     final attempt = ++_autoLoginAttempt;
     setState(() {
       _autoLoginBusy = true;
@@ -504,16 +563,24 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
     var submitted = false;
     var otpSubmitted = false;
     int? otpRequestedAt;
+    OtpCodeRequest? otpRequest;
     var message = 'Không thể mở trang đăng nhập. Hãy thử tải lại TikTok.';
     try {
       await _stopAutoWatch();
       if (!isActive()) return;
-      final deadline = DateTime.now().add(const Duration(seconds: 45));
+      var deadline = DateTime.now().add(const Duration(seconds: 45));
       message =
           'Không tìm thấy biểu mẫu đăng nhập. Bạn có thể đăng nhập thủ công.';
       while (isActive() && DateTime.now().isBefore(deadline)) {
         await Future<void>.delayed(const Duration(milliseconds: 700));
         if (!isActive()) return;
+        if (otpRequest?.error != null) {
+          message = otpRequest!.error!;
+          break;
+        }
+        if (_activeLoginOtp.isEmpty && otpRequest?.code != null) {
+          setState(() => _activeLoginOtp = otpRequest!.code!);
+        }
         // A navigation can destroy the JavaScript context between polls.
         dynamic result;
         try {
@@ -530,15 +597,29 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
               password: widget.configuration.loginPassword,
               allowSubmit: !submitted,
               attempt: attempt,
-              otp: widget.configuration.loginOtp,
+              otp: _activeLoginOtp,
               otpRequestedAt: otpRequestedAt,
               allowOtpSubmit: !otpSubmitted,
+              waitForOtpApi: widget.configuration.otpApi != null &&
+                  _activeLoginOtp.isEmpty,
             ),
           );
         } catch (_) {
           continue;
         }
         if (!isActive()) return;
+        if ((result == 'verification-requested' || result == 'otp-required') &&
+            _activeLoginOtp.isEmpty &&
+            widget.configuration.otpApi != null &&
+            otpRequest == null) {
+          otpRequestedAt ??= DateTime.now().millisecondsSinceEpoch;
+          otpRequest = _requestOtp(signup: false);
+          setState(() => _loginOtpRequest = otpRequest);
+          deadline = DateTime.now().add(
+              Duration(seconds: widget.configuration.otpApi!.waitSeconds + 45));
+          message = 'Đã yêu cầu mã. Đang lấy OTP đăng nhập từ API…';
+          continue;
+        }
         if (result == 'submitted' || result == 'otp-submitted') {
           submitted = true;
           if (result == 'otp-submitted') otpSubmitted = true;
@@ -551,12 +632,14 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
           break;
         } else if (result == 'verification-requested') {
           otpRequestedAt ??= DateTime.now().millisecondsSinceEpoch;
-          if (widget.configuration.loginOtp.trim().isEmpty) {
+          if (_activeLoginOtp.isEmpty && otpRequest == null) {
             message = 'Đã gửi mã. Hãy nhập OTP trên trang đăng nhập, '
                 'hoặc điền Mã OTP đăng nhập ở màn Cấu hình rồi chạy lại.';
             break;
           }
           message = 'Đã yêu cầu mã. Đang chờ 5 giây để tự nhập OTP đăng nhập.';
+        } else if (result == 'otp-required') {
+          message = 'Đang lấy OTP đăng nhập từ API…';
         } else if (result == 'waiting-otp') {
           otpRequestedAt ??= DateTime.now().millisecondsSinceEpoch;
           message = 'Đang chờ ô OTP đăng nhập để tự nhập mã.';
@@ -584,6 +667,8 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
     } catch (_) {
       // Keep credentials and WebView exception details out of UI messages.
     } finally {
+      otpRequest?.cancel();
+      if (identical(_loginOtpRequest, otpRequest)) _loginOtpRequest = null;
       await _stopAutoLogin(attempt);
       if (mounted && isActive()) {
         setState(() => _autoLoginBusy = false);
@@ -759,9 +844,16 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(children: [
                 Expanded(
-                    child: Text(_autoLoginBusy
-                        ? 'Đang đăng nhập tự động…'
-                        : 'Đang đăng ký tự động…')),
+                    child: Text((_autoLoginBusy &&
+                                _loginOtpRequest != null &&
+                                _activeLoginOtp.isEmpty) ||
+                            (_autoSignupBusy &&
+                                _signupOtpRequest != null &&
+                                _activeSignupOtp.isEmpty)
+                        ? 'Đang chờ API lấy OTP… (tối đa ${widget.configuration.otpApi?.waitSeconds ?? 180} giây)'
+                        : _autoLoginBusy
+                            ? 'Đang đăng nhập tự động…'
+                            : 'Đang đăng ký tự động…')),
                 TextButton.icon(
                     onPressed: _cancelAutoActions,
                     icon: const Icon(Icons.stop),

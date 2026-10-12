@@ -8,6 +8,7 @@ String buildAutoLoginScript({
   String otp = '',
   int? otpRequestedAt,
   bool allowOtpSubmit = true,
+  bool waitForOtpApi = false,
 }) =>
     '''
 (() => {
@@ -20,6 +21,7 @@ String buildAutoLoginScript({
           'otp': otp.trim(),
           'otpRequestedAt': otpRequestedAt,
           'allowOtpSubmit': allowOtpSubmit,
+          'waitForOtpApi': waitForOtpApi,
         })}, $allowSubmit
   );
 })();
@@ -132,12 +134,12 @@ const String autoLoginStepScript = r'''
   if (state.otpRequestedAt == null && config.otpRequestedAt != null) {
     state.otpRequestedAt = config.otpRequestedAt;
   }
-  if (verification && !otp && (!sendCodeControl || !allowSubmit)) return 'verification-required';
+  if (verification && !otp && !config.waitForOtpApi && (!sendCodeControl || !allowSubmit)) return 'verification-required';
   if (verification && state.otpRequestedAt == null && (!sendCodeControl || !allowSubmit)) {
     state.otpRequestedAt = Date.now();
   }
   if (state.otpRequestedAt != null) {
-    if (!otp) return 'verification-required';
+    if (!otp) return config.waitForOtpApi ? 'otp-required' : 'verification-required';
     if (state.otpSubmitted || config.allowOtpSubmit === false) return 'waiting-result';
     if (Date.now() - state.otpRequestedAt < 5000) return 'waiting-otp';
     if (!verification || verification.disabled || verification.readOnly) return 'waiting-otp';

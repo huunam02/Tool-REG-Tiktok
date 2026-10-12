@@ -9,6 +9,7 @@ String buildAutoSignupScript({
   String otp = '',
   int? otpRequestedAt,
   bool allowOtpSubmit = true,
+  bool waitForOtpApi = false,
 }) =>
     '''
 ($autoSignupStepScript)(${jsonEncode({
@@ -21,6 +22,7 @@ String buildAutoSignupScript({
           'otp': otp.trim(),
           'otpRequestedAt': otpRequestedAt,
           'allowOtpSubmit': allowOtpSubmit,
+          'waitForOtpApi': waitForOtpApi,
         })}, $allowSubmit);
 ''';
 
@@ -68,7 +70,7 @@ const String autoSignupStepScript = r'''
   })) return 'email-registered';
   const error = find('[data-e2e="signup-error"], [role="alert"]');
   if (error?.textContent.trim()) return 'signup-error';
-  if (!allowSubmit && (!verification || !otp || config.allowOtpSubmit === false)) return 'waiting-result';
+  if (!allowSubmit && (!verification || !otp && !config.waitForOtpApi || config.allowOtpSubmit === false)) return 'waiting-result';
 
   let state = window.__flutterAutoSignup;
   if (!state || state.attempt !== config.attempt) {
@@ -101,7 +103,7 @@ const String autoSignupStepScript = r'''
     window.__flutterAutoSignup = state;
   }
   if (!state.active) return 'cancelled';
-  if (state.submitted && (!verification || !otp || state.otpSubmitted)) return 'submitted';
+  if (state.submitted && (!verification || !otp && !config.waitForOtpApi || state.otpSubmitted)) return 'submitted';
   if (state.pending) {
     return Date.now() - state.pending.at < 10000 ? 'waiting-paste' : 'paste-failed';
   }
@@ -247,11 +249,11 @@ const String autoSignupStepScript = r'''
     .find(el => visible(el) && sendCodePattern.test(el.textContent.trim()));
   const sendCode = sendCodeControl && enabled(sendCodeControl) ? sendCodeControl : null;
   if (verification && state.otpRequestedAt == null && !sendCodeControl) {
-    if (!otp) return 'verification-required';
+    if (!otp && !config.waitForOtpApi) return 'verification-required';
     state.otpRequestedAt = Date.now();
   }
   if (state.otpRequestedAt != null) {
-    if (!otp) return 'waiting-result';
+    if (!otp) return config.waitForOtpApi ? 'otp-required' : 'waiting-result';
     if (config.allowOtpSubmit === false) return 'waiting-result';
     if (Date.now() - state.otpRequestedAt < 5000 || !verification) return 'waiting-otp';
     const result = paste(verification, 'otp', otp);

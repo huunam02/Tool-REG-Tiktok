@@ -12,6 +12,7 @@ import 'package:test_tiktok/tiktok_page.dart';
 import 'package:test_tiktok/app_configuration.dart';
 import 'package:test_tiktok/config.dart' as config;
 import 'package:test_tiktok/auto_login_script.dart';
+import 'package:test_tiktok/auto_cookie_script.dart';
 import 'package:test_tiktok/auto_signup_script.dart';
 import 'package:test_tiktok/otp_api.dart';
 
@@ -440,6 +441,10 @@ void main() {
             TikTokLaunchAction.signup => tiktokSignupUrl,
           });
       final controller = _TestController(WebUri(page.initialUrl));
+      final cookieScript = params.initialUserScripts!
+          .singleWhere((script) => script.source == autoAcceptCookieScript);
+      expect(cookieScript.injectionTime, UserScriptInjectionTime.AT_DOCUMENT_END);
+      expect(cookieScript.forMainFrameOnly, isTrue);
       final wrapped = InAppWebViewController.fromPlatform(platform: controller);
       params.onWebViewCreated!.call(wrapped);
       expect(
@@ -450,6 +455,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 800));
       await tester.pump();
       expect(find.byType(DatePickerDialog), findsNothing);
+      expect(controller.sources, contains(autoAcceptCookieScript));
       expect(
           controller.sources
               .where((source) => source.contains(autoLoginStepScript))

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import 'auto_login_script.dart';
+import 'auto_cookie_script.dart';
 import 'auto_signup_script.dart';
 import 'auto_watch_script.dart';
 import 'app_configuration.dart';
@@ -739,6 +740,11 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
     _initialPageLoaded =
         url?.scheme == 'https' && url?.host == 'www.tiktok.com';
     await _updateNavigationState();
+    try {
+      await _webViewController?.evaluateJavascript(source: autoAcceptCookieScript);
+    } catch (_) {
+      // A navigation can destroy the old document; the next document installs it again.
+    }
     await _injectAutoCloseCountryModal();
     await _runInitialAction();
     await _startAutoWatch();
@@ -869,6 +875,11 @@ class _TikTokPageState extends State<TikTokPage> with WidgetsBindingObserver {
               UserScript(
                 source: inlineVideoScript,
                 injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+              ),
+              UserScript(
+                source: autoAcceptCookieScript,
+                injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+                forMainFrameOnly: true,
               ),
             ]),
             initialSettings: InAppWebViewSettings(

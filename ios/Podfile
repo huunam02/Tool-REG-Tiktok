@@ -40,5 +40,13 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    if target.name == 'flutter_inappwebview_ios'
+      target.build_configurations.each do |config|
+        # Xcode 26 redirects Swift WebKit symbols to a missing dylib when
+        # targeting older simulators. iOS 18.4+ provides them in WebKit itself.
+        # Keep the existing deployment target for physical devices.
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET[sdk=iphonesimulator*]'] = '18.4'
+      end
+    end
   end
 end

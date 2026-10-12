@@ -40,6 +40,14 @@ Flutter 3.27.x has an iOS platform-view hot-restart bug that can throw
 After changing SDKs, stop the running app and reload the VS Code window before
 launching again. For terminal commands on this machine, use
 `/Users/huunam/development/flutter_new/flutter/bin/flutter`.
+
+With Xcode 26, use an iOS 18.4 or newer simulator. The simulator deployment
+target is set to 18.4 for Runner and the WebView pod so WebKit's Swift symbols
+link to the system framework. Otherwise, iOS 18.5 can terminate the app at
+launch with `Library not loaded: /usr/lib/swift/libswiftWebKit.dylib`.
+Physical-device deployment targets are unchanged. After editing the Podfile,
+stop the app and run a full build; hot reload does not rebuild native pods.
+
 A few resources to get you started if this is your first Flutter project:
 
 - [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)

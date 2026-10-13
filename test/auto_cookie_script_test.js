@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs');
 const { test } = require('node:test');
 const { runInNewContext } = require('node:vm');
 
-const source = readFileSync(new URL('../lib/auto_cookie_script.dart', `file://${__filename}`), 'utf8');
+const source = readFileSync(new URL('../lib/core/scripts/auto_cookie_script.dart', `file://${__filename}`), 'utf8');
 const script = source.match(/autoAcceptCookieScript = r'''([\s\S]*?)''';/)[1];
 
 function setup(hostname = 'www.tiktok.com') {

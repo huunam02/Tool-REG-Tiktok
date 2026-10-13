@@ -33,10 +33,9 @@ import Network
           }
           return
         }
-        // Use the Objective-C API: the Swift WebKit overlay can be missing
-        // on iOS 17/18 runtimes when this app is built with the iOS 26 SDK.
+        let dataStore = WKWebsiteDataStore.default()
         guard let host = host, !host.isEmpty else {
-          WKWebsiteDataStore.default().__proxyConfigurations = []
+          dataStore.proxyConfigurations = []
           result(nil)
           return
         }
@@ -57,7 +56,7 @@ import Network
           proxy.applyCredential(username: username,
             password: arguments?["password"] as? String ?? "")
         }
-        WKWebsiteDataStore.default().__proxyConfigurations = [proxy._nw]
+        dataStore.proxyConfigurations = [proxy]
         result(nil)
       }
       commentInputChannel = FlutterMethodChannel(

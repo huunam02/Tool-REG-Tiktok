@@ -6,15 +6,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:test_tiktok/desktop_user_agents.dart';
-import 'package:test_tiktok/home_page.dart';
-import 'package:test_tiktok/tiktok_page.dart';
-import 'package:test_tiktok/app_configuration.dart';
-import 'package:test_tiktok/config.dart' as config;
-import 'package:test_tiktok/auto_login_script.dart';
-import 'package:test_tiktok/auto_cookie_script.dart';
-import 'package:test_tiktok/auto_signup_script.dart';
-import 'package:test_tiktok/otp_api.dart';
+import 'package:test_tiktok/core/desktop_user_agents.dart';
+import 'package:test_tiktok/screen/home_page.dart';
+import 'package:test_tiktok/screen/tiktok_page.dart';
+import 'package:test_tiktok/core/app_configuration.dart';
+import 'package:test_tiktok/core/config.dart' as config;
+import 'package:test_tiktok/core/scripts/auto_login_script.dart';
+import 'package:test_tiktok/core/scripts/auto_cookie_script.dart';
+import 'package:test_tiktok/core/scripts/auto_signup_script.dart';
+import 'package:test_tiktok/core/otp_api.dart';
+
+import 'support/memory_proxy_store.dart';
 
 class _TestWebViewPlatform extends InAppWebViewPlatform {
   @override
@@ -63,13 +65,15 @@ void main() {
     });
     await tester.binding.setSurfaceSize(const Size(800, 2800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final proxyStore = MemoryProxyStore()
+      ..current = WebViewProxy.parse('127.0.0.1:8888')
+      ..currentUserAgent = desktopUserAgents.first;
     await tester.pumpWidget(MaterialApp(
-      home: HomePage(userAgent: desktopUserAgents.first),
+      home:
+          HomePage(userAgent: desktopUserAgents.first, proxyStore: proxyStore),
     ));
     expect(find.byType(InAppWebView), findsNothing);
-    expect(find.text('Cấu hình TikTok'), findsOneWidget);
-    expect(find.text(desktopUserAgents.first), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('proxyUrl')), '127.0.0.1:8888');
+    expect(find.text('Tool TikTok'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('comments')),
         ' First comment \n\n Second comment ');
     await _selectHomeTab(tester, 'signupTab');
@@ -185,8 +189,10 @@ void main() {
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
           const MethodChannel('test_tiktok/webview_proxy'), null);
     });
-    await tester.pumpWidget(
-        MaterialApp(home: HomePage(userAgent: desktopUserAgents.first)));
+    await tester.pumpWidget(MaterialApp(
+        home: HomePage(
+            userAgent: desktopUserAgents.first,
+            proxyStore: MemoryProxyStore())));
     await tester.tap(find.byKey(const Key('openTikTok')));
     await tester.pump();
     expect(find.byType(TikTokPage), findsNothing);
@@ -222,8 +228,10 @@ void main() {
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
           const MethodChannel('test_tiktok/webview_proxy'), null);
     });
-    await tester.pumpWidget(
-        MaterialApp(home: HomePage(userAgent: desktopUserAgents.first)));
+    await tester.pumpWidget(MaterialApp(
+        home: HomePage(
+            userAgent: desktopUserAgents.first,
+            proxyStore: MemoryProxyStore())));
     // Controller updates model fields below the viewport; validation must still see them.
     for (final key in [
       'signupEmail',
@@ -257,38 +265,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Home rejects an invalid proxy without opening a WebView',
-      (tester) async {
-    await tester.pumpWidget(
-        MaterialApp(home: HomePage(userAgent: desktopUserAgents.first)));
-    await tester.enterText(
-        find.byKey(const Key('proxyUrl')), 'http://localhost:99999');
-    await tester.tap(find.byKey(const Key('openTikTok')));
-    await tester.pumpAndSettle();
-    expect(find.text('Nhập proxy HTTP/HTTPS dạng host:port.'), findsOneWidget);
-    expect(find.byType(TikTokPage), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
-  for (final tab in ['signupTab', 'loginTab']) {
-    testWidgets('Home shows invalid shared settings when opening from $tab',
-        (tester) async {
-      await tester.pumpWidget(
-          MaterialApp(home: HomePage(userAgent: desktopUserAgents.first)));
-      await tester.enterText(
-          find.byKey(const Key('proxyUrl')), 'http://localhost:99999');
-      await _selectHomeTab(tester, tab);
-      await tester.tap(find
-          .byKey(Key(tab == 'signupTab' ? 'runAutoSignup' : 'runAutoLogin')));
-      await tester.pumpAndSettle();
-      expect(
-          find.text('Nhập proxy HTTP/HTTPS dạng host:port.'), findsOneWidget);
-      expect(find.byKey(const Key('openTikTok')), findsOneWidget);
-      expect(find.byType(TikTokPage), findsNothing);
-      expect(tester.takeException(), isNull);
-    });
-  }
-
   testWidgets('Home tabs fit a narrow screen with enlarged text',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 700));
@@ -299,7 +275,8 @@ void main() {
             .copyWith(textScaler: const TextScaler.linear(1.5)),
         child: child!,
       ),
-      home: HomePage(userAgent: desktopUserAgents.first),
+      home: HomePage(
+          userAgent: desktopUserAgents.first, proxyStore: MemoryProxyStore()),
     ));
     for (final tab in ['signupTab', 'loginTab', 'generalTab']) {
       await _selectHomeTab(tester, tab);
@@ -308,7 +285,7 @@ void main() {
   });
 
   testWidgets(
-      'Home uses file API settings and keeps separate mailbox passwords',
+      'Home uses default API settings and keeps separate mailbox passwords',
       (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     final previousPlatform = InAppWebViewPlatform.instance;
@@ -327,12 +304,14 @@ void main() {
           const MethodChannel('test_tiktok/webview_proxy'), null);
       return tester.binding.setSurfaceSize(null);
     });
-    await tester.pumpWidget(
-        MaterialApp(home: HomePage(userAgent: desktopUserAgents.first)));
-    expect(find.text('API lấy OTP'), findsNothing);
+    await tester.pumpWidget(MaterialApp(
+        home: HomePage(
+            userAgent: desktopUserAgents.first,
+            proxyStore: MemoryProxyStore())));
+    expect(find.byKey(const Key('signupMailboxPassword')), findsNothing);
+    expect(find.byKey(const Key('loginMailboxPassword')), findsNothing);
     for (final prefix in ['signup', 'login']) {
       await _selectHomeTab(tester, '${prefix}Tab');
-      expect(find.text('API lấy OTP'), findsOneWidget);
       expect(find.byType(SwitchListTile), findsNothing);
       expect(find.byKey(Key('${prefix}OtpApiUrl')), findsNothing);
       expect(find.byKey(Key('${prefix}OtpApiToken')), findsNothing);
@@ -373,7 +352,8 @@ void main() {
       await tester.pumpAndSettle();
     }
     await _selectHomeTab(tester, 'generalTab');
-    expect(find.text('API lấy OTP'), findsNothing);
+    expect(find.byKey(const Key('signupMailboxPassword')), findsNothing);
+    expect(find.byKey(const Key('loginMailboxPassword')), findsNothing);
     await tester.tap(find.byKey(const Key('openTikTok')));
     await tester.pumpAndSettle();
     expect(
@@ -388,8 +368,10 @@ void main() {
         (tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 1800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-          MaterialApp(home: HomePage(userAgent: desktopUserAgents.first)));
+      await tester.pumpWidget(MaterialApp(
+          home: HomePage(
+              userAgent: desktopUserAgents.first,
+              proxyStore: MemoryProxyStore())));
       await _selectHomeTab(tester, '${prefix}Tab');
       await tester.enterText(
           find.byKey(Key(prefix == 'signup' ? 'signupEmail' : 'loginUsername')),
@@ -400,9 +382,11 @@ void main() {
           .byKey(Key(prefix == 'signup' ? 'runAutoSignup' : 'runAutoLogin')));
       await tester.pumpAndSettle();
       expect(
-          find.text(
-              'Nhập mật khẩu hộp thư của email ${prefix == 'signup' ? 'đăng ký' : 'đăng nhập'}.'),
-          findsOneWidget);
+          tester
+              .state<FormFieldState<String>>(
+                  find.byKey(Key('${prefix}MailboxPassword')))
+              .errorText,
+          isNotEmpty);
       expect(find.byType(TikTokPage), findsNothing);
       expect(tester.takeException(), isNull);
     });
@@ -443,7 +427,8 @@ void main() {
       final controller = _TestController(WebUri(page.initialUrl));
       final cookieScript = params.initialUserScripts!
           .singleWhere((script) => script.source == autoAcceptCookieScript);
-      expect(cookieScript.injectionTime, UserScriptInjectionTime.AT_DOCUMENT_END);
+      expect(
+          cookieScript.injectionTime, UserScriptInjectionTime.AT_DOCUMENT_END);
       expect(cookieScript.forMainFrameOnly, isTrue);
       final wrapped = InAppWebViewController.fromPlatform(platform: controller);
       params.onWebViewCreated!.call(wrapped);

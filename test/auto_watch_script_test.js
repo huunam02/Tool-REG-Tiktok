@@ -5,7 +5,7 @@ const { test } = require('node:test');
 const { runInNewContext } = require('node:vm');
 
 const source = readFileSync(
-  new URL('../lib/auto_watch_script.dart', `file://${__filename}`), 'utf8',
+  new URL('../lib/core/scripts/auto_watch_script.dart', `file://${__filename}`), 'utf8',
 );
 const start = source.match(/autoWatchStartScript = r'''([\s\S]*?)''';/)[1];
 const stop = source.match(/autoWatchStopScript = r'''([\s\S]*?)''';/)[1];

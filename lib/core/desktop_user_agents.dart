@@ -20,6 +20,22 @@ final List<String> desktopUserAgents = List<String>.unmodifiable([
 ]);
 
 const _usedUserAgentsKey = 'desktop_user_agents_used';
+const _directUserAgentKey = 'desktop_user_agent_direct';
+
+/// Reuse the same browser identity while keeping the direct connection session.
+Future<String> loadDirectDesktopUserAgent() async {
+  final preferences = await SharedPreferences.getInstance();
+  final stored = preferences.getString(_directUserAgentKey);
+  if (stored != null && stored.isNotEmpty) return stored;
+  final used = preferences.getStringList(_usedUserAgentsKey) ?? [];
+  final selected = used.isNotEmpty && desktopUserAgents.contains(used.last)
+      ? used.last
+      : await selectNextDesktopUserAgent();
+  if (!await preferences.setString(_directUserAgentKey, selected)) {
+    throw StateError('Cannot persist direct User-Agent');
+  }
+  return selected;
+}
 
 /// Lưu lịch sử ngoài WebView để xóa cookie không làm mất các UA đã dùng.
 /// Mỗi vòng dùng hết 126 chuỗi trước khi lặp, kể cả sau khi đóng/mở app.

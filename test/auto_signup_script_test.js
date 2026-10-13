@@ -5,7 +5,7 @@ const { test } = require('node:test');
 const { runInNewContext } = require('node:vm');
 
 const source = readFileSync(
-  new URL('../lib/auto_signup_script.dart', `file://${__filename}`), 'utf8',
+  new URL('../lib/core/scripts/auto_signup_script.dart', `file://${__filename}`), 'utf8',
 );
 const step = source.match(/autoSignupStepScript = r'''([\s\S]*?)''';/)[1];
 const flush = () => new Promise(setImmediate);

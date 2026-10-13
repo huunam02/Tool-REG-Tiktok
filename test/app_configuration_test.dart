@@ -1,7 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:test_tiktok/app_configuration.dart';
+import 'package:test_tiktok/core/app_configuration.dart';
 
 void main() {
   test('random signup birthdays are valid dates from 1960 through 2004', () {

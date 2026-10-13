@@ -1,15 +1,59 @@
+## Quản lý state
 
+App dùng GetX 4.7.3 (`GetMaterialApp`, `GetxController`, `GetBuilder`).
+Logic khởi động, màn chính, quản lý/tạo/sửa proxy và WebView TikTok nằm trong
+`lib/controller/`; giao diện nằm trong `lib/screen/`. Dữ liệu, SQLite, cấu hình
+native và các script WebView nằm trong `lib/core/`. Mỗi màn có controller riêng,
+được khởi tạo và đóng bởi `ControllerScope`. `onClose` giải phóng các ô nhập,
+`TabController`, observer và hủy tác vụ OTP/WebView đang chờ. View không dùng
+`setState` và chỉ gọi action hoặc đọc state từ controller.
+
+## Proxy
+
+Trong **Thiết lập chung**, phần **Proxy** chỉ hiển thị proxy đang sử dụng và
+nút **Quản lý proxy**. Thêm, sửa, xóa và chọn proxy trong màn quản lý; bấm một
+dòng rồi nhấn **Sử dụng proxy này** để dùng cho lần mở TikTok tiếp theo. **Không dùng
+proxy** chuyển sang kết nối trực tiếp nhưng giữ danh sách và phiên trình duyệt.
+App giữ nguyên cookie, dữ liệu phiên, cache và User-Agent khi khởi động lại
+hoặc chọn lại đúng cấu hình proxy đang dùng. Chỉ khi nhấn **Sử dụng proxy này** với
+proxy hoặc User-Agent khác, app mới xóa cookie, dữ liệu phiên và cache WebView
+trước khi lưu cấu hình mới. Nếu xóa phiên thất bại, proxy hiện tại không đổi
+và có thể thử lại.
+
+Form **Thêm proxy** tự random User-Agent mặc định. Nút **Tạo User-Agent ngẫu
+nhiên** cho phép random lại trong form thêm hoặc sửa; có thể nhập User-Agent
+riêng. App lưu đúng User-Agent đang hiển thị cùng proxy bằng SQLite. Chọn lại
+proxy hoặc mở lại app sẽ khôi phục đúng User-Agent đó.
+Kết nối trực tiếp cũng giữ User-Agent qua các lần mở app. Sửa tên hoặc cấu
+hình một mục giữ User-Agent của mục đó nếu không đổi ô User-Agent.
+Xóa một mục khỏi danh sách vẫn giữ cấu hình và User-Agent đang sử dụng.
+
+Mỗi proxy có trạng thái **Chưa sử dụng** hoặc **Đã sử dụng**, lưu bằng SQLite.
+Proxy mới mặc định chưa sử dụng; app đánh dấu đã sử dụng sau khi áp dụng thành
+công. Nhãn **Đang dùng** cho biết kết nối hiện tại, riêng với trạng thái lịch
+sử. Có thể tìm theo tên/địa chỉ/tài khoản và lọc theo trạng thái. Khi nâng cấp
+dữ liệu cũ, app đánh dấu proxy đang dùng là đã sử dụng.
+
+Màn chính hiển thị đầy đủ tên, địa chỉ, tài khoản, mật khẩu có nút hiện/ẩn và
+User-Agent; các giá trị có nút sao chép. Màn quản lý hiển thị chi tiết ngay khi
+chọn một proxy. Tạo proxy và sửa proxy có hai màn riêng. Các nhóm trong form
+gồm thông tin kết nối (tài khoản và mật khẩu không bắt buộc) và User-Agent ở cuối. Nút tạo/lưu
+luôn ở cuối màn hình.
+
+Proxy HTTP/HTTPS cần có cổng, ví dụ `http://127.0.0.1:8080`; nhập thông tin xác
+thực ở các ô riêng trong màn quản lý. Dữ liệu nằm trong `proxies.db`, với hai
+bảng `proxies` và `current_proxy`. App tự nâng cấp dữ liệu cũ, thêm User-Agent
+và đưa proxy đang cache chưa có trong danh sách vào danh sách quản lý.
 
 ## OTP API
-
-Trong tab **Thiết lập chung**, nút **Xóa phiên và đổi User-Agent** xóa cookie,
-dữ liệu WebView và cache, rồi chọn User-Agent mới cho lần mở TikTok tiếp theo.
 
 Khi chạy đăng ký, app tự tạo ngày sinh ngẫu nhiên trong khoảng 1960–2004,
 bao gồm ngày hợp lệ theo số ngày của từng tháng và năm nhuận.
 
-App luôn lấy OTP qua API cho **Đăng nhập** và **Đăng ký**. Cấu hình URL và token
-trong `lib/config.dart` qua `otpApiUrl` và `otpApiToken`, dùng chung cho hai luồng.
+App luôn lấy OTP qua API cho **Đăng nhập** và **Đăng ký**. Mở biểu tượng
+**Cài đặt** trên AppBar, chọn **Cấu hình OTP API** để sửa URL và token dùng chung
+cho hai luồng. App lưu cấu hình bằng `SharedPreferences`; các giá trị
+`otpApiUrl` và `otpApiToken` trong `lib/core/config.dart` là mặc định lần đầu.
 Trong từng tab, nhập mật khẩu hộp thư của email tương ứng.
 Mật khẩu hộp thư là trường riêng với mật khẩu TikTok. App tự lấy mã OTP từ API.
 
@@ -23,23 +67,21 @@ Trong bản debug, mở **Debug Console** và lọc `[OTP API]` để xem reques
 HTTP status, thời gian chờ và response data (bao gồm trường `code`). Token và
 mật khẩu hộp thư được che trong log. Bản release không in các log này.
 
-Token được nhập trong màn Cấu hình. Chạy hoặc build từ terminal:
+Sau khi kiểm tra URL và token trong màn Cài đặt, chạy hoặc build từ terminal:
 
 ```sh
-/Users/huunam/development/flutter_new/flutter/bin/flutter run
-/Users/huunam/development/flutter_new/flutter/bin/flutter build apk --debug
+flutter run
+flutter build apk --debug
 ```
 
 ## Getting Started
 
-Using Flutter 3.41.8. VS Code uses the SDK configured in
-`.vscode/settings.json`.
+Nên dùng Flutter 3.41.8 hoặc mới hơn cho dự án này.
 
 Flutter 3.27.x has an iOS platform-view hot-restart bug that can throw
 `PlatformException(recreating_view)` ([Flutter fix](https://github.com/flutter/flutter/pull/164456)).
 After changing SDKs, stop the running app and reload the VS Code window before
-launching again. For terminal commands on this machine, use
-`/Users/huunam/development/flutter_new/flutter/bin/flutter`.
+launching again.
 
 With Xcode 26, use an iOS 18.4 or newer simulator. The simulator deployment
 target is set to 18.4 for Runner and the WebView pod so WebKit's Swift symbols

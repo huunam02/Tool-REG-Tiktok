@@ -3,9 +3,15 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 84 User-Agent desktop: Chrome và Edge phiên bản 120–140,
-/// trên Windows và macOS.
-final List<String> desktopUserAgents = List<String>.unmodifiable([
+/// Android: Chrome desktop 120–140 theo mẫu Linux x86_64.
+final List<String> androidDesktopUserAgents = List<String>.unmodifiable([
+  for (var version = 120; version <= 140; version++)
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) '
+        'Chrome/$version.0.0.0 Safari/537.36',
+]);
+
+/// Các nền tảng khác: 84 User-Agent Chrome/Edge desktop 120–140.
+final List<String> _otherDesktopUserAgents = List<String>.unmodifiable([
   for (final platform in const [
     'Windows NT 10.0; Win64; x64',
     'Macintosh; Intel Mac OS X 10_15_7',
@@ -17,6 +23,11 @@ final List<String> desktopUserAgents = List<String>.unmodifiable([
           'Chrome/$version.0.0.0 Safari/537.36 Edg/$version.0.0.0',
     ],
 ]);
+
+List<String> get desktopUserAgents =>
+    defaultTargetPlatform == TargetPlatform.android
+        ? androidDesktopUserAgents
+        : _otherDesktopUserAgents;
 
 const _usedUserAgentsKey = 'desktop_user_agents_used';
 const _directUserAgentKey = 'desktop_user_agent_direct';
@@ -37,7 +48,7 @@ Future<String> loadDirectDesktopUserAgent() async {
 }
 
 /// Lưu lịch sử ngoài WebView để xóa cookie không làm mất các UA đã dùng.
-/// Mỗi vòng dùng hết 84 chuỗi trước khi lặp, kể cả sau khi đóng/mở app.
+/// Mỗi vòng dùng hết bộ UA của nền tảng trước khi lặp, kể cả sau khi đóng/mở app.
 Future<String> selectNextDesktopUserAgent() async {
   final preferences = await SharedPreferences.getInstance();
   var used = (preferences.getStringList(_usedUserAgentsKey) ?? [])

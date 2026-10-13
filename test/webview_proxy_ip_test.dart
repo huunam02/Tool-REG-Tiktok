@@ -33,13 +33,15 @@ void main() {
       final result = check(WebViewProxyIpChecker());
       final view = platform.probes.single;
       expect(view.params.initialUrlRequest!.url!.host, 'api.ipify.org');
-      expect(view.params.initialUrlRequest!.headers?['Accept-Language'],
-          'en-US,en;q=0.9');
+      expect(
+          view.params.initialUrlRequest!.headers?['Accept-Language'], isNull);
       expect(
           view.params.initialUrlRequest!.headers?['Cache-Control'], 'no-cache');
       expect(view.params.initialSettings!.incognito, isFalse);
       expect(view.params.initialSettings!.cacheEnabled, isTrue);
       expect(view.params.initialSettings!.userAgent, 'test-agent');
+      expect(view.params.initialSettings!.preferredContentMode,
+          UserPreferredContentMode.DESKTOP);
       view.loaded('{"ip":"203.0.113.7"}');
       expect(await result, '203.0.113.7');
       expect(view.controller.scripts, ['document.body.innerText']);

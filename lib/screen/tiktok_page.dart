@@ -11,7 +11,6 @@ import '../core/app_action_theme.dart';
 import '../core/otp_api.dart';
 import '../core/tiktok_launch_action.dart';
 import '../core/webview_failure.dart';
-import '../core/webview_locale.dart';
 import 'widgets/controller_scope.dart';
 
 export '../core/tiktok_launch_action.dart';
@@ -41,6 +40,33 @@ class TikTokPage extends StatelessWidget {
 class _TikTokView extends StatelessWidget {
   const _TikTokView(this.logic);
   final TikTokController logic;
+
+  Widget _accountFailureBanner(BuildContext context) => Container(
+        key: const Key('accountFailureBanner'),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        color: const Color(0xFF342027),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(logic.accountFailure!.title,
+                style: const TextStyle(
+                    color: Color(0xFFFFADB7), fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(logic.accountFailure!.message,
+                style: const TextStyle(color: Colors.white, fontSize: 12)),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              key: const Key('returnAccountConfiguration'),
+              onPressed: () {
+                logic.cancelAutoActions();
+                Navigator.of(context).maybePop();
+              },
+              child: const Text('Quay về cấu hình'),
+            ),
+          ],
+        ),
+      );
 
   Widget _proxyWarningBanner() => Container(
         key: const Key('proxyWarningBanner'),
@@ -145,7 +171,7 @@ class _TikTokView extends StatelessWidget {
                             ? 'Đang chờ API lấy OTP… (tối đa ${logic.configuration.otpApi?.waitSeconds ?? 180} giây)'
                             : logic.autoLoginBusy
                                 ? 'Đang đăng nhập tự động…'
-                                : 'Đang đăng ký tự động…')),
+                                : logic.signupStatus)),
                     OutlinedButton(
                         onPressed: logic.cancelAutoActions,
                         child: const Text('Dừng')),
@@ -153,6 +179,7 @@ class _TikTokView extends StatelessWidget {
                 ))
               : null,
           body: Column(children: [
+            if (logic.accountFailure != null) _accountFailureBanner(context),
             if (logic.proxyWarning != null && logic.pageFailure == null)
               _proxyWarningBanner(),
             Expanded(
@@ -161,10 +188,8 @@ class _TikTokView extends StatelessWidget {
                 InAppWebView(
                   initialUrlRequest: URLRequest(
                     url: WebUri(logic.initialUrl),
-                    headers: englishWebViewHeaders,
                   ),
                   initialUserScripts: UnmodifiableListView([
-                    englishWebViewLocaleUserScript(),
                     UserScript(
                       source: inlineVideoScript,
                       injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
@@ -177,6 +202,7 @@ class _TikTokView extends StatelessWidget {
                   ]),
                   initialSettings: InAppWebViewSettings(
                     userAgent: logic.configuration.userAgent,
+                    preferredContentMode: UserPreferredContentMode.DESKTOP,
                     javaScriptEnabled: true,
                     mediaPlaybackRequiresUserGesture: false,
                     allowsInlineMediaPlayback: true,
@@ -190,6 +216,7 @@ class _TikTokView extends StatelessWidget {
                   onLoadStop: logic.onLoadStop,
                   onReceivedError: logic.onReceivedError,
                   onReceivedHttpError: logic.onReceivedHttpError,
+                  onConsoleMessage: logic.onConsoleMessage,
                   shouldOverrideUrlLoading: logic.shouldOverrideUrlLoading,
                 ),
                 if (logic.pageFailure != null)

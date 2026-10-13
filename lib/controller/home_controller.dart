@@ -10,6 +10,7 @@ import '../core/otp_api.dart';
 import '../core/otp_settings_store.dart';
 import '../core/proxy_store.dart';
 import '../core/webview_proxy.dart';
+import '../core/webview_user_agent.dart';
 import '../core/tiktok_launch_action.dart';
 import 'app_controller.dart';
 
@@ -229,8 +230,10 @@ class HomeController extends AppController
     FocusManager.instance.primaryFocus?.unfocus();
     mutate(() => opening = true);
     try {
+      final browserUserAgent = await resolveWebViewUserAgent(userAgent);
+      if (!active) return;
       final configuration = AppConfiguration(
-        userAgent: userAgent,
+        userAgent: browserUserAgent,
         proxy: currentProxy?.proxy,
         comments: AppConfiguration.parseComments(comments.text),
         signupEmail: signupEmail.text.trim(),

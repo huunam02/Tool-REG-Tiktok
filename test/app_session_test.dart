@@ -22,6 +22,8 @@ class _SessionPlatform extends InAppWebViewPlatform {
   Completer<bool>? cookieGate;
   int webViewsCreated = 0;
   String? webViewUserAgent;
+  String? nativeUserAgent;
+  UserPreferredContentMode? contentMode;
 
   @override
   PlatformCookieManager createPlatformCookieManager(
@@ -45,6 +47,7 @@ class _SessionPlatform extends InAppWebViewPlatform {
   ) {
     webViewsCreated++;
     webViewUserAgent = params.initialSettings?.userAgent;
+    contentMode = params.initialSettings?.preferredContentMode;
     return _WebView(params);
   }
 }
@@ -84,6 +87,13 @@ class _Controller extends PlatformInAppWebViewController {
   _Controller(super.params) : super.implementation();
 
   @override
+  Future<String> getDefaultUserAgent() async {
+    final agent = _platform.nativeUserAgent;
+    if (agent == null) throw UnimplementedError();
+    return agent;
+  }
+
+  @override
   Future<void> clearAllCache({bool includeDiskFiles = true}) async {
     expect(includeDiskFiles, isTrue);
     _platform.calls.add('cache');
@@ -114,6 +124,8 @@ void main() {
     _platform.cookieGate = null;
     _platform.webViewsCreated = 0;
     _platform.webViewUserAgent = null;
+    _platform.nativeUserAgent = null;
+    _platform.contentMode = null;
   });
 
   tearDown(() {
@@ -123,14 +135,16 @@ void main() {
             const MethodChannel('test_tiktok/webview_proxy'), null);
   });
 
-  test('desktop User-Agent list contains only Windows and macOS', () {
+  test('iOS User-Agent list contains only Windows and macOS', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     expect(desktopUserAgents, hasLength(84));
     expect(desktopUserAgents.every((ua) => !ua.contains('Linux')), isTrue);
     expect(desktopUserAgents.any((ua) => ua.contains('Windows NT')), isTrue);
     expect(desktopUserAgents.any((ua) => ua.contains('Macintosh')), isTrue);
   });
 
-  test('replaces a previously stored Linux User-Agent', () async {
+  test('iOS replaces a previously stored Linux User-Agent', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     const linuxAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
         '(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
     SharedPreferences.setMockInitialValues({
@@ -148,21 +162,62 @@ void main() {
         selected);
   });
 
-  test(
-      'uses every desktop UA before repeating, including across cycle boundaries',
+  test('Android restores a saved Linux User-Agent across repeated loads',
       () async {
-    final firstCycle = <String>[];
-    final secondCycle = <String>[];
-    for (final cycle in [firstCycle, secondCycle]) {
-      for (var i = 0; i < desktopUserAgents.length; i++) {
-        cycle.add(await selectNextDesktopUserAgent());
-        // Force subsequent selections to read what was persisted.
-        await (await SharedPreferences.getInstance()).reload();
-      }
-      expect(cycle.toSet(), desktopUserAgents.toSet());
-    }
-    expect(secondCycle.first, isNot(firstCycle.last));
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    const agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    SharedPreferences.setMockInitialValues({
+      'desktop_user_agent_direct': agent,
+      'desktop_user_agents_used': [agent],
+    });
+    expect(await loadDirectDesktopUserAgent(), agent);
+    await (await SharedPreferences.getInstance()).reload();
+    expect(await loadDirectDesktopUserAgent(), agent);
+    expect(
+        (await SharedPreferences.getInstance())
+            .getStringList('desktop_user_agents_used'),
+        [agent]);
   });
+
+  test(
+      'Android replaces an old Windows direct UA with the Linux Chrome template',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    const windowsAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    SharedPreferences.setMockInitialValues({
+      'desktop_user_agent_direct': windowsAgent,
+      'desktop_user_agents_used': [windowsAgent],
+    });
+    final selected = await loadDirectDesktopUserAgent();
+    expect(
+        selected,
+        matches(r'^Mozilla/5\.0 \(X11; Linux x86_64\) AppleWebKit/537\.36 '
+            r'\(KHTML, like Gecko\) Chrome/(12\d|13\d|140)\.0\.0\.0 Safari/537\.36$'));
+    expect(
+        (await SharedPreferences.getInstance())
+            .getString('desktop_user_agent_direct'),
+        selected);
+  });
+
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    test('$platform uses every UA before repeating across cycle boundaries',
+        () async {
+      debugDefaultTargetPlatformOverride = platform;
+      final firstCycle = <String>[];
+      final secondCycle = <String>[];
+      for (final cycle in [firstCycle, secondCycle]) {
+        for (var i = 0; i < desktopUserAgents.length; i++) {
+          cycle.add(await selectNextDesktopUserAgent());
+          // Force subsequent selections to read what was persisted.
+          await (await SharedPreferences.getInstance()).reload();
+        }
+        expect(cycle.toSet(), desktopUserAgents.toSet());
+      }
+      expect(secondCycle.first, isNot(firstCycle.last));
+    });
+  }
 
   test(
       'direct User-Agent reuses the last known identity instead of selecting a new one',
@@ -201,6 +256,30 @@ void main() {
     expect(find.byType(SplashPage), findsNothing);
     expect(find.byType(HomePage), findsOneWidget);
     expect(_platform.calls, isEmpty);
+  });
+
+  testWidgets(
+      'iOS opens the selected desktop UA even when native Safari discovery is available',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    _platform.nativeUserAgent =
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) '
+        'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('test_tiktok/webview_proxy'), (call) async => null);
+    final store = MemoryProxyStore()
+      ..current = WebViewProxy.parse('proxy.example.com:8080')
+      ..currentUserAgent = desktopUserAgents[5];
+    final savedAgent = store.currentUserAgent;
+    await tester.pumpWidget(MyApp(proxyStore: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('openTikTok')));
+    await tester.pumpAndSettle();
+    expect(_platform.webViewUserAgent, savedAgent);
+    expect(_platform.contentMode, UserPreferredContentMode.DESKTOP);
+    expect(store.currentUserAgent, savedAgent);
+    expect(_platform.calls, isEmpty);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('startup and opening TikTok preserve cookies, storage and cache',
@@ -313,6 +392,9 @@ void main() {
       'only applying a new proxy clears the session and its User-Agent survives restart',
       (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    _platform.nativeUserAgent =
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) '
+        'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         const MethodChannel('test_tiktok/webview_proxy'), (call) async => null);
     final store = MemoryProxyStore();

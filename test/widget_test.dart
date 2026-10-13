@@ -422,17 +422,18 @@ void main() {
           params.initialUrlRequest!.url.toString(),
           switch (action) {
             TikTokLaunchAction.browse => tiktokHomeUrl,
-            TikTokLaunchAction.login => tiktokLoginUrl,
-            TikTokLaunchAction.signup => tiktokSignupUrl,
+            TikTokLaunchAction.login => tiktokHomeUrl,
+            TikTokLaunchAction.signup => tiktokHomeUrl,
           });
-      expect(params.initialUrlRequest!.url!.queryParameters['lang'], 'en');
-      expect(params.initialUrlRequest!.headers?['Accept-Language'],
-          'en-US,en;q=0.9');
-      final localeScript = params.initialUserScripts!
-          .singleWhere((script) => script.source == englishWebViewLocaleScript);
-      expect(localeScript.injectionTime,
-          UserScriptInjectionTime.AT_DOCUMENT_START);
-      expect(localeScript.forMainFrameOnly, isFalse);
+      expect(params.initialUrlRequest!.url!.queryParameters['lang'], isNull);
+      expect(params.initialUrlRequest!.headers?['Accept-Language'], isNull);
+      expect(params.initialSettings!.userAgent, configuration.userAgent);
+      expect(params.initialSettings!.preferredContentMode,
+          UserPreferredContentMode.DESKTOP);
+      expect(
+          params.initialUserScripts!
+              .where((script) => script.source == englishWebViewLocaleScript),
+          isEmpty);
       final controller = _TestController(WebUri(page.initialUrl));
       final cookieScript = params.initialUserScripts!
           .singleWhere((script) => script.source == autoAcceptCookieScript);
@@ -446,7 +447,7 @@ void main() {
       params.onLoadStop!.call(wrapped, controller.url);
       params.onLoadStop!.call(wrapped, controller.url);
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 2600));
       await tester.pump();
       expect(find.byType(DatePickerDialog), findsNothing);
       expect(controller.sources, contains(autoAcceptCookieScript));
@@ -463,7 +464,7 @@ void main() {
       // Another load, such as a reload/redirect, cannot replay account submission.
       params.onLoadStop!.call(wrapped, controller.url);
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 2600));
       await tester.pump();
       expect(
           controller.sources
@@ -485,6 +486,352 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  for (final action in [TikTokLaunchAction.signup, TikTokLaunchAction.login]) {
+    testWidgets(
+        '$action spaces normal steps by 2.5 seconds and keeps OTP steps at 300ms',
+        (tester) async {
+      final reader = _TestOtpReader();
+      final controller = await _mountApiPage(tester, action, reader, [
+        'waiting-form',
+        'waiting-paste',
+        'verification-requested',
+        'waiting-otp-paste',
+        'otp-submitted',
+        action == TikTokLaunchAction.signup
+            ? 'signup-success'
+            : 'login-success',
+      ]);
+      final script = action == TikTokLaunchAction.signup
+          ? autoSignupStepScript
+          : autoLoginStepScript;
+      int evaluations() =>
+          controller.sources.where((s) => s.contains(script)).length;
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 2499));
+        expect(evaluations(), i);
+        await tester.pump(const Duration(milliseconds: 1));
+        await tester.pump();
+        expect(evaluations(), i + 1);
+      }
+      expect(reader.requests, hasLength(1));
+      reader.response.complete('012345');
+      await tester.pump();
+      for (var i = 3; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 299));
+        expect(evaluations(), i);
+        await tester.pump(const Duration(milliseconds: 1));
+        await tester.pump();
+        expect(evaluations(), i + 1);
+      }
+      expect(controller.sources.lastWhere((s) => s.contains(script)),
+          contains('"otp":"012345"'));
+      expect(find.text('Dừng'), findsNothing);
+      expect(reader.requests, hasLength(1));
+    });
+  }
+
+  testWidgets(
+      'signup continues after OTP and remembers final password submission',
+      (tester) async {
+    final reader = _TestOtpReader();
+    final controller =
+        await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
+      'verification-requested',
+      'otp-submitted',
+      'waiting-password-screen',
+      'waiting-paste',
+      'waiting-password-submit',
+      'password-submitted',
+      'waiting-result',
+      'signup-success',
+    ]);
+    await tester.pump(const Duration(milliseconds: 2500));
+    await tester.pump();
+    reader.response.complete('012345');
+    await tester.pump();
+    for (var i = 0; i < 7; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      if (i == 1) {
+        expect(
+            find.text('Đang chờ màn nhập mật khẩu ổn định…'), findsOneWidget);
+      }
+      if (i == 3) {
+        expect(find.text('Đã nhập mật khẩu, chờ trước khi đăng ký…'),
+            findsOneWidget);
+      }
+    }
+    final sources = controller.sources
+        .where((source) => source.contains(autoSignupStepScript))
+        .toList();
+    expect(sources, hasLength(8));
+    expect(sources[2], contains('"allowOtpSubmit":false'));
+    expect(sources[2], contains('"allowPasswordSubmit":true'));
+    expect(sources[2], endsWith(', false);\n'));
+    expect(sources[6], contains('"allowPasswordSubmit":false'));
+    expect(sources[6], isNot(contains('"otpRequestedAt":null')));
+    expect(reader.requests, hasLength(1));
+    expect(find.text('Đăng ký TikTok thành công.'), findsOneWidget);
+    expect(find.text('Dừng'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'login selects Email then requests API OTP only after TikTok feedback',
+      (tester) async {
+    final reader = _TestOtpReader();
+    final controller =
+        await _mountApiPage(tester, TikTokLaunchAction.login, reader, [
+      'submitted',
+      'email-verification-selected',
+      'requesting-verification',
+      'verification-requested',
+      'waiting-otp-paste',
+      'otp-submitted',
+      'login-success',
+    ]);
+    await tester.pump(const Duration(milliseconds: 2500));
+    await tester.pump();
+    for (var i = 0; i < 2; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(reader.requests, isEmpty);
+    }
+    final waitingSource =
+        controller.sources.lastWhere((s) => s.contains(autoLoginStepScript));
+    expect(
+        waitingSource, isNot(contains('"emailVerificationRequestedAt":null')));
+    expect(waitingSource, contains('"otpRequestedAt":null'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(reader.requests, [('login@example.com', 'mail-secret')]);
+    reader.response.complete('012345');
+    await tester.pump();
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+    }
+    final source =
+        controller.sources.lastWhere((s) => s.contains(autoLoginStepScript));
+    expect(source, contains('"otp":"012345"'));
+    expect(source, contains('"allowOtpSubmit":false'));
+    expect(reader.requests, hasLength(1));
+    expect(reader.closed, isTrue);
+    expect(find.text('Đăng nhập TikTok thành công.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'login waits for the result after OTP Next before reporting success',
+      (tester) async {
+    final reader = _TestOtpReader();
+    final controller =
+        await _mountApiPage(tester, TikTokLaunchAction.login, reader, [
+      'otp-submitted',
+      'waiting-result',
+      'login-success',
+    ]);
+    await tester.pump(const Duration(milliseconds: 2500));
+    await tester.pump();
+    final params =
+        tester.widget<InAppWebView>(find.byType(InAppWebView)).platform.params;
+    final wrapped = InAppWebViewController.fromPlatform(platform: controller);
+    params.onLoadStart!.call(wrapped, controller.url);
+    params.onLoadStop!.call(wrapped, controller.url);
+    await tester.pump();
+    // Next can replace the document. Keep waiting for login confirmation,
+    // preserving the OTP submission guard across that navigation.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(find.text('Dừng'), findsOneWidget);
+    expect(find.text('Đăng nhập TikTok thành công.'), findsNothing);
+    expect(reader.requests, isEmpty);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    final sources = controller.sources
+        .where((source) => source.contains(autoLoginStepScript))
+        .toList();
+    expect(sources, hasLength(3));
+    expect(sources[1], contains('"allowOtpSubmit":false'));
+    expect(find.text('Đăng nhập TikTok thành công.'), findsOneWidget);
+    expect(find.text('Dừng'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'login stops without calling API when Email selection has no feedback',
+      (tester) async {
+    final reader = _TestOtpReader();
+    await _mountApiPage(tester, TikTokLaunchAction.login, reader, [
+      'submitted',
+      'email-verification-selected',
+      'verification-request-failed',
+    ]);
+    await tester.pump(const Duration(milliseconds: 2500));
+    await tester.pump();
+    for (var i = 0; i < 2; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+    }
+    expect(reader.requests, isEmpty);
+    expect(
+        find.textContaining('TikTok chưa xác nhận gửi mã sau khi chọn Email.'),
+        findsOneWidget);
+    expect(find.text('Dừng'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'shows backend account errors on a manual tap and preserves the rate limit',
+      (tester) async {
+    final reader = _TestOtpReader();
+    final controller = await _mountApiPage(tester, TikTokLaunchAction.signup,
+        reader, List.generate(10, (_) => 'requesting-verification'));
+    await tester.pump(const Duration(milliseconds: 2600));
+    final params =
+        tester.widget<InAppWebView>(find.byType(InAppWebView)).platform.params;
+    final wrapped = InAppWebViewController.fromPlatform(platform: controller);
+    params.onConsoleMessage!(wrapped,
+        ConsoleMessage(message: 'Login: account-api error: [7] unknown.'));
+    await tester.pump();
+    expect(find.byKey(const Key('accountFailureBanner')), findsOneWidget);
+    expect(find.textContaining('mã 7'), findsOneWidget);
+    expect(find.text('Dừng'), findsNothing);
+    expect(reader.requests, isEmpty);
+    params.onConsoleMessage!(
+        wrapped,
+        ConsoleMessage(
+            message:
+                'Error: Maximum number of attempts reached. Try again later. get region err'));
+    await tester.pump();
+    expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+    params.onConsoleMessage!(
+        wrapped, ConsoleMessage(message: 'Login: email bind failed: 7 ().'));
+    await tester.pump();
+    expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    expect(reader.requests, isEmpty);
+    expect(find.textContaining('Chưa hoàn tất đăng ký'), findsNothing);
+  });
+
+  testWidgets(
+      'backend account failure cancels pending OTP and ignores its late result',
+      (tester) async {
+    final reader = _TestOtpReader();
+    final controller = await _mountApiPage(tester, TikTokLaunchAction.signup,
+        reader, List.generate(10, (_) => 'otp-required'));
+    await tester.pump(const Duration(milliseconds: 2600));
+    expect(reader.requests, hasLength(1));
+    final params =
+        tester.widget<InAppWebView>(find.byType(InAppWebView)).platform.params;
+    params.onConsoleMessage!(
+        InAppWebViewController.fromPlatform(platform: controller),
+        ConsoleMessage(
+            message:
+                'Error: Maximum number of attempts reached. Try again later. get region err'));
+    await tester.pump();
+    expect(reader.closed, isTrue);
+    final calls = controller.sources
+        .where((s) => s.contains(autoSignupStepScript))
+        .length;
+    reader.response.complete('012345');
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(controller.sources.where((s) => s.contains(autoSignupStepScript)),
+        hasLength(calls));
+    expect(find.text('Dừng'), findsNothing);
+    expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+  });
+
+  for (final action in [TikTokLaunchAction.signup, TikTokLaunchAction.login]) {
+    testWidgets('inline rate limit stops $action and cancels pending OTP',
+        (tester) async {
+      final reader = _TestOtpReader();
+      final controller = await _mountApiPage(tester, action, reader,
+          ['otp-required', 'account-rate-limited', 'submitted']);
+      await tester.pump(const Duration(milliseconds: 2600));
+      await tester.pump();
+      expect(reader.requests, hasLength(1));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(reader.closed, isTrue);
+      expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+      expect(
+          find.byKey(const Key('returnAccountConfiguration')), findsOneWidget);
+      expect(find.text('Dừng'), findsNothing);
+      reader.response.complete('012345');
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      final script = action == TikTokLaunchAction.signup
+          ? autoSignupStepScript
+          : autoLoginStepScript;
+      expect(controller.sources.where((s) => s.contains(script)), hasLength(2));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('account failure offers a return to the configuration route',
+      (tester) async {
+    await _mountApiPage(tester, TikTokLaunchAction.signup, _TestOtpReader(),
+        ['account-rate-limited'],
+        routed: true);
+    await tester.pump(const Duration(milliseconds: 2600));
+    await tester.pump();
+    expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('returnAccountConfiguration')));
+    await tester.pumpAndSettle();
+    expect(find.text('Thông tin cấu hình'), findsOneWidget);
+    expect(find.byType(InAppWebView), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('signup waits for Send code feedback before requesting API OTP',
+      (tester) async {
+    final reader = _TestOtpReader();
+    final controller =
+        await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
+      'requesting-verification',
+      'requesting-verification',
+      'verification-requested',
+      ...List.generate(10, (_) => 'otp-required'),
+    ]);
+    for (var i = 0; i < 2; i++) {
+      await tester.pump(Duration(milliseconds: i == 0 ? 2500 : 300));
+      await tester.pump();
+      expect(reader.requests, isEmpty);
+      expect(find.text('Đang chờ TikTok xác nhận gửi mã…'), findsOneWidget);
+      expect(find.textContaining('Đang chờ API lấy OTP'), findsNothing);
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(reader.requests, [('signup@example.com', 'mail-secret')]);
+    expect(find.textContaining('Đang chờ API lấy OTP'), findsOneWidget);
+    expect(
+        controller.sources
+            .where((source) => source.contains(autoSignupStepScript)),
+        hasLength(3));
+    await tester.tap(find.text('Dừng'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 2600));
+    expect(reader.closed, isTrue);
+  });
+
+  testWidgets(
+      'signup stops with a Send code error without starting the OTP API',
+      (tester) async {
+    final reader = _TestOtpReader();
+    await _mountApiPage(tester, TikTokLaunchAction.signup, reader,
+        ['requesting-verification', 'verification-request-failed']);
+    await tester.pump(const Duration(milliseconds: 2600));
+    await tester.pump();
+    expect(find.text('Đang chờ TikTok xác nhận gửi mã…'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 2600));
+    await tester.pump();
+    expect(reader.requests, isEmpty);
+    expect(find.textContaining('TikTok chưa xác nhận gửi mã'), findsOneWidget);
+    expect(find.text('Dừng'), findsNothing);
+  });
 
   for (final action in [TikTokLaunchAction.login, TikTokLaunchAction.signup]) {
     testWidgets('$action keeps polling after requesting OTP', (tester) async {
@@ -525,7 +872,7 @@ void main() {
       params.onLoadStop!.call(wrapped, controller.url);
       await tester.pump();
       for (var i = 0; i < 4; i++) {
-        await tester.pump(const Duration(milliseconds: 800));
+        await tester.pump(const Duration(milliseconds: 2600));
         await tester.pump();
       }
       final step = action == TikTokLaunchAction.login
@@ -578,9 +925,9 @@ void main() {
         'verification-requested',
         ...List.generate(400, (_) => 'otp-required'),
       ]);
-      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 2600));
       expect(reader.requests, isEmpty);
-      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 2600));
       expect(reader.requests, [
         (
           action == TikTokLaunchAction.login
@@ -597,14 +944,14 @@ void main() {
       controller.steps!
         ..clear()
         ..addAll([
-          'waiting-paste',
+          'waiting-otp-paste',
           'otp-submitted',
           action == TikTokLaunchAction.login
               ? 'login-success'
               : 'signup-success'
         ]);
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 300));
       final step = action == TikTokLaunchAction.login
           ? autoLoginStepScript
           : autoSignupStepScript;
@@ -619,7 +966,7 @@ void main() {
       expect(await handler([1, 'otp']), true);
       expect(clipboard, ['012345']);
       for (var i = 0; i < 2; i++) {
-        await tester.pump(const Duration(milliseconds: 800));
+        await tester.pump(const Duration(milliseconds: 300));
         await tester.pump();
       }
       expect(reader.requests, hasLength(1));
@@ -635,7 +982,7 @@ void main() {
       final reader = _TestOtpReader();
       final controller = await _mountApiPage(
           tester, action, reader, List.generate(10, (_) => 'otp-required'));
-      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 2600));
       expect(reader.requests, hasLength(1));
       await tester.tap(find.text('Dừng'));
       await tester.pump();
@@ -661,11 +1008,11 @@ void main() {
       final reader = _TestOtpReader();
       final controller = await _mountApiPage(
           tester, action, reader, ['verification-requested', 'otp-required']);
-      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 2600));
       reader.response
           .completeError(const OtpApiException('API chưa tìm thấy mã.'));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 2600));
       await tester.pump();
       expect(find.text('API chưa tìm thấy mã.'), findsOneWidget);
       expect(reader.closed, isTrue);
@@ -681,8 +1028,8 @@ void main() {
       final reader = _TestOtpReader();
       await _mountApiPage(tester, action, reader,
           ['verification-requested', 'verification-required']);
-      await tester.pump(const Duration(milliseconds: 800));
-      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 2600));
+      await tester.pump(const Duration(milliseconds: 2600));
       await tester.pump();
       expect(reader.closed, isTrue);
       expect(
@@ -756,13 +1103,17 @@ void main() {
         params.onWebViewCreated!.call(wrapped);
         params.onLoadStop!.call(wrapped, controller.url);
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 800));
+        await tester.pump(const Duration(milliseconds: 2600));
         await tester.pump();
         final paste = controller
             .handlers[signup ? 'FlutterSignupPaste' : 'FlutterLoginPaste']!;
         expect(await paste([99, 'email']), false);
         expect(await paste([1, 'unknown']), false);
+        controller.allowAccountPaste = false;
+        expect(await paste([1, 'email']), false);
         expect(clipboard, isEmpty);
+        expect(nativePastes, isEmpty);
+        controller.allowAccountPaste = true;
         for (final field in ['email', 'password', 'otp']) {
           expect(await paste([1, field]), true);
         }
@@ -778,7 +1129,7 @@ void main() {
               {'context': signup ? 'signup' : 'login', 'attempt': 1});
         }
         await tester.pumpWidget(const SizedBox());
-        await tester.pump(const Duration(milliseconds: 800));
+        await tester.pump(const Duration(milliseconds: 2600));
         expect(await paste([1, 'otp']), false);
         expect(nativePastes, hasLength(3));
         debugDefaultTargetPlatformOverride = null;
@@ -795,11 +1146,9 @@ Future<void> _selectHomeTab(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
-Future<_TestController> _mountApiPage(
-    WidgetTester tester,
-    TikTokLaunchAction action,
-    _TestOtpReader reader,
-    List<String> steps) async {
+Future<_TestController> _mountApiPage(WidgetTester tester,
+    TikTokLaunchAction action, _TestOtpReader reader, List<String> steps,
+    {bool routed = false}) async {
   final previousPlatform = InAppWebViewPlatform.instance;
   InAppWebViewPlatform.instance = _TestWebViewPlatform();
   addTearDown(() {
@@ -825,7 +1174,18 @@ Future<_TestController> _mountApiPage(
           readerToken: 'test-reader-token'),
     ),
   );
-  await tester.pumpWidget(MaterialApp(home: page));
+  if (routed) {
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: navigator,
+      home: const Scaffold(body: Text('Thông tin cấu hình')),
+    ));
+    unawaited(navigator.currentState!
+        .push(MaterialPageRoute<void>(builder: (_) => page)));
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pumpWidget(MaterialApp(home: page));
+  }
   final params =
       tester.widget<InAppWebView>(find.byType(InAppWebView)).platform.params;
   final controller = _TestController(WebUri(page.initialUrl), steps: steps);
@@ -860,6 +1220,7 @@ class _TestController extends PlatformInAppWebViewController {
   final List<String>? steps;
   final sources = <String>[];
   final handlers = <String, JavaScriptHandlerCallback>{};
+  bool allowAccountPaste = true;
 
   @override
   Future<WebUri?> getUrl() async => url;
@@ -875,6 +1236,7 @@ class _TestController extends PlatformInAppWebViewController {
   Future<dynamic> evaluateJavascript(
       {required String source, ContentWorld? contentWorld}) async {
     sources.add(source);
+    if (source.contains('?.canPasteFromClipboard(')) return allowAccountPaste;
     if ((source.contains(autoLoginStepScript) ||
             source.contains(autoSignupStepScript)) &&
         steps != null &&

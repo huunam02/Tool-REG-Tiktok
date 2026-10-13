@@ -4,8 +4,6 @@ import 'dart:io';
 
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-import 'webview_locale.dart';
-
 /// Navigate a separate WebView so TikTok's CSP/CORS cannot block the IP check.
 /// Both views use Android's global override or iOS's default data store proxy.
 class WebViewProxyIpChecker {
@@ -43,12 +41,12 @@ class WebViewProxyIpChecker {
             '_': DateTime.now().microsecondsSinceEpoch.toString(),
           }).toString()),
           headers: const {
-            ...englishWebViewHeaders,
             'Cache-Control': 'no-cache',
           },
         ),
         initialSettings: InAppWebViewSettings(
           userAgent: userAgent,
+          preferredContentMode: UserPreferredContentMode.DESKTOP,
           javaScriptEnabled: true,
           // Non-persistent stores on iOS would lose the configured proxy.
           incognito: false,

@@ -22,7 +22,7 @@ function setup({ autoPaste = true, pasteResult = true } = {}) {
   const document = {
     hidden: false, activeElement: null,
     querySelectorAll: (selector) => elements.filter(
-      (element) => selector.split(', ').includes(element.selector),
+      (element) => selector.split(', ').some(part => part === element.selector || element.selectors?.includes(part)),
     ),
   };
   class Input {
@@ -39,6 +39,7 @@ function setup({ autoPaste = true, pasteResult = true } = {}) {
     }
     getClientRects() { return this.hidden ? [] : [{}]; }
     focus() { document.activeElement = this; }
+    blur() { if (document.activeElement === this) document.activeElement = null; }
     select() {}
     dispatchEvent() { assert.fail('Input must be entered using native paste'); }
     closest() { return null; }
@@ -46,8 +47,8 @@ function setup({ autoPaste = true, pasteResult = true } = {}) {
   const email = new Input('input[name="username"]');
   const password = new Input('input[type="password"]');
   const submit = {
-    selector: 'button', textContent: 'Log in', disabled: false, clicks: 0,
-    getClientRects: () => [{}],
+    selector: 'button', textContent: 'Log in', disabled: false, hidden: false, clicks: 0,
+    getClientRects() { return this.hidden ? [] : [{}]; },
     getAttribute: (name) => name === 'data-e2e' ? 'login-button' : null,
     click() { this.clicks++; },
   };
@@ -74,9 +75,10 @@ function setup({ autoPaste = true, pasteResult = true } = {}) {
     advance: (ms) => { time += ms; },
     resolvePaste: async () => { pending.shift()(); await flush(); },
     add: (selector, textContent = '') => {
-      const element = { selector, textContent, disabled: false, clicks: 0,
-        getClientRects: () => [{}], getAttribute: () => null,
+      const element = { selector, textContent, disabled: false, hidden: false, clicks: 0,
+        getClientRects() { return this.hidden ? [] : [{}]; }, getAttribute: () => null,
         click() { this.clicks++; },
+        querySelectorAll() { return []; },
       };
       elements.push(element);
       return element;
@@ -90,6 +92,357 @@ async function fill(env) {
   assert.equal(env.run(), 'waiting-paste');
   await env.resolvePaste();
 }
+
+test('detects an inline rate limit before pasting and after submission', async () => {
+  const env = setup();
+  const error = env.add('div', 'Maximum number of attempts reached. Try again later.');
+  assert.equal(env.run(), 'account-rate-limited');
+  assert.equal(env.requests.length, 0);
+  error.hidden = true;
+  await fill(env);
+  assert.equal(env.run(), 'submitted');
+  error.hidden = false;
+  assert.equal(env.run(false), 'account-rate-limited');
+  assert.equal(env.submit.clicks, 1);
+  assert.equal(env.requests.length, 2);
+});
+
+test('ignores rate limit text when no account form is open', () => {
+  const env = setup();
+  env.location.pathname = '/';
+  env.add('span', 'Too many requests. Try again later.');
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(env.requests.length, 0);
+});
+
+function homeLogin(env, { navigate = false } = {}) {
+  env.location.pathname = '/';
+  const account = env.add('[data-e2e="nav-profile"]', 'Account');
+  const modal = env.add('[role="dialog"]');
+  const title = env.add('h2', 'Log in to TikTok');
+  const method = env.add('[data-e2e="channel-item"]', 'Use phone / email / username');
+  const phone = new env.Input('input[type="tel"]');
+  const tab = env.add('a', 'Username or Email');
+  const otp = new env.Input('input[name="code"]');
+  const send = env.add('button', 'Send code');
+  const members = new Set([title, method, phone, tab, otp, send, env.email, env.password, env.submit]);
+  modal.querySelectorAll = selector => env.document.querySelectorAll(selector).filter(el => members.has(el));
+  modal.hidden = true;
+  for (const el of members) el.hidden = true;
+  account.click = () => {
+    account.clicks++;
+    modal.hidden = title.hidden = method.hidden = false;
+  };
+  method.click = () => {
+    method.clicks++;
+    method.hidden = true;
+    phone.hidden = tab.hidden = otp.hidden = send.hidden = env.password.hidden = false;
+    if (navigate) env.location.pathname = '/login/phone-or-email';
+  };
+  tab.click = () => {
+    tab.clicks++;
+    phone.hidden = tab.hidden = true;
+    env.email.hidden = env.submit.hidden = false;
+    if (navigate) env.location.pathname = '/login/phone-or-email/email';
+  };
+  return { account, modal, title, method, phone, tab, otp, send };
+}
+
+function identityDialog(env) {
+  const modal = env.add('[aria-modal="true"]');
+  const title = env.add('h2', 'Verify it’s\nreally you');
+  const email = env.add('div', 'Email\nt***t@example.com');
+  const phone = env.add('button', 'Phone');
+  const code = new env.Input('input[autocomplete="one-time-code"]');
+  const verify = env.add('button', 'Next');
+  code.hidden = verify.hidden = true;
+  const members = new Set([title, email, phone, code, verify]);
+  modal.querySelectorAll = selector => env.document.querySelectorAll(selector).filter(el => members.has(el));
+  return {
+    modal, title, email, phone, code, verify,
+    showCode() {
+      email.hidden = phone.hidden = true;
+      title.textContent = 'Enter 6-digit code';
+      code.hidden = verify.hidden = false;
+    },
+  };
+}
+
+test('clicks the real IDV Email row instead of its non-clickable list wrapper', () => {
+  for (const allowSubmit of [true, false]) {
+    const env = setup();
+    env.location.pathname = '/';
+    const identity = identityDialog(env);
+    const root = env.add('#idv-modal-container');
+    const list = env.add('div', 'Email\nl***c@outlook.com');
+    list.className = 'pc-home-items-l9mnww';
+    const row = env.add('div', 'Email\nl***c@outlook.com');
+    row.selectors = ['[class*="pc-home-item-"]'];
+    row.className = 'pc-home-item-IxNc0F';
+    const content = env.add('div', 'Email\nl***c@outlook.com');
+    content.className = 'pc-home-item-content-W0UYH7';
+    identity.email.hidden = true;
+    const members = new Set([identity.title, list, row, content]);
+    root.querySelectorAll = identity.modal.querySelectorAll = selector =>
+      env.document.querySelectorAll(selector).filter(el => members.has(el));
+    // This also covers starting a new login action while already at IDV.
+    assert.equal(env.run(allowSubmit), 'email-verification-selected');
+    assert.equal(row.clicks, 1);
+    assert.equal(list.clicks, 0);
+    assert.equal(content.clicks, 0);
+    assert.equal(env.requests.length, 0);
+  }
+});
+
+test('selects Email in the foreground identity dialog and waits for OTP feedback', async () => {
+  const env = setup();
+  env.config.waitForOtpApi = true;
+  const flow = homeLogin(env);
+  env.run(); env.run(); env.run();
+  flow.send.hidden = flow.otp.hidden = true;
+  await fill(env);
+  assert.equal(env.run(), 'submitted');
+  // Keep the original login dialog visible underneath the identity overlay.
+  const outsideEmail = env.add('button', 'Email');
+  const identity = identityDialog(env);
+  assert.equal(env.run(false), 'email-verification-selected');
+  assert.equal(identity.email.clicks, 1);
+  assert.equal(identity.phone.clicks, 0);
+  assert.equal(outsideEmail.clicks, 0);
+  assert.equal(env.window.__flutterAutoLogin.otpRequestedAt, null);
+  env.config.emailVerificationRequestedAt = 0;
+  assert.equal(env.run(false), 'requesting-verification');
+  env.advance(1000);
+  assert.equal(env.run(false), 'requesting-verification');
+  assert.equal(identity.email.clicks, 1);
+
+  identity.showCode();
+  identity.title.textContent = 'Verify identity';
+  assert.equal(env.run(false), 'verification-requested');
+  assert.equal(env.run(false), 'otp-required');
+  env.config.otp = '012345';
+  assert.equal(env.run(false), 'waiting-otp-paste');
+  const state = env.window.__flutterAutoLogin;
+  assert.equal(state.canPasteFromClipboard(1, 'otp', env.config.otp), true);
+  await env.resolvePaste();
+  assert.equal(identity.code.value, '012345');
+  identity.verify.disabled = true;
+  assert.equal(env.run(false), 'waiting-submit');
+  assert.equal(identity.verify.clicks, 0);
+  identity.verify.disabled = false;
+  assert.equal(env.run(false), 'otp-submitted');
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(identity.verify.clicks, 1);
+  assert.equal(env.submit.clicks, 1);
+  assert.deepEqual(env.requests.map(request => request[2]), ['email', 'password', 'otp']);
+  // A new document must not paste or click Next again while login completes.
+  env.config.allowOtpSubmit = false;
+  env.config.otpRequestedAt = 0;
+  delete env.window.__flutterAutoLogin;
+  identity.code.value = '';
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(identity.verify.clicks, 1);
+  assert.equal(env.requests.length, 3);
+  identity.modal.hidden = flow.modal.hidden = true;
+  env.add('[data-e2e="profile-icon"]');
+  assert.equal(env.run(false), 'login-success');
+});
+
+test('restores the Email request after navigation without clicking it again', async () => {
+  const env = setup();
+  env.location.pathname = '/';
+  env.config.waitForOtpApi = true;
+  const identity = identityDialog(env);
+  assert.equal(env.run(false), 'email-verification-selected');
+  env.config.emailVerificationRequestedAt = 0;
+  delete env.window.__flutterAutoLogin;
+  assert.equal(env.run(false), 'requesting-verification');
+  assert.equal(identity.email.clicks, 1);
+  identity.showCode();
+  identity.title.textContent = 'Verify identity';
+  assert.equal(env.run(false), 'verification-requested');
+  env.config.otpRequestedAt = 0;
+  delete env.window.__flutterAutoLogin;
+  env.config.otp = '012345';
+  assert.equal(env.run(false), 'waiting-otp-paste');
+  assert.equal(env.window.__flutterAutoLogin.canPasteFromClipboard(), true);
+  await env.resolvePaste();
+  assert.equal(env.run(false), 'otp-submitted');
+  assert.equal(identity.email.clicks, 1);
+  assert.equal(identity.verify.clicks, 1);
+});
+
+test('does not claim a sent Email code or repeat the click without TikTok feedback', () => {
+  const env = setup();
+  env.location.pathname = '/';
+  const identity = identityDialog(env);
+  assert.equal(env.run(false), 'email-verification-selected');
+  env.advance(14999);
+  assert.equal(env.run(false), 'requesting-verification');
+  env.advance(1);
+  assert.equal(env.run(false), 'verification-request-failed');
+  assert.equal(identity.email.clicks, 1);
+  assert.equal(env.window.__flutterAutoLogin.otpRequestedAt, null);
+  assert.equal(env.requests.length, 0);
+});
+
+test('does not select Email while disabled, hidden, cancelled, at CAPTCHA or on signup', () => {
+  for (const issue of ['disabled', 'hidden', 'cancelled', 'captcha', 'signup', 'origin']) {
+    const env = setup();
+    env.location.pathname = '/';
+    const identity = identityDialog(env);
+    if (issue === 'disabled') identity.email.disabled = true;
+    if (issue === 'hidden') env.document.hidden = true;
+    if (issue === 'cancelled') {
+      env.window.__flutterAutoLogin = { attempt: 1, active: false };
+    }
+    if (issue === 'captcha') env.add('#captcha-verify-container');
+    if (issue === 'signup') identity.title.textContent = 'Sign up';
+    if (issue === 'origin') env.location.origin = 'https://example.com';
+    assert.equal(env.run(false), {
+      disabled: 'waiting-form', hidden: 'waiting-form', cancelled: 'cancelled',
+      captcha: 'verification-required', signup: 'waiting-result', origin: 'wrong-origin',
+    }[issue]);
+    assert.equal(identity.email.clicks, 0);
+    assert.equal(env.requests.length, 0);
+  }
+});
+
+for (const navigate of [false, true]) {
+  test(`opens Account, Login, phone/email, Username or Email and continues OTP (navigate=${navigate})`, async () => {
+    const env = setup();
+    env.config.waitForOtpApi = true;
+    const flow = homeLogin(env, { navigate });
+    if (!navigate) flow.method.textContent = 'Use phone or email';
+    // Inputs and submit controls elsewhere on Home must remain untouched.
+    const outside = new env.Input('input[name="email"]');
+    const outsideSubmit = env.add('button', 'Log in');
+    for (const control of [flow.account, flow.method, flow.tab]) {
+      assert.equal(env.run(), 'waiting-form');
+      assert.equal(control.clicks, 1);
+      assert.equal(env.requests.length, 0);
+      assert.equal(flow.send.clicks, 0);
+    }
+    assert.deepEqual([flow.account, flow.method, flow.tab].map(el => el.clicks), [1, 1, 1]);
+    assert.equal(env.location.pathname, navigate ? '/login/phone-or-email/email' : '/');
+    assert.equal(flow.phone.value, '');
+    assert.equal(env.password.value, '');
+    assert.equal(env.run(), 'waiting-paste');
+    assert.equal(env.window.__flutterAutoLogin.canPasteFromClipboard(1, 'email', env.config.email), true);
+    await env.resolvePaste();
+    assert.equal(env.run(), 'waiting-paste');
+    await env.resolvePaste();
+    assert.equal(env.run(), 'verification-requested');
+    assert.equal(env.run(), 'otp-required');
+    env.config.otp = '012345';
+    assert.equal(env.run(), 'waiting-otp-paste');
+    assert.equal(env.window.__flutterAutoLogin.canPasteFromClipboard(1, 'otp', env.config.otp), true);
+    await env.resolvePaste();
+    assert.equal(env.run(), 'otp-submitted');
+    assert.equal(env.run(false), 'waiting-result');
+    assert.equal(flow.otp.value, '012345');
+    assert.equal(flow.send.clicks, 1);
+    assert.equal(env.submit.clicks, 1);
+    assert.equal(outside.value, '');
+    assert.equal(outsideSubmit.clicks, 0);
+    assert.deepEqual(env.requests.map(request => request[2]), ['email', 'password', 'otp']);
+  });
+}
+
+test('continues password submission and a delayed OTP challenge inside the Home dialog', async () => {
+  const env = setup();
+  env.config.otp = '012345';
+  env.submit.textContent = 'Continue';
+  env.submit.getAttribute = () => null;
+  const flow = homeLogin(env);
+  env.run(); env.run(); env.run();
+  flow.send.hidden = flow.otp.hidden = true;
+  await fill(env);
+  assert.equal(env.run(), 'submitted');
+  assert.equal(env.submit.clicks, 1);
+  flow.otp.hidden = false;
+  assert.equal(env.run(false), 'waiting-otp-paste');
+  assert.equal(env.run(false), 'waiting-otp-paste');
+  await env.resolvePaste();
+  assert.equal(env.run(false), 'otp-submitted');
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(env.submit.clicks, 2);
+  assert.equal(flow.send.clicks, 0);
+  assert.deepEqual([flow.account, flow.method, flow.tab].map(el => el.clicks), [1, 1, 1]);
+});
+
+test('waits for each navigation control without clicking it again and supports stopping on Home', () => {
+  const env = setup();
+  const flow = homeLogin(env);
+  flow.account.click = () => { flow.account.clicks++; };
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(flow.account.clicks, 1);
+  flow.modal.hidden = flow.title.hidden = flow.method.hidden = false;
+  flow.method.click = () => { flow.method.clicks++; };
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(flow.method.clicks, 1);
+  flow.method.hidden = true;
+  flow.phone.hidden = flow.tab.hidden = false;
+  flow.tab.click = () => { flow.tab.clicks++; };
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(flow.tab.clicks, 1);
+  env.window.__flutterAutoLogin.stop();
+  assert.equal(env.run(), 'cancelled');
+  assert.equal(env.requests.length, 0);
+});
+
+test('recognizes email/username login tabs and never pastes or sends a code on the phone form', async () => {
+  for (const label of ['Username or Email', 'Email or username', 'Log in with email or username', 'Use email or username']) {
+    const env = setup();
+    const flow = homeLogin(env);
+    env.run();
+    env.run();
+    flow.tab.textContent = label;
+    flow.tab.disabled = true;
+    assert.equal(env.run(), 'waiting-form');
+    assert.equal(env.requests.length, 0);
+    assert.equal(flow.send.clicks, 0);
+    assert.equal(env.password.value, '');
+    flow.tab.disabled = false;
+    assert.equal(env.run(), 'waiting-form');
+    assert.equal(flow.tab.clicks, 1);
+    await fill(env);
+    assert.equal(env.run(), 'verification-requested');
+  }
+});
+
+test('revokes native paste when the Home login dialog closes or switches to signup', async () => {
+  const env = setup();
+  const flow = homeLogin(env);
+  env.run(); env.run(); env.run();
+  assert.equal(env.run(), 'waiting-paste');
+  const state = env.window.__flutterAutoLogin;
+  assert.equal(state.canPasteFromClipboard(), true);
+  flow.modal.hidden = true;
+  assert.equal(state.canPasteFromClipboard(), false);
+  flow.modal.hidden = false;
+  flow.title.textContent = 'Sign up for TikTok';
+  assert.equal(state.canPasteFromClipboard(), false);
+  // A dialog takes precedence even if a login URL remains after an SPA switch.
+  env.location.pathname = '/login/phone-or-email/email';
+  assert.equal(state.canPasteFromClipboard(), false);
+  state.stop();
+  await env.resolvePaste();
+});
+
+test('does not reopen Account or navigate login methods after Flutter latched submission', () => {
+  const env = setup();
+  const flow = homeLogin(env);
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(flow.account.clicks, 0);
+  flow.modal.hidden = flow.title.hidden = flow.method.hidden = false;
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(flow.method.clicks, 0);
+  assert.equal(env.requests.length, 0);
+});
 
 test('pastes each login credential through the bridge and submits once', async () => {
   const env = setup();
@@ -123,6 +476,47 @@ test('waits for a disabled submit button to become enabled', async () => {
   env.submit.disabled = false;
   assert.equal(env.run(), 'submitted');
   assert.equal(env.submit.clicks, 1);
+});
+
+test('commits native input and clicks Continue without a login-button attribute once', async () => {
+  for (const label of ['Continue', 'Tiếp tục']) {
+    const env = setup();
+    env.submit.textContent = label;
+    env.submit.getAttribute = () => null;
+    env.submit.disabled = true;
+    env.submit.click = () => {
+      assert.equal(env.document.activeElement, null);
+      assert.equal(env.password.value, env.config.password);
+      env.submit.clicks++;
+    };
+    await fill(env);
+    assert.equal(env.document.activeElement, null);
+    assert.equal(env.run(), 'waiting-submit');
+    assert.equal(env.submit.clicks, 0);
+    env.submit.disabled = false;
+    assert.equal(env.run(), 'submitted');
+    assert.equal(env.run(), 'submitted');
+    assert.equal(env.run(false), 'submitted');
+    assert.equal(env.submit.clicks, 1);
+    assert.equal(env.requests.length, 2);
+  }
+});
+
+test('only uses Continue inside the password form', async () => {
+  const env = setup();
+  const outside = env.add('button', 'Continue');
+  env.submit.textContent = 'Continue';
+  env.submit.getAttribute = () => null;
+  const form = { querySelectorAll: () => [env.submit] };
+  env.password.closest = selector => selector === 'form' ? form : null;
+  env.submit.disabled = true;
+  await fill(env);
+  assert.equal(env.run(), 'waiting-submit');
+  assert.equal(outside.clicks, 0);
+  env.submit.disabled = false;
+  assert.equal(env.run(), 'submitted');
+  assert.equal(env.submit.clicks, 1);
+  assert.equal(outside.clicks, 0);
 });
 
 test('does not refill or resubmit after navigation when Flutter remembers submission', () => {
@@ -174,7 +568,7 @@ test('requires a visible account avatar to report a logged-in session', () => {
   assert.equal(env.submit.clicks, 0);
 });
 
-test('requests a code once and pastes OTP only after five seconds', async () => {
+test('requests a code once and pastes OTP as soon as it is ready', async () => {
   const env = setup();
   env.config.otp = '012345';
   const otp = new env.Input('input[name="code"]');
@@ -183,11 +577,9 @@ test('requests a code once and pastes OTP only after five seconds', async () => 
   assert.equal(env.run(), 'verification-requested');
   assert.equal(send.clicks, 1);
   assert.equal(otp.value, '');
-  env.advance(4999);
-  assert.equal(env.run(), 'waiting-otp');
-  assert.equal(env.requests.length, 2);
-  env.advance(1);
-  assert.equal(env.run(), 'waiting-paste');
+  assert.equal(env.run(), 'waiting-otp-paste');
+  assert.equal(env.requests.length, 3);
+  assert.equal(env.run(), 'waiting-otp-paste');
   assert.equal(env.window.__flutterAutoLogin.canPasteFromClipboard(1, 'otp', env.config.otp), true);
   await env.resolvePaste();
   assert.equal(otp.value, '012345');
@@ -207,9 +599,8 @@ test('pastes an OTP challenge after password submission', async () => {
   await fill(env);
   assert.equal(env.run(), 'submitted');
   const otp = new env.Input('input[autocomplete="one-time-code"]');
-  assert.equal(env.run(false), 'waiting-otp');
-  env.advance(5000);
-  assert.equal(env.run(false), 'waiting-paste');
+  assert.equal(env.run(false), 'waiting-otp-paste');
+  assert.equal(env.run(false), 'waiting-otp-paste');
   await env.resolvePaste();
   assert.equal(otp.value, env.config.otp);
   assert.equal(env.run(false), 'otp-submitted');
@@ -217,7 +608,7 @@ test('pastes an OTP challenge after password submission', async () => {
   assert.equal(env.submit.clicks, 2); // Password, then OTP.
 });
 
-test('preserves the request delay and submission latch across page replacement', async () => {
+test('preserves the request timestamp and submission latch across page replacement', async () => {
   const env = setup();
   env.config.otp = '654321';
   const otp = new env.Input('input[name="otp"]');
@@ -225,11 +616,9 @@ test('preserves the request delay and submission latch across page replacement',
   await fill(env);
   assert.equal(env.run(), 'verification-requested');
   env.config.otpRequestedAt = 0;
-  env.advance(3000);
   delete env.window.__flutterAutoLogin;
-  assert.equal(env.run(), 'waiting-otp');
-  env.advance(2000);
-  assert.equal(env.run(), 'waiting-paste');
+  assert.equal(env.run(), 'waiting-otp-paste');
+  assert.equal(env.run(), 'waiting-otp-paste');
   await env.resolvePaste();
   assert.equal(send.clicks, 1);
   assert.equal(env.run(), 'otp-submitted');
@@ -245,8 +634,6 @@ test('preserves a manually entered OTP and stops at CAPTCHA even with a configur
   const env = setup();
   env.config.otp = '123456';
   const otp = new env.Input('input[name="code"]');
-  assert.equal(env.run(), 'waiting-otp');
-  env.advance(5000);
   otp.value = '654321';
   assert.equal(env.run(), 'draft-exists');
   assert.equal(otp.value, '654321');
@@ -269,7 +656,7 @@ test('pastes credentials before waiting for a disabled Send code button', async 
   env.advance(10000);
   send.disabled = false;
   assert.equal(env.run(), 'verification-requested');
-  assert.equal(env.run(), 'waiting-otp');
+  assert.equal(env.run(), 'waiting-otp-paste');
   assert.equal(otp.value, '');
   assert.equal(send.clicks, 1);
 });
@@ -325,7 +712,7 @@ test('waits for an API code without sending another challenge and pastes it nati
   assert.equal(env.requests.length, 2);
   assert.equal(env.submit.clicks, 0);
   env.config.otp = '012345';
-  assert.equal(env.run(), 'waiting-paste');
+  assert.equal(env.run(), 'waiting-otp-paste');
   await env.resolvePaste();
   assert.equal(otp.value, '012345');
   assert.equal(env.run(), 'otp-submitted');
@@ -339,9 +726,8 @@ test('reports the OTP challenge after password login while waiting for the API',
   assert.equal(env.run(), 'submitted');
   const otp = new env.Input('input[name="code"]');
   assert.equal(env.run(false), 'otp-required');
-  env.advance(5000);
   env.config.otp = '012345';
-  assert.equal(env.run(false), 'waiting-paste');
+  assert.equal(env.run(false), 'waiting-otp-paste');
   await env.resolvePaste();
   assert.equal(otp.value, '012345');
   assert.equal(env.run(false), 'otp-submitted');

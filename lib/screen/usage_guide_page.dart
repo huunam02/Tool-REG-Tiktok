@@ -24,7 +24,8 @@ class UsageGuidePage extends StatelessWidget {
     (
       '4',
       'Chạy tác vụ',
-      'Bấm nút chạy ở cuối màn hình. App sẽ mở TikTok bằng proxy và User-Agent đã chọn.'
+      'Bấm nút chạy ở cuối màn hình. App mở TikTok ở chế độ desktop: '
+          'iOS và Android đều dùng đúng User-Agent đã chọn.'
     ),
   ];
 

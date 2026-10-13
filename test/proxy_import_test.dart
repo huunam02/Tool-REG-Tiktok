@@ -83,7 +83,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('paste button fills proxy import data from clipboard',
+  testWidgets('paste button imports proxy data from clipboard immediately',
       (tester) async {
     tester.binding.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -101,7 +101,10 @@ void main() {
     await tester.tap(find.byKey(const Key('pasteProxyData')));
     await tester.pump();
 
-    expect(text(tester, 'proxyImportData'), record);
+    expect(text(tester, 'proxyImportData'), isEmpty);
+    expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
+    expect(text(tester, 'savedProxyUsername'), 'proxy-user');
+    expect(text(tester, 'savedProxyPassword'), 'proxy-password');
     expect(tester.takeException(), isNull);
   });
 

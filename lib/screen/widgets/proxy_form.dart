@@ -128,7 +128,7 @@ class _ProxyFormView extends StatelessWidget {
                                   size: 20),
                               suffixIcon: IconButton(
                                 key: const Key('pasteProxyData'),
-                                tooltip: 'Dán từ clipboard',
+                                tooltip: 'Dán và import',
                                 onPressed: logic.pasteImportData,
                                 icon: const Icon(Icons.content_paste_rounded,
                                     size: 20),

@@ -164,6 +164,7 @@ class HomeController extends AppController
           loginImportError = null;
         }
       });
+      importAccountData(signup: signup);
     } catch (_) {
       if (active) notify('Không thể đọc dữ liệu từ clipboard.');
     }

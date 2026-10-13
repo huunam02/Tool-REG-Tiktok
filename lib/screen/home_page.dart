@@ -435,7 +435,7 @@ class _HomeView extends StatelessWidget {
             prefixIcon: Icons.file_download_outlined,
             suffixIcon: IconButton(
               key: Key(signup ? 'pasteSignupData' : 'pasteLoginData'),
-              tooltip: 'Dán từ clipboard',
+              tooltip: 'Dán và import',
               onPressed: logic.busy
                   ? null
                   : () => logic.pasteImportData(signup: signup),

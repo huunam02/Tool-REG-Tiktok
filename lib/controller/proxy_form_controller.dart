@@ -121,6 +121,7 @@ class ProxyFormController extends AppController {
         );
         importError = null;
       });
+      importProxy();
     } catch (_) {
       if (active) notify('Không thể đọc dữ liệu từ clipboard.');
     }

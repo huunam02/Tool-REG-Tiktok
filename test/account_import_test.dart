@@ -26,7 +26,7 @@ void main() {
 
   for (final signup in [true, false]) {
     final name = signup ? 'signup' : 'login';
-    testWidgets('$name paste button fills the import field from clipboard',
+    testWidgets('$name paste button imports clipboard data immediately',
         (tester) async {
       const record = 'person@outlook.com|TikTok-password|Mailbox-password';
       tester.binding.defaultBinaryMessenger
@@ -43,7 +43,15 @@ void main() {
       await tester.pump();
 
       expect((signup ? logic.signupImportData : logic.loginImportData).text,
-          record);
+          isEmpty);
+      expect((signup ? logic.signupEmail : logic.loginUsername).text,
+          'person@outlook.com');
+      expect((signup ? logic.signupPassword : logic.loginPassword).text,
+          'TikTok-password');
+      expect(
+          (signup ? logic.signupMailboxPassword : logic.loginMailboxPassword)
+              .text,
+          'Mailbox-password');
       expect(tester.takeException(), isNull);
     });
 

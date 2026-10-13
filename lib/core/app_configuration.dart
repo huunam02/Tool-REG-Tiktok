@@ -84,6 +84,21 @@ class WebViewProxy {
   final String username;
   final String password;
 
+  /// Import host:port:username:password; the name is supplied separately.
+  static WebViewProxy parseImport(String value) {
+    final line = value.replaceAll(RegExp(r'^[\r\n]+|[\r\n]+$'), '');
+    final match =
+        RegExp(r'^([^:\r\n]+):(\d+):([^:\r\n]+):([^\r\n]+)$').firstMatch(line);
+    if (match == null ||
+        match.group(3)!.trim().isEmpty ||
+        match.group(4)!.trim().isEmpty) {
+      throw const FormatException(
+          'Nhập một dòng proxy dạng host:port:username:password.');
+    }
+    return parse('${match.group(1)!.trim()}:${match.group(2)}',
+        username: match.group(3)!, password: match.group(4)!)!;
+  }
+
   static WebViewProxy? parse(String value,
       {String username = '', String password = ''}) {
     value = value.trim();

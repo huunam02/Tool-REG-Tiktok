@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/app_configuration.dart';
 import '../core/proxy_store.dart';
@@ -24,7 +25,8 @@ class ProxyFormController extends AppController {
   late final username = TextEditingController(text: entry?.proxy.username);
   late final password = TextEditingController(text: entry?.proxy.password);
   late final userAgent = TextEditingController(text: entry?.userAgent);
-  bool hidden = true;
+  late final importData = TextEditingController();
+  String? importError;
   bool generating = false;
   bool generationFailed = false;
 
@@ -55,7 +57,14 @@ class ProxyFormController extends AppController {
 
   @override
   void onClose() {
-    for (final controller in [name, url, username, password, userAgent]) {
+    for (final controller in [
+      name,
+      url,
+      username,
+      password,
+      userAgent,
+      importData
+    ]) {
       controller.dispose();
     }
     super.onClose();
@@ -74,8 +83,48 @@ class ProxyFormController extends AppController {
     final proxy = WebViewProxy.parse(url.text,
         username: username.text, password: password.text)!;
     FocusManager.instance.primaryFocus?.unfocus();
-    return ProxyDraft(name.text, proxy, userAgent.text.trim());
+    return ProxyDraft(name.text.trim(), proxy, userAgent.text.trim());
   }
 
-  void togglePassword() => mutate(() => hidden = !hidden);
+  void importProxy() {
+    if (!active) return;
+    try {
+      final proxy = WebViewProxy.parseImport(importData.text);
+      mutate(() {
+        url.text = proxyAddress(proxy);
+        username.text = proxy.username;
+        password.text = proxy.password;
+        importError = null;
+        importData.clear();
+      });
+      FocusManager.instance.primaryFocus?.unfocus();
+      notify('Đã import thông tin kết nối. Nhập tên proxy rồi lưu.');
+    } on FormatException catch (error) {
+      mutate(() => importError = error.message);
+    }
+  }
+
+  Future<void> pasteImportData() async {
+    if (!active) return;
+    try {
+      final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+      if (!active) return;
+      final text = clipboard?.text;
+      if (text == null || text.isEmpty) {
+        notify('Clipboard không có dữ liệu để dán.');
+        return;
+      }
+      mutate(() {
+        importData.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+        importError = null;
+      });
+    } catch (_) {
+      if (active) notify('Không thể đọc dữ liệu từ clipboard.');
+    }
+  }
+
+  void clearImportError(String _) => mutate(() => importError = null);
 }

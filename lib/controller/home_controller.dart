@@ -44,6 +44,10 @@ class HomeController extends AppController
   late final TextEditingController loginPassword;
   late final signupMailboxPassword = TextEditingController();
   late final loginMailboxPassword = TextEditingController();
+  late final signupImportData = TextEditingController();
+  late final loginImportData = TextEditingController();
+  String? signupImportError;
+  String? loginImportError;
   bool opening = false;
   bool loadingProxy = true;
   bool proxyLoadFailed = false;
@@ -113,6 +117,8 @@ class HomeController extends AppController
       loginPassword,
       signupMailboxPassword,
       loginMailboxPassword,
+      signupImportData,
+      loginImportData,
     ]) {
       controller.dispose();
     }
@@ -127,6 +133,73 @@ class HomeController extends AppController
 
   void updateOtpSettings(OtpApiSettings settings) =>
       mutate(() => otpSettings = settings);
+
+  void clearImportError({required bool signup}) => mutate(() {
+        if (signup) {
+          signupImportError = null;
+        } else {
+          loginImportError = null;
+        }
+      });
+
+  Future<void> pasteImportData({required bool signup}) async {
+    if (!active || busy) return;
+    try {
+      final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+      if (!active || busy) return;
+      final text = clipboard?.text;
+      if (text == null || text.isEmpty) {
+        notify('Clipboard không có dữ liệu để dán.');
+        return;
+      }
+      final input = signup ? signupImportData : loginImportData;
+      mutate(() {
+        input.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+        if (signup) {
+          signupImportError = null;
+        } else {
+          loginImportError = null;
+        }
+      });
+    } catch (_) {
+      if (active) notify('Không thể đọc dữ liệu từ clipboard.');
+    }
+  }
+
+  void importAccountData({required bool signup}) {
+    if (!active || busy) return;
+    final input = signup ? signupImportData : loginImportData;
+    // Strip copied line endings, while preserving password characters exactly.
+    final line = input.text.replaceAll(RegExp(r'^[\r\n]+|[\r\n]+$'), '');
+    final parts = line.split('|');
+    String? error;
+    if (line.contains('\n') || line.contains('\r') || parts.length != 3) {
+      error = 'Nhập một dòng: email|mật khẩu TikTok|mật khẩu email OTP.';
+    } else if (!OtpApiConfiguration.isEmail(parts[0].trim())) {
+      error = 'Email trong dữ liệu import không hợp lệ.';
+    } else if (parts[1].trim().isEmpty || parts[2].trim().isEmpty) {
+      error = 'Nhập đủ mật khẩu TikTok và mật khẩu email OTP.';
+    }
+    mutate(() {
+      if (signup) {
+        signupImportError = error;
+      } else {
+        loginImportError = error;
+      }
+      if (error != null) return;
+      (signup ? signupEmail : loginUsername).text = parts[0].trim();
+      (signup ? signupPassword : loginPassword).text = parts[1];
+      (signup ? signupMailboxPassword : loginMailboxPassword).text = parts[2];
+      input.clear();
+    });
+    if (error == null) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      notify('Đã import thông tin ${signup ? 'đăng ký' : 'đăng nhập'}.');
+    }
+  }
 
   Future<void> openTikTok(
       TikTokLaunchAction action,

@@ -34,18 +34,53 @@ công. Nhãn **Đang dùng** cho biết kết nối hiện tại, riêng với t
 sử. Có thể tìm theo tên/địa chỉ/tài khoản và lọc theo trạng thái. Khi nâng cấp
 dữ liệu cũ, app đánh dấu proxy đang dùng là đã sử dụng.
 
-Màn chính hiển thị đầy đủ tên, địa chỉ, tài khoản, mật khẩu có nút hiện/ẩn và
+Màn chính hiển thị đầy đủ tên, địa chỉ, tài khoản, mật khẩu và
 User-Agent; các giá trị có nút sao chép. Màn quản lý hiển thị chi tiết ngay khi
 chọn một proxy. Tạo proxy và sửa proxy có hai màn riêng. Các nhóm trong form
 gồm thông tin kết nối (tài khoản và mật khẩu không bắt buộc) và User-Agent ở cuối. Nút tạo/lưu
 luôn ở cuối màn hình.
+
+Các ô trong app hiển thị dữ liệu trực tiếp, gồm mật khẩu TikTok, mật khẩu hộp
+thư OTP, mật khẩu proxy, token API và dữ liệu import; không có nút hiện/ẩn.
 
 Proxy HTTP/HTTPS cần có cổng, ví dụ `http://127.0.0.1:8080`; nhập thông tin xác
 thực ở các ô riêng trong màn quản lý. Dữ liệu nằm trong `proxies.db`, với hai
 bảng `proxies` và `current_proxy`. App tự nâng cấp dữ liệu cũ, thêm User-Agent
 và đưa proxy đang cache chưa có trong danh sách vào danh sách quản lý.
 
+Màn tạo proxy có khối **Import data** riêng và nút **Import proxy**: dán một dòng
+`host:port:username:password` để điền địa chỉ HTTP, tài khoản và mật khẩu.
+**Tên proxy** bắt buộc nhập riêng, không lấy từ dữ liệu import; tên đã nhập và
+User-Agent được giữ khi import. User-Agent nằm cùng khối **Thông tin kết nối**
+với tên, địa chỉ, tài khoản và mật khẩu proxy. Màn sửa proxy không có import.
+Kiểm tra các ô rồi bấm tạo/lưu để lưu proxy.
+
+Đăng ký, đăng nhập và xem TikTok đều áp dụng cùng proxy trước khi mở WebView.
+Android cần WebView hỗ trợ `PROXY_OVERRIDE`; iOS cần iOS 17 trở lên.
+IP được kiểm tra bằng WebView nền dùng cùng proxy và kho dữ liệu mặc định,
+không gọi `fetch` từ trang TikTok để tránh bị CSP/CORS chặn. App thử hai dịch vụ
+IP, mỗi dịch vụ tối đa 8 giây; nút **Thử lại** chỉ kiểm tra lại IP. Nếu chưa nhận
+được IP, app báo chưa xác minh, không kết luận proxy hỏng. Việc kiểm tra chạy
+độc lập và không trì hoãn đăng ký/đăng nhập.
+
+## Ngôn ngữ WebView
+
+WebView dùng tiếng Anh (`en-US`, dự phòng `en`) cho cả xem, đăng nhập và đăng ký.
+App đặt locale native trước khi tạo WebView, gửi `Accept-Language: en-US,en;q=0.9`
+khi mở trang, dùng URL TikTok có `lang=en` và đặt `navigator.language` /
+`navigator.languages` từ đầu mỗi document, gồm cả iframe.
+Sau khi cập nhật phần native, dừng app và build/chạy lại hoàn toàn để áp dụng.
+
 ## OTP API
+
+Tab **Đăng ký** và **Đăng nhập** có khối **Import data** riêng với ô
+**Dữ liệu import** và nút **Import data**. Mật khẩu email OTP nằm cùng khối
+thông tin tài khoản với email và mật khẩu TikTok.
+Dán một tài khoản theo dạng `email|pass_dangky|passemail_otp`, rồi bấm import
+để điền email, mật khẩu TikTok và mật khẩu hộp thư OTP của tab đang mở.
+Ở tab Đăng nhập, cột thứ hai là mật khẩu đăng nhập TikTok. Mỗi lần import một
+dòng; dữ liệu thiếu cột, sai email hoặc thiếu mật khẩu sẽ báo lỗi và giữ nguyên
+các thông tin đã nhập. Có thể chỉnh sửa các ô sau khi import.
 
 Khi chạy đăng ký, app tự tạo ngày sinh ngẫu nhiên trong khoảng 1960–2004,
 bao gồm ngày hợp lệ theo số ngày của từng tháng và năm nhuận.

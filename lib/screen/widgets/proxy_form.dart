@@ -106,6 +106,46 @@ class _ProxyFormView extends StatelessWidget {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (logic.entry == null) ...[
+                        _section(
+                            'Import data',
+                            'Dán dữ liệu proxy để điền thông tin kết nối.',
+                            Icons.file_download_outlined, [
+                          TextFormField(
+                            key: const Key('proxyImportData'),
+                            controller: logic.importData,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            onChanged: logic.clearImportError,
+                            decoration: InputDecoration(
+                              labelText: 'Dữ liệu import proxy',
+                              helperText: 'host:port:username:password',
+                              helperMaxLines: 3,
+                              errorText: logic.importError,
+                              errorMaxLines: 4,
+                              prefixIcon: const Icon(
+                                  Icons.file_download_outlined,
+                                  size: 20),
+                              suffixIcon: IconButton(
+                                key: const Key('pasteProxyData'),
+                                tooltip: 'Dán từ clipboard',
+                                onPressed: logic.pasteImportData,
+                                icon: const Icon(Icons.content_paste_rounded,
+                                    size: 20),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            key: const Key('importProxyData'),
+                            onPressed: logic.importProxy,
+                            icon: const Icon(Icons.file_download_outlined,
+                                size: 19),
+                            label: const Text('Import proxy'),
+                          ),
+                        ]),
+                        const SizedBox(height: 16),
+                      ],
                       _section('Thông tin kết nối',
                           'Nhập địa chỉ HTTP/HTTPS có cổng.', Icons.public, [
                         TextFormField(
@@ -113,9 +153,14 @@ class _ProxyFormView extends StatelessWidget {
                           controller: logic.name,
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
-                              labelText: 'Tên proxy (không bắt buộc)',
+                              labelText: 'Tên proxy',
                               hintText: 'Ví dụ: Việt Nam · Residential',
+                              helperText: 'Tự đặt tên để nhận biết proxy.',
                               prefixIcon: Icon(Icons.label_outline, size: 20)),
+                          validator: (value) =>
+                              value == null || value.trim().isEmpty
+                                  ? 'Nhập tên proxy.'
+                                  : null,
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
@@ -152,73 +197,57 @@ class _ProxyFormView extends StatelessWidget {
                         TextFormField(
                           key: const Key('savedProxyPassword'),
                           controller: logic.password,
-                          obscureText: logic.hidden,
                           autocorrect: false,
                           enableSuggestions: false,
                           textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Mật khẩu (không bắt buộc)',
-                            prefixIcon:
-                                const Icon(Icons.lock_outline, size: 20),
-                            suffixIcon: IconButton(
-                              tooltip: logic.hidden
-                                  ? 'Hiện mật khẩu'
-                                  : 'Ẩn mật khẩu',
-                              onPressed: () => logic.togglePassword(),
-                              icon: Icon(logic.hidden
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined),
-                            ),
+                            prefixIcon: Icon(Icons.lock_outline, size: 20),
                           ),
                         ),
-                      ]),
-                      const SizedBox(height: 16),
-                      _section(
-                          'User-Agent',
-                          randomizeOnOpen
-                              ? 'Tự random khi tạo mới. Bạn có thể tạo lại hoặc nhập riêng.'
-                              : 'Giữ User-Agent đã lưu. Bạn có thể tạo lại hoặc nhập riêng.',
-                          Icons.computer_outlined,
-                          [
-                            TextFormField(
-                              key: const Key('savedProxyUserAgent'),
-                              controller: logic.userAgent,
-                              onChanged: (_) => logic.update(),
-                              enabled: !logic.generating,
-                              autocorrect: false,
-                              enableSuggestions: false,
-                              minLines: 3,
-                              maxLines: 6,
-                              style: const TextStyle(fontSize: 12, height: 1.6),
-                              decoration: const InputDecoration(
-                                  labelText: 'User-Agent'),
-                              validator: (value) => value == null ||
-                                      value.trim().isEmpty ||
-                                      RegExp(r'[\r\n]').hasMatch(value.trim())
-                                  ? 'Nhập User-Agent hợp lệ trên một dòng.'
-                                  : null,
-                            ),
-                            const SizedBox(height: 12),
-                            OutlinedButton(
-                              key: const Key('generateProxyUserAgent'),
-                              onPressed: logic.generating
-                                  ? null
-                                  : logic.generateUserAgent,
+                        const SizedBox(height: 20),
+                        TextFormField(
+                          key: const Key('savedProxyUserAgent'),
+                          controller: logic.userAgent,
+                          onChanged: (_) => logic.update(),
+                          enabled: !logic.generating,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          minLines: 3,
+                          maxLines: 6,
+                          style: const TextStyle(fontSize: 12, height: 1.6),
+                          decoration: InputDecoration(
+                            labelText: 'User-Agent',
+                            helperText: randomizeOnOpen
+                                ? 'Tự random khi tạo mới. Bạn có thể tạo lại hoặc nhập riêng.'
+                                : 'Giữ User-Agent đã lưu. Bạn có thể tạo lại hoặc nhập riêng.',
+                            helperMaxLines: 4,
+                          ),
+                          validator: (value) => value == null ||
+                                  value.trim().isEmpty ||
+                                  RegExp(r'[\r\n]').hasMatch(value.trim())
+                              ? 'Nhập User-Agent hợp lệ trên một dòng.'
+                              : null,
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton(
+                          key: const Key('generateProxyUserAgent'),
+                          onPressed:
+                              logic.generating ? null : logic.generateUserAgent,
+                          child: Text(
+                            logic.generating
+                                ? 'Đang tạo User-Agent…'
+                                : 'Tạo User-Agent mới',
+                          ),
+                        ),
+                        if (logic.generationFailed)
+                          const Padding(
+                              padding: EdgeInsets.only(top: 10),
                               child: Text(
-                                logic.generating
-                                    ? 'Đang tạo User-Agent…'
-                                    : 'Tạo User-Agent mới',
-                              ),
-                            ),
-                            if (logic.generationFailed)
-                              const Padding(
-                                  padding: EdgeInsets.only(top: 10),
-                                  child: Text(
-                                      'Không thể tạo User-Agent. Nhấn nút để thử lại.',
-                                      style: TextStyle(
-                                          color: ProxyColors.amber,
-                                          fontSize: 12))),
-                          ]),
+                                  'Không thể tạo User-Agent. Nhấn nút để thử lại.',
+                                  style: TextStyle(
+                                      color: ProxyColors.amber, fontSize: 12))),
+                      ]),
                     ]),
               )),
             )),

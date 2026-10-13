@@ -123,6 +123,31 @@ void main() {
             const MethodChannel('test_tiktok/webview_proxy'), null);
   });
 
+  test('desktop User-Agent list contains only Windows and macOS', () {
+    expect(desktopUserAgents, hasLength(84));
+    expect(desktopUserAgents.every((ua) => !ua.contains('Linux')), isTrue);
+    expect(desktopUserAgents.any((ua) => ua.contains('Windows NT')), isTrue);
+    expect(desktopUserAgents.any((ua) => ua.contains('Macintosh')), isTrue);
+  });
+
+  test('replaces a previously stored Linux User-Agent', () async {
+    const linuxAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+    SharedPreferences.setMockInitialValues({
+      'desktop_user_agent_direct': linuxAgent,
+      'desktop_user_agents_used': [linuxAgent],
+    });
+
+    final selected = await loadDirectDesktopUserAgent();
+
+    expect(desktopUserAgents, contains(selected));
+    expect(selected, isNot(contains('Linux')));
+    expect(
+        (await SharedPreferences.getInstance())
+            .getString('desktop_user_agent_direct'),
+        selected);
+  });
+
   test(
       'uses every desktop UA before repeating, including across cycle boundaries',
       () async {

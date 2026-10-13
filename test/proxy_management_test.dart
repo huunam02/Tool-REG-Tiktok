@@ -46,7 +46,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('https://proxy.example.com:443'), findsOneWidget);
       expect(find.text('user'), findsOneWidget);
-      expect(find.text('secret'), findsNothing);
+      expect(find.text('secret'), findsOneWidget);
       expect(store.currentUserAgent, 'bound-user-agent');
       for (final key in [
         'proxyUrl',
@@ -159,6 +159,7 @@ void main() {
     await tester.tap(find.byKey(const Key('saveProxyEntry')));
     await tester.pumpAndSettle();
     expect(find.text('Nhập địa chỉ proxy.'), findsOneWidget);
+    expect(find.text('Nhập tên proxy.'), findsOneWidget);
     expect(store.entries, isEmpty);
     await tester.enterText(find.byKey(const Key('savedProxyName')), 'Office');
     await tester.enterText(find.byKey(const Key('savedProxyUrl')),
@@ -175,7 +176,7 @@ void main() {
     expect(store.entries.single.name, 'Office');
     final userAgent = store.entries.single.userAgent;
     expect(store.current, isNull);
-    expect(find.text('secret'), findsNothing);
+    expect(find.text('secret'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Tùy chọn proxy'));
     await tester.pumpAndSettle();
@@ -225,6 +226,9 @@ void main() {
     await tester.pumpAndSettle();
     final secondAgent = fieldText(tester, 'savedProxyUserAgent');
     expect(secondAgent, isNot(firstAgent));
+    await tester.ensureVisible(find.byKey(const Key('savedProxyName')));
+    await tester.enterText(
+        find.byKey(const Key('savedProxyName')), 'Local proxy');
     await tester.enterText(
         find.byKey(const Key('savedProxyUrl')), 'localhost:8080');
     await tester.tap(find.byKey(const Key('saveProxyEntry')));
@@ -420,7 +424,7 @@ void main() {
   });
 
   testWidgets(
-      'current proxy displays its complete User-Agent and password with reveal control',
+      'current proxy displays its complete User-Agent and password directly',
       (tester) async {
     final store = MemoryProxyStore()
       ..current = WebViewProxy.parse('proxy.example.com:8080',
@@ -438,13 +442,8 @@ void main() {
             .data,
         store.currentUserAgent);
     expect(find.text('full-user'), findsOneWidget);
-    expect(find.text('full-secret'), findsNothing);
-    await tester.tap(find.byKey(const Key('currentProxyShowPassword')));
-    await tester.pumpAndSettle();
     expect(find.text('full-secret'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('currentProxyShowPassword')));
-    await tester.pumpAndSettle();
-    expect(find.text('full-secret'), findsNothing);
+    expect(find.byKey(const Key('currentProxyShowPassword')), findsNothing);
   });
 
   testWidgets('usage filters and search show only matching proxies',

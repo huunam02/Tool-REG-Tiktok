@@ -96,21 +96,10 @@ class _OtpSettingsView extends StatelessWidget {
                           key: const Key('otpApiToken'),
                           controller: controller.token,
                           validator: controller.validateToken,
-                          obscureText: controller.tokenHidden,
                           autocorrect: false,
                           enableSuggestions: false,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Token API',
-                            suffixIcon: IconButton(
-                              key: const Key('toggleOtpApiToken'),
-                              tooltip: controller.tokenHidden
-                                  ? 'Hiện token'
-                                  : 'Ẩn token',
-                              onPressed: controller.toggleTokenVisibility,
-                              icon: Icon(controller.tokenHidden
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined),
-                            ),
                           ),
                         ),
                       ],

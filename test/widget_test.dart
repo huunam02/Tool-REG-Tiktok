@@ -15,6 +15,7 @@ import 'package:test_tiktok/core/scripts/auto_login_script.dart';
 import 'package:test_tiktok/core/scripts/auto_cookie_script.dart';
 import 'package:test_tiktok/core/scripts/auto_signup_script.dart';
 import 'package:test_tiktok/core/otp_api.dart';
+import 'package:test_tiktok/core/webview_locale.dart';
 
 import 'support/memory_proxy_store.dart';
 
@@ -424,6 +425,14 @@ void main() {
             TikTokLaunchAction.login => tiktokLoginUrl,
             TikTokLaunchAction.signup => tiktokSignupUrl,
           });
+      expect(params.initialUrlRequest!.url!.queryParameters['lang'], 'en');
+      expect(params.initialUrlRequest!.headers?['Accept-Language'],
+          'en-US,en;q=0.9');
+      final localeScript = params.initialUserScripts!
+          .singleWhere((script) => script.source == englishWebViewLocaleScript);
+      expect(localeScript.injectionTime,
+          UserScriptInjectionTime.AT_DOCUMENT_START);
+      expect(localeScript.forMainFrameOnly, isFalse);
       final controller = _TestController(WebUri(page.initialUrl));
       final cookieScript = params.initialUserScripts!
           .singleWhere((script) => script.source == autoAcceptCookieScript);

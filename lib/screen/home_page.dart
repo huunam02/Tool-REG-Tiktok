@@ -10,7 +10,6 @@ import 'widgets/proxy_widgets.dart';
 import 'tiktok_page.dart';
 
 import '../controller/home_controller.dart';
-import '../controller/visibility_controller.dart';
 import 'widgets/controller_scope.dart';
 
 class HomePage extends StatelessWidget {
@@ -214,14 +213,14 @@ class _HomeView extends StatelessWidget {
                         const SizedBox(height: 18),
                       ]),
                       _tabPage(logic.signupFormKey, 'signup', wide, [
-                        _signupSection(),
+                        _accountImport(signup: true),
                         const SizedBox(height: 20),
-                        _otpApiSection(signup: true),
+                        _signupSection(),
                       ]),
                       _tabPage(logic.loginFormKey, 'login', wide, [
-                        _loginSection(),
+                        _accountImport(signup: false),
                         const SizedBox(height: 20),
-                        _otpApiSection(signup: false),
+                        _loginSection(),
                       ]),
                     ],
                   );
@@ -309,15 +308,6 @@ class _HomeView extends StatelessWidget {
         ),
       );
 
-  Widget _otpApiSection({required bool signup}) {
-    return _section(
-        'Mã OTP',
-        'Tự lấy mã từ hộp thư sau khi TikTok yêu cầu OTP.',
-        Icons.mark_email_read_outlined, [
-      _mailboxPasswordField(signup: signup),
-    ]);
-  }
-
   Widget _proxySection(BuildContext context) => _section(
         'Proxy',
         'Proxy đang sử dụng.',
@@ -395,6 +385,8 @@ class _HomeView extends StatelessWidget {
                   ? 'Nhập mật khẩu đăng ký.'
                   : null,
         ),
+        const SizedBox(height: 16),
+        _mailboxPasswordField(signup: true),
       ]);
 
   Widget _loginSection() =>
@@ -427,7 +419,45 @@ class _HomeView extends StatelessWidget {
                   ? 'Nhập mật khẩu đăng nhập.'
                   : null,
         ),
+        const SizedBox(height: 16),
+        _mailboxPasswordField(signup: false),
       ]);
+
+  Widget _accountImport({required bool signup}) => _section(
+        'Import data',
+        'Điền nhanh thông tin tài khoản từ một dòng dữ liệu.',
+        Icons.file_download_outlined,
+        [
+          _PasswordField(
+            fieldKey: Key(signup ? 'signupImportData' : 'loginImportData'),
+            controller: signup ? logic.signupImportData : logic.loginImportData,
+            label: 'Dữ liệu import',
+            prefixIcon: Icons.file_download_outlined,
+            suffixIcon: IconButton(
+              key: Key(signup ? 'pasteSignupData' : 'pasteLoginData'),
+              tooltip: 'Dán từ clipboard',
+              onPressed: logic.busy
+                  ? null
+                  : () => logic.pasteImportData(signup: signup),
+              icon: const Icon(Icons.content_paste_rounded, size: 20),
+            ),
+            helper: 'Dán một dòng: email|matkhau_dangky|matkhau_email_otp. '
+                'Cột thứ hai là mật khẩu TikTok.',
+            errorText:
+                signup ? logic.signupImportError : logic.loginImportError,
+            onChanged: (_) => logic.clearImportError(signup: signup),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            key: Key(signup ? 'importSignupData' : 'importLoginData'),
+            onPressed: logic.busy
+                ? null
+                : () => logic.importAccountData(signup: signup),
+            icon: const Icon(Icons.file_download_outlined, size: 19),
+            label: const Text('Import data'),
+          ),
+        ],
+      );
 
   Widget _mailboxPasswordField({required bool signup}) => _PasswordField(
         fieldKey:
@@ -435,6 +465,7 @@ class _HomeView extends StatelessWidget {
         controller:
             signup ? logic.signupMailboxPassword : logic.loginMailboxPassword,
         label: 'Mật khẩu của email lấy mã OTP',
+        helper: 'Tự lấy mã từ hộp thư khi TikTok yêu cầu OTP.',
         validator: (value) {
           final action =
               signup ? TikTokLaunchAction.signup : TikTokLaunchAction.login;
@@ -452,34 +483,39 @@ class _PasswordField extends StatelessWidget {
       {required this.fieldKey,
       required this.controller,
       required this.label,
-      this.validator});
+      this.validator,
+      this.helper,
+      this.errorText,
+      this.onChanged,
+      this.prefixIcon = Icons.lock_outline_rounded,
+      this.suffixIcon});
 
   final Key fieldKey;
   final TextEditingController controller;
   final String label;
   final FormFieldValidator<String>? validator;
+  final String? helper;
+  final String? errorText;
+  final ValueChanged<String>? onChanged;
+  final IconData prefixIcon;
+  final Widget? suffixIcon;
 
   @override
-  Widget build(BuildContext context) => ControllerScope<VisibilityController>(
-        controller: VisibilityController(),
-        builder: (visibility) => TextFormField(
-          key: fieldKey,
-          controller: controller,
-          validator: validator,
-          obscureText: visibility.hidden,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: InputDecoration(
-            labelText: label,
-            prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
-            suffixIcon: IconButton(
-              tooltip: visibility.hidden ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
-              onPressed: visibility.toggle,
-              icon: Icon(visibility.hidden
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined),
-            ),
-          ),
+  Widget build(BuildContext context) => TextFormField(
+        key: fieldKey,
+        controller: controller,
+        validator: validator,
+        onChanged: onChanged,
+        autocorrect: false,
+        enableSuggestions: false,
+        decoration: InputDecoration(
+          labelText: label,
+          helperText: helper,
+          helperMaxLines: 4,
+          errorText: errorText,
+          errorMaxLines: 4,
+          prefixIcon: Icon(prefixIcon, size: 20),
+          suffixIcon: suffixIcon,
         ),
       );
 }

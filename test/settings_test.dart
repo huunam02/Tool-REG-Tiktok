@@ -45,7 +45,7 @@ void main() {
             matching: find.byType(EditableText),
           ))
           .obscureText,
-      isTrue,
+      isFalse,
     );
     await tester.enterText(
       find.byKey(const Key('otpApiUrl')),
@@ -67,7 +67,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(UsageGuidePage), findsOneWidget);
     expect(find.text('Bắt đầu nhanh'), findsOneWidget);
-    expect(find.text('Cấu hình OTP API'), findsOneWidget);
+    expect(find.text('Cấu hình OTP Email API'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();

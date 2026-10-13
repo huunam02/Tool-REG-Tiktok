@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/proxy_store.dart';
-import '../../controller/visibility_controller.dart';
-import 'controller_scope.dart';
 import '../../core/app_action_theme.dart';
 
 abstract final class ProxyColors {
@@ -119,7 +117,7 @@ class ProxyPanel extends StatelessWidget {
       );
 }
 
-class ProxyDetails extends StatefulWidget {
+class ProxyDetails extends StatelessWidget {
   const ProxyDetails(
       {super.key,
       required this.profile,
@@ -131,23 +129,8 @@ class ProxyDetails extends StatefulWidget {
   final bool showName;
   final Key? userAgentKey;
 
-  @override
-  State<ProxyDetails> createState() => _ProxyDetailsState();
-}
-
-class _ProxyDetailsState extends State<ProxyDetails> {
-  late final _visibility = VisibilityController();
-
-  @override
-  void didUpdateWidget(covariant ProxyDetails oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!sameProxy(oldWidget.profile.proxy, widget.profile.proxy)) {
-      _visibility.reset();
-    }
-  }
-
-  Widget _field(String label, String value, IconData icon,
-          {Key? valueKey, Widget? trailing, String? copyValue}) =>
+  Widget _field(BuildContext context, String label, String value, IconData icon,
+          {Key? valueKey}) =>
       Container(
         padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
         decoration: BoxDecoration(
@@ -173,15 +156,13 @@ class _ProxyDetailsState extends State<ProxyDetails> {
                     style: const TextStyle(
                         fontSize: 12, height: 1.55, color: Color(0xFFF0F4FA))),
               ])),
-          if (trailing != null) trailing,
           IconButton(
               tooltip: 'Sao chép ${label.toLowerCase()}',
               visualDensity: VisualDensity.compact,
               iconSize: 16,
               onPressed: () async {
-                await Clipboard.setData(
-                    ClipboardData(text: copyValue ?? value));
-                if (!mounted) return;
+                await Clipboard.setData(ClipboardData(text: value));
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                     content: Text('Đã sao chép ${label.toLowerCase()}.')));
               },
@@ -190,16 +171,10 @@ class _ProxyDetailsState extends State<ProxyDetails> {
       );
 
   @override
-  Widget build(BuildContext context) => ControllerScope<VisibilityController>(
-        controller: _visibility,
-        builder: (_) => _buildDetails(context),
-      );
-
-  Widget _buildDetails(BuildContext context) {
-    final profile = widget.profile;
+  Widget build(BuildContext context) {
     final proxy = profile.proxy;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (widget.showName &&
+      if (showName &&
           profile.name.isNotEmpty &&
           profile.name != proxyAddress(proxy)) ...[
         Text(profile.name,
@@ -207,35 +182,23 @@ class _ProxyDetailsState extends State<ProxyDetails> {
                 fontSize: 16, height: 1.4, fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
       ],
-      _field('Địa chỉ proxy', proxyAddress(proxy), Icons.link,
-          valueKey: Key('${widget.keyPrefix}Address')),
+      _field(context, 'Địa chỉ proxy', proxyAddress(proxy), Icons.link,
+          valueKey: Key('${keyPrefix}Address')),
       const SizedBox(height: 10),
       _field(
+          context,
           'Tài khoản',
           proxy.username.isEmpty ? 'Không yêu cầu xác thực' : proxy.username,
           Icons.person_outline,
-          valueKey: Key('${widget.keyPrefix}Username')),
+          valueKey: Key('${keyPrefix}Username')),
       if (proxy.password.isNotEmpty) ...[
         const SizedBox(height: 10),
-        _field('Mật khẩu', !_visibility.hidden ? proxy.password : '••••••••',
-            Icons.lock_outline,
-            valueKey: Key('${widget.keyPrefix}Password'),
-            copyValue: proxy.password,
-            trailing: IconButton(
-                key: Key('${widget.keyPrefix}ShowPassword'),
-                tooltip: !_visibility.hidden
-                    ? 'Ẩn mật khẩu proxy'
-                    : 'Hiện mật khẩu proxy',
-                visualDensity: VisualDensity.compact,
-                iconSize: 18,
-                onPressed: _visibility.toggle,
-                icon: Icon(!_visibility.hidden
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined))),
+        _field(context, 'Mật khẩu', proxy.password, Icons.lock_outline,
+            valueKey: Key('${keyPrefix}Password')),
       ],
       const SizedBox(height: 10),
-      _field('User-Agent', profile.userAgent, Icons.computer_outlined,
-          valueKey: widget.userAgentKey ?? Key('${widget.keyPrefix}UserAgent')),
+      _field(context, 'User-Agent', profile.userAgent, Icons.computer_outlined,
+          valueKey: userAgentKey ?? Key('${keyPrefix}UserAgent')),
     ]);
   }
 }

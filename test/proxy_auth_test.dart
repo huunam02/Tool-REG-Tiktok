@@ -2,10 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
+import 'package:test_tiktok/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/screen/tiktok_page.dart';
 
-class _Platform extends InAppWebViewPlatform {
+import 'support/test_proxy_ip_platform.dart';
+
+class _Platform extends TestProxyIpPlatform {
   @override
   PlatformInAppWebViewWidget createPlatformInAppWebViewWidget(
           PlatformInAppWebViewWidgetCreationParams params) =>
@@ -69,21 +73,24 @@ void main() {
   });
 
   Future<PlatformInAppWebViewWidgetCreationParams> mount(WidgetTester tester,
-      {bool usingProxy = true, String username = 'test-user'}) async {
+      {bool usingProxy = true,
+      String username = 'test-user',
+      TikTokLaunchAction action = TikTokLaunchAction.browse}) async {
     await tester.pumpWidget(MaterialApp(
         home: TikTokPage(
+            launchAction: action,
             configuration: AppConfiguration(
-      userAgent: 'test-agent',
-      comments: [],
-      signupEmail: '',
-      signupPassword: '',
-      loginUsername: '',
-      loginPassword: '',
-      proxy: usingProxy
-          ? WebViewProxy.parse('proxy.example.com:8080',
-              username: username, password: 'test-password')
-          : null,
-    ))));
+              userAgent: 'test-agent',
+              comments: [],
+              signupEmail: '',
+              signupPassword: '',
+              loginUsername: '',
+              loginPassword: '',
+              proxy: usingProxy
+                  ? WebViewProxy.parse('proxy.example.com:8080',
+                      username: username, password: 'test-password')
+                  : null,
+            ))));
     return tester
         .widget<InAppWebView>(find.byType(InAppWebView))
         .platform
@@ -91,6 +98,47 @@ void main() {
   }
 
   for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    for (final action in [
+      TikTokLaunchAction.signup,
+      TikTokLaunchAction.login
+    ]) {
+      testWidgets(
+          '$platform $action keeps IP check separate and cancels on exit',
+          (tester) async {
+        debugDefaultTargetPlatformOverride = platform;
+        final params = await mount(tester, action: action);
+        final controller =
+            InAppWebViewController.fromPlatform(platform: _Controller());
+        params.onWebViewCreated!(controller);
+        params.onLoadStart!(controller, WebUri(action.initialUrl));
+        params.onLoadStop!(controller, WebUri(action.initialUrl));
+        await tester.pumpAndSettle();
+        final logic = tester
+            .state<GetBuilderState<TikTokController>>(
+                find.byType(GetBuilder<TikTokController>))
+            .controller!;
+        expect(logic.checkingIp, isTrue);
+        expect(logic.initialActionStarted, isTrue);
+        final probe =
+            (InAppWebViewPlatform.instance! as _Platform).probes.single;
+        final response = await probe.params.onReceivedHttpAuthRequest!(
+            probe.callbackController,
+            HttpAuthenticationChallenge(
+                protectionSpace: URLProtectionSpace(host: 'proxy.example.com'),
+                previousFailureCount:
+                    platform == TargetPlatform.android ? 1 : 0));
+        expect(response!.username, 'test-user');
+        expect(response.password, 'test-password');
+        expect(params.initialSettings!.incognito, isFalse);
+        expect(params.initialSettings!.cacheEnabled, isTrue);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        expect(probe.disposed, isTrue);
+        expect(logic.isClosed, isTrue);
+        debugDefaultTargetPlatformOverride = null;
+      });
+    }
+
     testWidgets('$platform sends proxy credentials on the first challenge only',
         (tester) async {
       debugDefaultTargetPlatformOverride = platform;
@@ -206,20 +254,25 @@ void main() {
     params.onLoadStart!(controller, WebUri(tiktokHomeUrl));
     params.onLoadStop!(controller, WebUri(tiktokHomeUrl));
     await tester.pumpAndSettle();
-    final receiveIp = platformController.handlers['FlutterProxyIp']!;
-    await receiveIp([1, 'Không xác định']);
+    final platform = InAppWebViewPlatform.instance! as _Platform;
+    expect(platformController.sources.any((s) => s.contains('api.ipify')),
+        isFalse);
+    platform.probes.last.failed();
     await tester.pump();
+    platform.probes.last.failed();
+    await tester.pumpAndSettle();
     expect(find.text('Chưa xác minh được IP qua proxy'), findsOneWidget);
     expect(find.byKey(const Key('webViewFailure')), findsNothing);
     await tester.tap(find.byKey(const Key('retryProxyWarning')));
     await tester.pump();
-    await receiveIp([1, '203.0.113.7']);
-    await tester.pump();
+    final previousProbe = platform.probes.last;
+    previousProbe.loaded('{"ip":"203.0.113.7"}');
+    await tester.pumpAndSettle();
     expect(find.text('IP: 203.0.113.7'), findsOneWidget);
     expect(find.byKey(const Key('proxyWarningBanner')), findsNothing);
 
     params.onLoadStart!(controller, WebUri(tiktokHomeUrl));
-    await receiveIp([1, 'Không xác định']);
+    previousProbe.loaded('{"ip":"203.0.113.8"}');
     await tester.pump();
     expect(find.text('IP: 203.0.113.7'), findsNothing);
     expect(find.byKey(const Key('proxyWarningBanner')), findsNothing);
@@ -231,9 +284,15 @@ void main() {
       (tester) async {
     final params = await mount(tester, usingProxy: false);
     final platformController = _Controller();
-    params.onWebViewCreated!(
-        InAppWebViewController.fromPlatform(platform: platformController));
-    await platformController.handlers['FlutterProxyIp']!([0, 'Không xác định']);
+    final controller =
+        InAppWebViewController.fromPlatform(platform: platformController);
+    params.onWebViewCreated!(controller);
+    params.onLoadStop!(controller, WebUri(tiktokHomeUrl));
+    await tester.pumpAndSettle();
+    final platform = InAppWebViewPlatform.instance! as _Platform;
+    platform.probes.last.failed();
+    await tester.pump();
+    platform.probes.last.failed();
     await tester.pump();
     expect(find.byKey(const Key('proxyWarningBanner')), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());

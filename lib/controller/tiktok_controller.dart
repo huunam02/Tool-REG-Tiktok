@@ -11,10 +11,11 @@ import '../core/scripts/auto_cookie_script.dart';
 import '../core/scripts/auto_signup_script.dart';
 import '../core/scripts/auto_watch_script.dart';
 import '../core/scripts/country_modal_script.dart';
-import '../core/scripts/proxy_ip_script.dart';
+import '../core/webview_proxy_ip.dart';
 import '../core/app_configuration.dart';
 import '../core/otp_api.dart';
 import '../core/webview_failure.dart';
+import '../core/webview_locale.dart';
 import '../core/tiktok_launch_action.dart';
 import 'app_controller.dart';
 
@@ -50,6 +51,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   bool checkingIp = false;
   int navigationId = 0;
   String? detectedIp;
+  WebViewProxyIpChecker? _ipChecker;
   bool autoWatchEnabled = false;
   bool autoWatchBusy = false;
   bool appActive = true;
@@ -65,6 +67,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   @override
   void onClose() {
+    _ipChecker?.cancel();
     cancelAutoLogin(updateUi: false);
     cancelAutoSignup(updateUi: false);
     WidgetsBinding.instance.removeObserver(this);
@@ -710,7 +713,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       // A navigation can destroy the old document; the next document installs it again.
     }
     await injectAutoCloseCountryModal();
-    await checkProxyIp();
+    unawaited(checkProxyIp());
     await runInitialAction();
     await startAutoWatch();
   }
@@ -727,6 +730,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   void showPageFailure(WebViewFailure failure) {
     if (!active) return;
+    _ipChecker?.cancel();
     if (autoLoginBusy) cancelAutoLogin();
     if (autoSignupBusy) cancelAutoSignup();
     if (autoWatchEnabled) unawaited(stopAutoWatch());
@@ -762,7 +766,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     debugPrint('Proxy IP detected: $detectedIp');
   }
 
-  /// Check egress inside this WebView; stale documents cannot replace its IP.
+  /// Check with the same native proxy, independently of TikTok's document.
   Future<void> checkProxyIp() async {
     if (!active ||
         checkingIp ||
@@ -771,15 +775,26 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       return;
     }
     final checkNavigationId = navigationId;
+    final checker = WebViewProxyIpChecker();
+    _ipChecker = checker;
     mutate(() => checkingIp = true);
     try {
-      await webViewController!.evaluateJavascript(
-        source: buildProxyIpCheckScript(checkNavigationId),
+      final ip = await checker.check(
+        userAgent: configuration.userAgent,
+        onAuth: (controller, challenge) async {
+          if (!active || checkNavigationId != navigationId) {
+            return HttpAuthResponse(action: HttpAuthResponseAction.CANCEL);
+          }
+          return onReceivedHttpAuthRequest(controller, challenge);
+        },
       );
+      receiveProxyIp([checkNavigationId, ip ?? 'Không xác định']);
     } catch (_) {
       if (active && checkNavigationId == navigationId) {
         receiveProxyIp([checkNavigationId, 'Không xác định']);
       }
+    } finally {
+      if (identical(_ipChecker, checker)) _ipChecker = null;
     }
   }
 
@@ -824,13 +839,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         }
       },
     );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterProxyIp',
-      callback: (args) {
-        receiveProxyIp(args);
-        return null;
-      },
-    );
   }
 
   Future<HttpAuthResponse?> onReceivedHttpAuthRequest(
@@ -863,6 +871,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   void onLoadStart(InAppWebViewController controller, WebUri? url) {
     if (!active) return;
+    _ipChecker?.cancel();
     initialPageLoaded = false;
     mutate(() {
       navigationId++;
@@ -931,7 +940,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   void goHome() {
     cancelAutoActions();
     unawaited(webViewController?.loadUrl(
-      urlRequest: URLRequest(url: WebUri(tiktokHomeUrl)),
+      urlRequest: URLRequest(
+        url: WebUri(tiktokHomeUrl),
+        headers: englishWebViewHeaders,
+      ),
     ));
   }
 

@@ -11,6 +11,7 @@ import '../core/app_action_theme.dart';
 import '../core/otp_api.dart';
 import '../core/tiktok_launch_action.dart';
 import '../core/webview_failure.dart';
+import '../core/webview_locale.dart';
 import 'widgets/controller_scope.dart';
 
 export '../core/tiktok_launch_action.dart';
@@ -158,8 +159,12 @@ class _TikTokView extends StatelessWidget {
                 child: Stack(
               children: [
                 InAppWebView(
-                  initialUrlRequest: URLRequest(url: WebUri(logic.initialUrl)),
+                  initialUrlRequest: URLRequest(
+                    url: WebUri(logic.initialUrl),
+                    headers: englishWebViewHeaders,
+                  ),
                   initialUserScripts: UnmodifiableListView([
+                    englishWebViewLocaleUserScript(),
                     UserScript(
                       source: inlineVideoScript,
                       injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
@@ -175,6 +180,8 @@ class _TikTokView extends StatelessWidget {
                     javaScriptEnabled: true,
                     mediaPlaybackRequiresUserGesture: false,
                     allowsInlineMediaPlayback: true,
+                    incognito: false,
+                    cacheEnabled: true,
                   ),
                   onWebViewCreated: logic.onWebViewCreated,
                   onReceivedHttpAuthRequest: logic.onReceivedHttpAuthRequest,

@@ -12,7 +12,6 @@ class OtpSettingsController extends AppController {
   final formKey = GlobalKey<FormState>();
   late final url = TextEditingController(text: initialSettings.url);
   late final token = TextEditingController(text: initialSettings.token);
-  bool tokenHidden = true;
   bool saving = false;
 
   String? validateUrl(String? value) {
@@ -26,8 +25,6 @@ class OtpSettingsController extends AppController {
 
   String? validateToken(String? value) =>
       value == null || value.trim().isEmpty ? 'Nhập token API lấy OTP.' : null;
-
-  void toggleTokenVisibility() => mutate(() => tokenHidden = !tokenHidden);
 
   Future<OtpApiSettings?> save() async {
     if (saving || formKey.currentState?.validate() != true) return null;

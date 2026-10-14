@@ -6,6 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
+import 'package:test_tiktok/core/proxy_draft.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -15,10 +16,10 @@ void main() {
   var nextAgent = 0;
 
   ProxyStore openStore() => ProxyStore(
-        factory: databaseFactoryFfi,
-        databasePath: filename,
-        selectUserAgent: () async => 'test-user-agent-${nextAgent++}',
-      );
+    factory: databaseFactoryFfi,
+    databasePath: filename,
+    selectUserAgent: () async => 'test-user-agent-${nextAgent++}',
+  );
 
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('proxy_store_test_');
@@ -30,6 +31,57 @@ void main() {
   tearDown(() async {
     await store.close();
     await directory.delete(recursive: true);
+  });
+
+  test('saves all imported drafts and rolls back a failed batch', () async {
+    final records = ImportedConfiguration.parseMany(
+      '192.0.2.7:8080:user:pass first@example.com|tiktok|mail|1\n'
+      '192.0.2.8:8080:user:pass second@example.com|tiktok|mail',
+    );
+    final drafts = [
+      for (final row in records)
+        ProxyDraft(
+          row.account.email,
+          row.proxy,
+          'batch-agent',
+          account: row.account,
+          statusAccount: row.statusAccount,
+        ),
+    ];
+    final ids = await store.saveDrafts(drafts);
+    expect(ids, hasLength(2));
+    await store.close();
+    store = openStore();
+    final saved = await store.list();
+    expect(saved, hasLength(2));
+    expect(
+      saved.singleWhere((entry) => entry.id == ids.first).statusAccount,
+      AccountStatus.registered,
+    );
+    expect(
+      saved.singleWhere((entry) => entry.id == ids.last).statusAccount,
+      AccountStatus.unregistered,
+    );
+    expect(saved.every((entry) => entry.userAgent == 'batch-agent'), isTrue);
+    expect(await store.getCurrentProfile(), isNull);
+    await expectLater(
+      store.saveDrafts([
+        ProxyDraft(
+          'changed',
+          drafts.first.proxy,
+          'changed-agent',
+          account: drafts.first.account,
+        ),
+        ProxyDraft('invalid', drafts.last.proxy, ''),
+      ]),
+      throwsFormatException,
+    );
+    final after = await store.list();
+    expect(after.every((entry) => entry.userAgent == 'batch-agent'), isTrue);
+    expect(
+      after.singleWhere((entry) => entry.id == ids.first).name,
+      'first@example.com',
+    );
   });
 
   test(
@@ -195,8 +247,7 @@ void main() {
     },
   );
 
-  test('v3 migration preserves the active proxy and adds account storage',
-      () async {
+  test('v3 migration preserves the active proxy and adds account storage', () async {
     final db = await databaseFactoryFfi.openDatabase(
       filename,
       options: OpenDatabaseOptions(
@@ -224,7 +275,7 @@ void main() {
     await db.insert('current_proxy', {'id': 1, ...values});
     await db.close();
     final current = (await store.getCurrentProfile())!;
-    expect(current.proxy.password, 'pass');
+    expect(current.proxy!.password, 'pass');
     expect(current.userAgent, 'legacy-agent');
     expect(current.account, isNull);
     const account = AccountCredentials(
@@ -270,8 +321,8 @@ void main() {
       expect(entries.single.hasBeenUsed, isTrue);
       expect((await store.getCurrentProfile())!.name, 'Office');
       expect((await store.getCurrentProfile())!.userAgent, userAgent);
-      expect(entries.single.proxy.username, 'user');
-      expect(entries.single.proxy.password, "p'ass\nword");
+      expect(entries.single.proxy!.username, 'user');
+      expect(entries.single.proxy!.password, "p'ass\nword");
       expect(sameProxy(entries.single.proxy, proxy), isTrue);
     },
   );
@@ -417,7 +468,7 @@ void main() {
         final entries = await store.list();
         expect(entries, hasLength(1));
         expect(sameProxy(entries.single.proxy, current.proxy), isTrue);
-        expect(entries.single.proxy.password, 'secret');
+        expect(entries.single.proxy!.password, 'secret');
         expect(entries.single.userAgent, current.userAgent);
         expect(entries.single.hasBeenUsed, isTrue);
         expect(current.userAgent, isNotEmpty);
@@ -517,7 +568,7 @@ void main() {
       );
       final current = (await store.getCurrentProfile())!;
       expect(current.name, 'Active');
-      expect(current.proxy.password, 'secret');
+      expect(current.proxy!.password, 'secret');
       expect(current.userAgent, 'legacy-agent');
       expect(nextAgent, 0);
     },

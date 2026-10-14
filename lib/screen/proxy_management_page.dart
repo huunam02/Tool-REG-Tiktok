@@ -27,13 +27,13 @@ class _ProxyManagementView extends StatelessWidget {
   final ProxyManagementController logic;
 
   Future<void> _create(BuildContext context) async {
-    final draft = await Navigator.of(context).push<ProxyDraft>(
+    final drafts = await Navigator.of(context).push<List<ProxyDraft>>(
       MaterialPageRoute(
         builder: (_) =>
             CreateProxyPage(generateUserAgent: logic.store.generateUserAgent),
       ),
     );
-    if (context.mounted) await logic.saveDraft(draft);
+    if (context.mounted) await logic.saveDrafts(drafts);
   }
 
   Future<void> _edit(BuildContext context, SavedProxy entry) async {
@@ -174,7 +174,7 @@ class _ProxyManagementView extends StatelessWidget {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            proxyAddress(entry.proxy),
+                            proxyLabel(entry.proxy),
                             style: const TextStyle(
                               fontSize: 12,
                               height: 1.5,
@@ -197,7 +197,9 @@ class _ProxyManagementView extends StatelessWidget {
                                   color: ProxyColors.cyan,
                                 ),
                               ProxyBadge(
-                                label: entry.proxy.uri.scheme.toUpperCase(),
+                                label:
+                                    entry.proxy?.uri.scheme.toUpperCase() ??
+                                    'MẶC ĐỊNH',
                                 color: ProxyColors.muted,
                               ),
                             ],
@@ -261,61 +263,60 @@ class _ProxyManagementView extends StatelessWidget {
   }
 
   Widget _actionBar(BuildContext context, SavedProxy? selected) => Container(
-        decoration: const BoxDecoration(
-          color: ProxyColors.background,
-          border: Border(top: BorderSide(color: ProxyColors.border)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Center(
-              heightFactor: 1,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 980),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      selected == null
-                          ? 'Chọn một cấu hình để áp dụng.'
-                          : 'Đã chọn: ${logic.displayName(selected)}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: ProxyColors.muted,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    FilledButton(
-                      key: const Key('setSelectedProxy'),
-                      onPressed:
-                          logic.busy || selected == null || logic.loadFailed
-                              ? null
-                              : () => _use(context, selected),
-                      child: Text(
-                        logic.resettingSession
-                            ? 'Đang xóa phiên…'
-                            : 'Sử dụng cấu hình này',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton(
-                      key: const Key('disableProxy'),
-                      onPressed: logic.busy || logic.loadFailed
-                          ? null
-                          : () => _use(context, null),
-                      child: const Text('Bỏ chọn cấu hình'),
-                    ),
-                  ],
+    decoration: const BoxDecoration(
+      color: ProxyColors.background,
+      border: Border(top: BorderSide(color: ProxyColors.border)),
+    ),
+    child: SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Center(
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 980),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  selected == null
+                      ? 'Chọn một cấu hình để áp dụng.'
+                      : 'Đã chọn: ${logic.displayName(selected)}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: ProxyColors.muted,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 10),
+                FilledButton(
+                  key: const Key('setSelectedProxy'),
+                  onPressed: logic.busy || selected == null || logic.loadFailed
+                      ? null
+                      : () => _use(context, selected),
+                  child: Text(
+                    logic.resettingSession
+                        ? 'Đang xóa phiên…'
+                        : 'Sử dụng cấu hình này',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton(
+                  key: const Key('disableProxy'),
+                  onPressed: logic.busy || logic.loadFailed
+                      ? null
+                      : () => _use(context, null),
+                  child: const Text('Bỏ chọn cấu hình'),
+                ),
+              ],
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -337,11 +338,26 @@ class _ProxyManagementView extends StatelessWidget {
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: IconButton.filledTonal(
+              child: IconButton(
                 key: const Key('addProxy'),
                 tooltip: 'Thêm cấu hình',
                 onPressed: logic.busy ? null : () => _create(context),
-                icon: const Icon(Icons.add),
+                style: IconButton.styleFrom(
+                  foregroundColor: ProxyColors.cyan,
+                  backgroundColor: ProxyColors.cyan.withValues(alpha: 0.08),
+                  disabledForegroundColor: ProxyColors.muted.withValues(
+                    alpha: 0.45,
+                  ),
+                  side: BorderSide(
+                    color: ProxyColors.cyan.withValues(alpha: 0.35),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  minimumSize: const Size(40, 40),
+                  padding: const EdgeInsets.all(8),
+                ),
+                icon: const Icon(Icons.add_rounded, size: 22),
               ),
             ),
           ],
@@ -396,10 +412,10 @@ class _ProxyManagementView extends StatelessWidget {
                             logic.busy
                                 ? 'Đang tải cấu hình…'
                                 : logic.loadFailed
-                                    ? 'Không thể tải danh sách cấu hình.'
-                                    : logic.proxies.isEmpty
-                                        ? 'Chưa có cấu hình'
-                                        : 'Không có cấu hình phù hợp.',
+                                ? 'Không thể tải danh sách cấu hình.'
+                                : logic.proxies.isEmpty
+                                ? 'Chưa có cấu hình'
+                                : 'Không có cấu hình phù hợp.',
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: ProxyColors.muted,

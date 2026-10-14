@@ -11,7 +11,7 @@ class ProxyDraft {
   });
 
   final String name;
-  final WebViewProxy proxy;
+  final WebViewProxy? proxy;
   final String userAgent;
   final AccountCredentials? account;
   final AccountStatus statusAccount;

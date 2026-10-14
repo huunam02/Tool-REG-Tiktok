@@ -8,7 +8,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
-    'dispatches an 80ms touch using the live WebView point without node events',
+    'dispatches a 140ms touch using the live WebView point without node events',
     () async {
       final calls = <MethodCall>[];
       const channel = MethodChannel('x-slayer/accessibility_channel');
@@ -37,7 +37,7 @@ void main() {
               {'x': 50.0, 'y': 20.0},
             ],
             'startTime': 0,
-            'duration': 80,
+            'duration': 140,
           },
         ],
       });

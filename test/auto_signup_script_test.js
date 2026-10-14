@@ -80,8 +80,10 @@ function setup({ inputs = true, autoPaste = true, pasteResult = true, sendCodeAc
   }
   const execute = runInNewContext(`(${step})`, {
     window, document, location, HTMLSelectElement: Select,
+    Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
     Event: class { constructor(type) { this.type = type; } },
     Date: class extends Date { static now() { return time; } },
+    innerWidth: 400, innerHeight: 800,
     getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
   });
   return {
@@ -135,6 +137,26 @@ test('post-OTP Sign up waits ten seconds and dispatches a separate native gestur
   env.config.allowPasswordSubmit = false;
   assert.equal(env.run(false), 'waiting-result');
   assert.equal(env.requests.length, 1);
+});
+
+test('watches and likes a Home video before opening the signup flow', () => {
+  const env = setup({ inputs: false });
+  env.location.pathname = '/';
+  const video = env.add('video', '', 'VIDEO');
+  video.currentTime = 8.1;
+  video.duration = 10;
+  video.paused = true;
+  video.ended = false;
+  video.play = () => { video.paused = false; return Promise.resolve(); };
+  video.getBoundingClientRect = () => ({left: 0, top: 0, right: 400, bottom: 800});
+  const like = env.add('button', 'Like', 'BUTTON');
+  const article = { querySelectorAll: () => [like] };
+  video.closest = () => article;
+
+  assert.equal(env.run(), 'home-video-liked');
+  assert.equal(like.clicks, 1);
+  assert.equal(env.run(), 'waiting-login-modal');
+  assert.equal(like.clicks, 1);
 });
 
 test('failed Sign up gesture remains visible after Flutter latches final submission', async () => {
@@ -1088,6 +1110,38 @@ test('preserves drafts and handles CAPTCHA or errors on the password step after 
     assert.equal(env.requests.length, 0);
     assert.equal(env.submit.clicks, 0);
   }
+});
+
+test('post-OTP password stays focused until an acknowledged native paste reaches the DOM', async () => {
+  const env = setup({ autoPaste: false });
+  env.email.hidden = true;
+  env.config.otpRequestedAt = 0;
+  env.config.allowOtpSubmit = false;
+  env.config.useAccessibilityPasswordSubmit = true;
+  assert.equal(env.run(false), 'waiting-password-screen');
+  env.advance(350);
+  assert.equal(env.run(false), 'waiting-next');
+  await env.resolvePaste(); // Android accepted the command; input has not arrived.
+  assert.equal(env.password.value, '');
+  assert.equal(env.document.activeElement, env.password);
+  env.advance(1000);
+  assert.equal(env.run(false), 'waiting-next');
+  assert.equal(env.document.activeElement, env.password);
+  assert.equal(env.requests.length, 1);
+  // Chromium delivers the input asynchronously after the native acknowledgement.
+  env.password.value = env.config.password;
+  assert.equal(env.run(false), 'waiting-password-submit');
+  assert.equal(env.document.activeElement, null);
+  assert.equal(env.submit.clicks, 0);
+  env.advance(350);
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(true);
+  };
+  assert.equal(env.run(false), 'password-submitted');
+  assert.deepEqual(env.requests, [
+    ['FlutterSignupPaste', 1, 'password'], ['FlutterSignupPasswordSubmit', 1],
+  ]);
 });
 
 test('failed or ineffective native paste stops without submitting or retrying', async () => {

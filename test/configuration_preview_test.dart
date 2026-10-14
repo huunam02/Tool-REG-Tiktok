@@ -17,53 +17,49 @@ void main() {
     mailboxPassword: 'Mailbox-password',
   );
 
-  testWidgets('both account tabs only preview the selected configuration', (
-    tester,
-  ) async {
-    final store = MemoryProxyStore();
-    final id = await store.save(
-      name: 'Account 01',
-      proxy: WebViewProxy.parse(
-        '192.0.2.7:8080',
-        username: 'proxy-user',
-        password: 'proxy-pass',
-      )!,
-      userAgent: 'profile-agent',
-      account: account,
-      statusAccount: AccountStatus.registered,
-    );
-    await store.useSaved(id);
-    await tester.binding.setSurfaceSize(const Size(800, 2000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(userAgent: 'direct-agent', proxyStore: store),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Quản lý cấu hình'), findsOneWidget);
-    expect(find.text('person@example.com'), findsOneWidget);
-    expect(find.text('TikTok-password'), findsOneWidget);
-    expect(find.text('Mailbox-password'), findsOneWidget);
-    expect(find.text('proxy-user'), findsOneWidget);
-    expect(find.text('proxy-pass'), findsOneWidget);
-    expect(find.text('Đã đăng ký'), findsOneWidget);
-    for (final tab in ['signup', 'login']) {
-      await tester.tap(find.byKey(Key('${tab}Tab')));
+  testWidgets(
+    'Home shows general settings and the selected configuration without tabs',
+    (tester) async {
+      final store = MemoryProxyStore();
+      final id = await store.save(
+        name: 'Account 01',
+        proxy: WebViewProxy.parse(
+          '192.0.2.7:8080',
+          username: 'proxy-user',
+          password: 'proxy-pass',
+        )!,
+        userAgent: 'profile-agent',
+        account: account,
+        statusAccount: AccountStatus.registered,
+      );
+      await store.useSaved(id);
+      await tester.binding.setSurfaceSize(const Size(800, 2000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(userAgent: 'direct-agent', proxyStore: store),
+        ),
+      );
       await tester.pumpAndSettle();
-      final preview = tester.widget<ProxyDetails>(find.byType(ProxyDetails));
-      expect(sameAccount(preview.profile.account, account), isTrue);
-      expect(preview.profile.proxy.uri.host, '192.0.2.7');
-      expect(preview.profile.userAgent, 'profile-agent');
-      expect(find.byType(TextFormField), findsNothing);
-      expect(find.text('Import data'), findsNothing);
+      expect(find.text('Quản lý cấu hình'), findsOneWidget);
       expect(find.text('person@example.com'), findsOneWidget);
       expect(find.text('TikTok-password'), findsOneWidget);
       expect(find.text('Mailbox-password'), findsOneWidget);
+      expect(find.text('proxy-user'), findsOneWidget);
+      expect(find.text('proxy-pass'), findsOneWidget);
       expect(find.text('Đã đăng ký'), findsOneWidget);
-    }
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.byType(TabBar), findsNothing);
+      expect(find.byType(IndexedStack), findsNothing);
+      expect(find.byKey(const Key('comments')), findsOneWidget);
+      expect(find.byKey(const Key('openTikTok')), findsOneWidget);
+      expect(find.text('Đăng nhập tài khoản'), findsOneWidget);
+      final preview = tester.widget<ProxyDetails>(find.byType(ProxyDetails));
+      expect(sameAccount(preview.profile.account, account), isTrue);
+      expect(preview.profile.proxy!.uri.host, '192.0.2.7');
+      expect(preview.profile.userAgent, 'profile-agent');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'editing the registered switch persists both values and refreshes Home',
@@ -110,13 +106,17 @@ void main() {
           find.text(registered ? 'Đã đăng ký' : 'Chưa đăng ký'),
           findsOneWidget,
         );
+        expect(
+          find.text(registered ? 'Đăng nhập tài khoản' : 'Đăng ký tài khoản'),
+          findsOneWidget,
+        );
       }
       expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
-    'switching accounts on the same proxy clears the old session and refreshes both previews',
+    'switching accounts on the same proxy clears the old session and refreshes Home',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final previous = InAppWebViewPlatform.instance;
@@ -132,6 +132,7 @@ void main() {
         proxy: proxy,
         userAgent: 'same-agent',
         account: account,
+        statusAccount: AccountStatus.registered,
       );
       final second = await store.save(
         name: 'Second',
@@ -152,6 +153,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.text('Đăng nhập tài khoản'), findsOneWidget);
       await tester.tap(find.byKey(const Key('manageProxies')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(Key('savedProxy-$second')));
@@ -159,14 +161,21 @@ void main() {
       await tester.tap(find.byKey(const Key('setSelectedProxy')));
       await tester.pumpAndSettle();
       expect(session.calls.first, 'cookies');
-      for (final tab in ['signup', 'login']) {
-        await tester.tap(find.byKey(Key('${tab}Tab')));
-        await tester.pumpAndSettle();
-        expect(find.text('second@example.com'), findsOneWidget);
-        expect(find.text('second-tiktok'), findsOneWidget);
-        expect(find.text('person@example.com'), findsNothing);
-        expect(find.byType(TextFormField), findsNothing);
-      }
+      expect(find.text('second@example.com'), findsOneWidget);
+      expect(find.text('second-tiktok'), findsOneWidget);
+      expect(find.text('person@example.com'), findsNothing);
+      expect(find.text('Đăng ký tài khoản'), findsOneWidget);
+      expect(find.text('Đăng nhập tài khoản'), findsNothing);
+      expect(find.byKey(const Key('comments')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('manageProxies')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Key('savedProxy-$first')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('setSelectedProxy')));
+      await tester.pumpAndSettle();
+      expect(find.text('person@example.com'), findsOneWidget);
+      expect(find.text('Đăng nhập tài khoản'), findsOneWidget);
+      expect(find.text('Đăng ký tài khoản'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

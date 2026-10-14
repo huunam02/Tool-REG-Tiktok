@@ -52,7 +52,7 @@ class MainActivity: FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 try {
-                    result.success(DesktopChromeIdentity.configure(webView))
+                    result.success(DesktopChromeIdentity.configure(webView, call.argument<String>("userAgent")))
                 } catch (error: Exception) {
                     result.error("identity_unsupported", error.message, null)
                 }

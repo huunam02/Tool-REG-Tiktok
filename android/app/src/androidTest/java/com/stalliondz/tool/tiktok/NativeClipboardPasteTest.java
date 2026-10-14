@@ -7,6 +7,9 @@ import android.app.Instrumentation;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.text.InputType;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
 import android.widget.LinearLayout;
 import android.widget.Button;
 import java.util.concurrent.CountDownLatch;
@@ -30,6 +33,7 @@ public class NativeClipboardPasteTest {
     @Rule public ActivityTestRule<MainActivity> activityRule = new ActivityTestRule<>(MainActivity.class);
     private WebView webView;
     private Button otherFocus;
+    private boolean stalePasswordConnection;
 
     private MainActivity getActivity() { return activityRule.getActivity(); }
     private Instrumentation getInstrumentation() { return InstrumentationRegistry.getInstrumentation(); }
@@ -45,7 +49,15 @@ public class NativeClipboardPasteTest {
             otherFocus.setText("Other focus");
             otherFocus.setFocusableInTouchMode(true);
             layout.addView(otherFocus);
-            webView = new WebView(activity);
+            webView = new WebView(activity) {
+                @Override public InputConnection onCreateInputConnection(EditorInfo info) {
+                    InputConnection connection = super.onCreateInputConnection(info);
+                    if (stalePasswordConnection) {
+                        info.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
+                    }
+                    return connection;
+                }
+            };
             webView.getSettings().setJavaScriptEnabled(true);
             layout.addView(webView, new LinearLayout.LayoutParams(-1, 0, 1));
             activity.addContentView(layout, new ViewGroup.LayoutParams(-1, -1));
@@ -127,6 +139,18 @@ public class NativeClipboardPasteTest {
         assertFalse(paste("test@example.com", "false"));
         assertEquals("\"\"", evaluate("document.getElementById('email').value"));
         assertEquals("0", evaluate("window.inputEvents"));
+    }
+
+    @Test public void testDoesNotPastePasswordIntoStaleOtpConnection() throws Exception {
+        focusDomOnly("password");
+        stalePasswordConnection = true;
+        assertFalse(paste("test-secret", "document.activeElement.id === 'password' && !document.hidden"));
+        assertEquals("\"\"", evaluate("document.getElementById('password').value"));
+        assertEquals("0", evaluate("window.inputEvents"));
+        stalePasswordConnection = false;
+        assertTrue(paste("test-secret", "document.activeElement.id === 'password' && !document.hidden"));
+        awaitValue("password", "test-secret");
+        assertEquals("1", evaluate("window.inputEvents"));
     }
 
     @Test public void testRechecksCancellationAfterNativeFocus() throws Exception {

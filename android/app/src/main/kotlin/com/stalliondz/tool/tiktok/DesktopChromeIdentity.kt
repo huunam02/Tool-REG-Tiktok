@@ -6,9 +6,9 @@ import androidx.webkit.UserAgentMetadata
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 
-/** Request the same desktop profile as Chrome on an Android phone. */
+/** Apply the selected desktop UA and matching Client Hints before navigation. */
 object DesktopChromeIdentity {
-    fun configure(webView: WebView): String {
+    fun configure(webView: WebView, configuredAgent: String?): String {
         check(WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
             "WebView cần hỗ trợ User-Agent Client Hints. Hãy cập nhật Android System WebView."
         }
@@ -16,11 +16,27 @@ object DesktopChromeIdentity {
             "WebView cần hỗ trợ Client Hints formFactors. Hãy cập nhật Android System WebView."
         }
         val nativeAgent = WebSettings.getDefaultUserAgent(webView.context)
-        val version = Regex("Chrome/(\\d+(?:\\.\\d+){3})").find(nativeAgent)?.groupValues?.get(1)
+        val nativeVersion = Regex("Chrome/(\\d+(?:\\.\\d+){3})").find(nativeAgent)?.groupValues?.get(1)
             ?: error("Không đọc được phiên bản Chromium của WebView.")
+        val userAgent = configuredAgent?.takeIf { it.isNotBlank() }
+            ?: ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/${nativeVersion.substringBefore('.')}.0.0.0 Safari/537.36")
+        val selectedVersion = Regex("Chrome/(\\d+(?:\\.\\d+){3})").find(userAgent)?.groupValues?.get(1)
+        val version = if (selectedVersion == null ||
+            selectedVersion.substringBefore('.') == nativeVersion.substringBefore('.')) {
+            nativeVersion
+        } else selectedVersion
         val major = version.substringBefore('.')
-        val userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/$major.0.0.0 Safari/537.36"
+        val platform = when {
+            userAgent.contains("Windows NT") -> "Windows"
+            userAgent.contains("Macintosh") -> "macOS"
+            else -> "Linux"
+        }
+        val platformVersion = when (platform) {
+            "Windows" -> "10.0.0"
+            "macOS" -> "10.15.7"
+            else -> ""
+        }
         val settings = webView.settings
         val defaults = WebSettingsCompat.getUserAgentMetadata(settings)
         val brands = defaults.brandVersionList.map {
@@ -40,8 +56,8 @@ object DesktopChromeIdentity {
             UserAgentMetadata.Builder(defaults)
                 .setBrandVersionList(brands)
                 .setFullVersion(version)
-                .setPlatform("Linux")
-                .setPlatformVersion("")
+                .setPlatform(platform)
+                .setPlatformVersion(platformVersion)
                 .setArchitecture("x86")
                 .setBitness(64)
                 .setModel("")

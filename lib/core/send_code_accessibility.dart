@@ -13,6 +13,7 @@ enum SendCodeTapFailure {
 }
 
 /// Taps the live DOM target returned by the app's native WebView bridge.
+/// DOM lookup adds a small random offset within the button before hit-testing.
 /// The bridge verifies origin, attempt, focus, hit-testing and visible bounds;
 /// dispatchGesture does not require an Accessibility node or ACTION_CLICK.
 class SendCodeAccessibility {
@@ -26,7 +27,7 @@ class SendCodeAccessibility {
             GestureStroke(
               path: [GesturePoint(target.dx, target.dy)],
               startTime: 0,
-              duration: 80,
+              duration: 140,
             ),
           ],
         ),
@@ -88,7 +89,7 @@ class SendCodeAccessibility {
         return false;
       }
       debugPrint(
-        '[$buttonLabel] Dispatching 80ms tap at '
+        '[$buttonLabel] Dispatching 140ms tap at '
         '(${target.dx.toStringAsFixed(1)}, ${target.dy.toStringAsFixed(1)}).',
       );
       dispatching = true;

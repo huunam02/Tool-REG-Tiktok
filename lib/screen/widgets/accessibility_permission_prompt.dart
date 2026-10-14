@@ -1,10 +1,10 @@
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_accessibility_service/flutter_accessibility_service.dart';
 
-bool get supportsAccessibilityPermission => !kIsWeb && Platform.isAndroid;
+import '../../core/accessibility_permission.dart';
+
+export '../../core/accessibility_permission.dart'
+    show supportsAccessibilityPermission;
 
 /// Checks on the main screen, independently of account/proxy configuration.
 class AccessibilityPermissionPrompt extends StatefulWidget {

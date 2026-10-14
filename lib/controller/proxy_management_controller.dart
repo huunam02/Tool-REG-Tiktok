@@ -30,7 +30,7 @@ class ProxyManagementController extends AppController {
       };
       return matchesStatus &&
           (query.isEmpty ||
-              '${entry.name} ${proxyAddress(entry.proxy)} ${entry.proxy.username} ${entry.account?.email ?? ''}'
+              '${entry.name} ${proxyLabel(entry.proxy)} ${entry.proxy?.username ?? ''} ${entry.account?.email ?? ''}'
                   .toLowerCase()
                   .contains(query));
     }).toList();
@@ -110,6 +110,18 @@ class ProxyManagementController extends AppController {
     });
   }
 
+  Future<void> saveDrafts(List<ProxyDraft>? drafts) async {
+    if (drafts == null || drafts.isEmpty || !active) return;
+    await _perform(() async {
+      final ids = await store.saveDrafts(drafts);
+      selectedId = ids.last;
+      filter = ProxyUsageFilter.all;
+      search.clear();
+      await reload();
+      if (drafts.length > 1) notify('Đã lưu ${drafts.length} cấu hình.');
+    });
+  }
+
   Future<void> delete(SavedProxy entry) async {
     await _perform(() async {
       await store.delete(entry.id);
@@ -150,16 +162,16 @@ class ProxyManagementController extends AppController {
   bool isActive(SavedProxy entry) => sameProfile(entry, current);
 
   String displayName(SavedProxy entry) =>
-      entry.account?.email ?? entry.proxy.uri.host;
+      entry.account?.email ?? proxyLabel(entry.proxy);
 
   void setFilter(ProxyUsageFilter value) => mutate(() {
-        filter = value;
-        selectedId = null;
-      });
+    filter = value;
+    selectedId = null;
+  });
 
   void select(SavedProxy entry) => mutate(() {
-        selectedId = selectedId == entry.id ? null : entry.id;
-      });
+    selectedId = selectedId == entry.id ? null : entry.id;
+  });
 
   void searchChanged(String _) => mutate(() => selectedId = null);
 

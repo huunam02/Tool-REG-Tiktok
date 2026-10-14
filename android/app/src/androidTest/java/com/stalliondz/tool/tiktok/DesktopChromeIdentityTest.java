@@ -36,6 +36,20 @@ public class DesktopChromeIdentityTest {
     @org.junit.Rule public ActivityTestRule<MainActivity> activity = new ActivityTestRule<>(MainActivity.class);
 
     @Test public void firstRequestAndJavaScriptUseTheSameDesktopChromeProfile() throws Exception {
+        assertDesktopIdentity(null, "Linux", "");
+    }
+
+    @Test public void selectedWindowsUaReachesHttpAndJavaScript() throws Exception {
+        assertDesktopIdentity("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36", "Windows", "10.0.0");
+    }
+
+    @Test public void selectedMacUaReachesHttpAndJavaScript() throws Exception {
+        assertDesktopIdentity("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36", "macOS", "10.15.7");
+    }
+
+    private void assertDesktopIdentity(String configuredAgent, String platform, String platformVersion) throws Exception {
         assumeTrue(WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA));
         assertTrue("Updated WebView supports desktop form factors", WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA_FORM_FACTORS));
         Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
@@ -84,16 +98,17 @@ public class DesktopChromeIdentityTest {
                 webView.setWebViewClient(new WebViewClient() {
                     @Override public void onPageFinished(WebView webView, String url) { loaded.countDown(); }
                 });
-                userAgent.set(DesktopChromeIdentity.INSTANCE.configure(webView));
+                userAgent.set(DesktopChromeIdentity.INSTANCE.configure(webView, configuredAgent));
                 webView.loadUrl("http://127.0.0.1:" + server.getLocalPort() + "/");
             });
             assertTrue("HTTP fixture served", served.await(10, TimeUnit.SECONDS));
             assertNull(serverFailure.get());
             assertTrue("Page loaded", loaded.await(10, TimeUnit.SECONDS));
             Map<String, String> request = headers.get();
+            if (configuredAgent != null) assertEquals(configuredAgent, userAgent.get());
             assertEquals(userAgent.get(), request.get("user-agent"));
             assertEquals("?0", request.get("sec-ch-ua-mobile"));
-            assertEquals("\"Linux\"", request.get("sec-ch-ua-platform"));
+            assertEquals("\"" + platform + "\"", request.get("sec-ch-ua-platform"));
             assertTrue(request.get("sec-ch-ua").contains("\"Google Chrome\""));
             assertFalse(request.get("sec-ch-ua").contains("Android WebView"));
             Matcher major = Pattern.compile("Chrome/(\\d+)\\.").matcher(userAgent.get());
@@ -108,7 +123,7 @@ public class DesktopChromeIdentityTest {
             assertTrue(evaluated.await(5, TimeUnit.SECONDS));
             JSONObject identity = new JSONObject(new JSONArray("[" + snapshot.get() + "]").getString(0));
             assertEquals(userAgent.get(), identity.getString("ua"));
-            assertEquals("Linux", identity.getJSONObject("data").getString("platform"));
+            assertEquals(platform, identity.getJSONObject("data").getString("platform"));
             assertFalse(identity.getJSONObject("data").getBoolean("mobile"));
             assertTrue("Phone touch remains available", identity.getInt("touch") > 0);
             assertTrue("Desktop viewport", identity.getInt("width") >= 980);
@@ -119,7 +134,7 @@ public class DesktopChromeIdentityTest {
             assertEquals("x86", hints.getString("architecture"));
             assertEquals("64", hints.getString("bitness"));
             assertEquals("", hints.getString("model"));
-            assertEquals("", hints.getString("platformVersion"));
+            assertEquals(platformVersion, hints.getString("platformVersion"));
             assertEquals("[\"Desktop\"]", hints.getJSONArray("formFactors").toString());
             assertFalse(hints.getJSONArray("fullVersionList").toString().contains("Android WebView"));
         } finally {

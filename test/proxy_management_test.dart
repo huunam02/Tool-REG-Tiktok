@@ -135,7 +135,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(ProxyManagementPage), findsNothing);
         expect(sameProxy(store.current, selected.proxy), isTrue);
-        expect(find.text(proxyAddress(selected.proxy)), findsOneWidget);
+        expect(find.text(proxyAddress(selected.proxy!)), findsOneWidget);
         expect(store.currentUserAgent, selected.userAgent);
       }
       expect(store.currentUserAgent, firstAgent);
@@ -143,7 +143,7 @@ void main() {
       await tester.tap(find.byKey(const Key('disableProxy')));
       await tester.pumpAndSettle();
       expect(store.current, isNull);
-      expect(find.text('Kết nối trực tiếp — không dùng proxy'), findsOneWidget);
+      expect(find.text('Chưa chọn cấu hình'), findsOneWidget);
       expect(store.entries, hasLength(2));
       expect(
         session.calls,
@@ -203,7 +203,7 @@ void main() {
     expect(find.byKey(const Key('savedProxyName')), findsNothing);
     await tester.tap(find.byKey(const Key('saveProxyEntry')));
     await tester.pumpAndSettle();
-    expect(find.text('Nhập địa chỉ proxy.'), findsOneWidget);
+    expect(find.text('Nhập địa chỉ proxy.'), findsNothing);
     expect(find.text('Nhập email tài khoản hợp lệ.'), findsOneWidget);
     expect(store.entries, isEmpty);
     await tester.enterText(
@@ -267,6 +267,25 @@ void main() {
     expect(find.byKey(const Key('savedProxy-1')), findsNothing);
     expect(find.byKey(const Key('addProxy')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('saves an empty proxy as the device default network', (
+    tester,
+  ) async {
+    final store = MemoryProxyStore();
+    await tester.pumpWidget(
+      MaterialApp(home: ProxyManagementPage(store: store)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('addProxy')));
+    await tester.pumpAndSettle();
+    await fillAccount(tester);
+    await tester.tap(find.byKey(const Key('saveProxyEntry')));
+    await tester.pumpAndSettle();
+
+    expect(store.entries, hasLength(1));
+    expect(store.entries.single.proxy, isNull);
+    expect(find.text('Mặc định của máy'), findsNWidgets(2));
   });
 
   testWidgets(

@@ -14,6 +14,19 @@ void main() {
     expect(data.account.email, 'person@example.com');
     expect(data.account.password, 'TikTok-password');
     expect(data.account.mailboxPassword, 'Mailbox-password');
+    expect(data.statusAccount, AccountStatus.unregistered);
+  });
+
+  test('imports optional registration status without changing credentials', () {
+    for (final suffix in ['', '|0', '|1']) {
+      final data = ImportedConfiguration.parse('$record$suffix');
+      expect(
+        data.statusAccount,
+        suffix == '|1' ? AccountStatus.registered : AccountStatus.unregistered,
+      );
+      expect(data.account.password, 'TikTok-password');
+      expect(data.account.mailboxPassword, 'Mailbox-password');
+    }
   });
 
   test('preserves password characters and copied line endings', () {
@@ -23,6 +36,40 @@ void main() {
     expect(data.proxy.password, 'pass:word');
     expect(data.account.password, '  tiktok password  ');
     expect(data.account.mailboxPassword, ' mailbox password ');
+  });
+
+  test('imports multiple rows with blank lines and all line ending types', () {
+    final data = ImportedConfiguration.parseMany(
+      '\r\n$record|1\n \n${record.replaceFirst('person@', 'second@')}|0\r'
+      '${record.replaceFirst('person@', 'third@')}\r\n',
+    );
+    expect(data.map((row) => row.account.email), [
+      'person@example.com',
+      'second@example.com',
+      'third@example.com',
+    ]);
+    expect(data.map((row) => row.statusAccount), [
+      AccountStatus.registered,
+      AccountStatus.unregistered,
+      AccountStatus.unregistered,
+    ]);
+  });
+
+  test('reports the original line number and rejects empty batches', () {
+    expect(
+      () => ImportedConfiguration.parseMany('$record\n\n$record|2'),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          startsWith('Dòng 3:'),
+        ),
+      ),
+    );
+    expect(
+      () => ImportedConfiguration.parseMany(' \r\n\n'),
+      throwsFormatException,
+    );
   });
 
   test(
@@ -40,6 +87,9 @@ void main() {
         record.replaceFirst('|TikTok-password|', '||'),
         record.replaceFirst('|Mailbox-password', '|   '),
         '$record|extra',
+        '$record|2',
+        '$record|',
+        '$record|1|0',
       ]) {
         expect(
           () => ImportedConfiguration.parse(invalid),

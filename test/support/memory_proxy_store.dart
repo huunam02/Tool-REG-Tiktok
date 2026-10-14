@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
+import 'package:test_tiktok/core/proxy_draft.dart';
 
 class MemoryProxyStore extends ProxyStore {
   WebViewProxy? current;
@@ -82,7 +83,7 @@ class MemoryProxyStore extends ProxyStore {
   Future<int> save({
     int? id,
     required String name,
-    required WebViewProxy proxy,
+    required WebViewProxy? proxy,
     String? userAgent,
     AccountCredentials? account,
     AccountStatus? statusAccount,
@@ -121,6 +122,20 @@ class MemoryProxyStore extends ProxyStore {
       currentStatus = saved.statusAccount;
     }
     return savedId;
+  }
+
+  @override
+  Future<List<int>> saveDrafts(List<ProxyDraft> drafts) async {
+    return [
+      for (final draft in drafts)
+        await save(
+          name: draft.name,
+          proxy: draft.proxy,
+          userAgent: draft.userAgent,
+          account: draft.account,
+          statusAccount: draft.statusAccount,
+        ),
+    ];
   }
 
   @override

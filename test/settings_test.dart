@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_tiktok/controller/home_controller.dart';
+import 'package:test_tiktok/core/accessibility_permission.dart';
 import 'package:test_tiktok/core/desktop_user_agents.dart';
 import 'package:test_tiktok/core/otp_settings_store.dart';
 import 'package:test_tiktok/screen/home_page.dart';
@@ -16,6 +19,138 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('accessibility switch follows system permission on resume',
+      (tester) async {
+    var enabled = true;
+    var requests = 0;
+    await _pumpAccessibilitySettings(
+        tester,
+        AccessibilityPermissionService(
+          supported: true,
+          isEnabled: () async => enabled,
+          openSettings: () async {
+            requests++;
+            enabled = false;
+            return false;
+          },
+        ));
+    final toggle = find.byKey(const Key('accessibilitySettings'));
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(requests, 1);
+    expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+
+    enabled = true;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'accessibility switch waits for a verified grant and remains off when cancelled',
+      (tester) async {
+    var enabled = false;
+    var requests = 0;
+    final settingsReturned = Completer<bool>();
+    await _pumpAccessibilitySettings(
+        tester,
+        AccessibilityPermissionService(
+          supported: true,
+          isEnabled: () async => enabled,
+          openSettings: () async {
+            requests++;
+            if (requests == 1) return settingsReturned.future;
+            return true;
+          },
+        ));
+    final toggle = find.byKey(const Key('accessibilitySettings'));
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+    expect(tester.widget<SwitchListTile>(toggle).onChanged, isNull);
+    enabled = true;
+    settingsReturned.complete(true);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+    expect(tester.widget<SwitchListTile>(toggle).onChanged, isNotNull);
+
+    enabled = false;
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+    expect(requests, 3);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('permission check failure still allows opening Android settings',
+      (tester) async {
+    var checkFailed = true;
+    await _pumpAccessibilitySettings(
+        tester,
+        AccessibilityPermissionService(
+          supported: true,
+          isEnabled: () async {
+            if (checkFailed) throw StateError('Permission unavailable');
+            return true;
+          },
+          openSettings: () async {
+            checkFailed = false;
+            return true;
+          },
+        ));
+    expect(find.textContaining('Không thể kiểm tra quyền'), findsOneWidget);
+    final toggle = find.byKey(const Key('accessibilitySettings'));
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+    expect(find.textContaining('Không thể kiểm tra quyền'), findsNothing);
+  });
+
+  testWidgets('unsupported platforms hide accessibility without native calls',
+      (tester) async {
+    await _pumpAccessibilitySettings(
+        tester,
+        AccessibilityPermissionService(
+          supported: false,
+          isEnabled: () async => throw StateError('Should not check'),
+          openSettings: () async => throw StateError('Should not open'),
+        ));
+    expect(find.byKey(const Key('accessibilitySettings')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'accessibility switch fits enlarged text and closes a pending check',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final check = Completer<bool>();
+    await _pumpAccessibilitySettings(
+        tester,
+        AccessibilityPermissionService(
+          supported: true,
+          isEnabled: () => check.future,
+        ),
+        enlargedText: true);
+    expect(
+        tester
+            .widget<SwitchListTile>(
+                find.byKey(const Key('accessibilitySettings')))
+            .onChanged,
+        isNull);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    check.complete(true);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('settings opens OTP configuration and usage guide',
       (tester) async {
@@ -82,4 +217,27 @@ void main() {
     expect(homeController.otpSettings.token, saved.token);
     expect(tester.takeException(), isNull);
   });
+}
+
+Future<void> _pumpAccessibilitySettings(
+  WidgetTester tester,
+  AccessibilityPermissionService service, {
+  bool enlargedText = false,
+}) async {
+  await tester.pumpWidget(MaterialApp(
+    builder: enlargedText
+        ? (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(1.5)),
+              child: child!,
+            )
+        : null,
+    home: SettingsPage(
+      initialOtpSettings: const OtpApiSettings.defaults(),
+      otpSettingsStore: const OtpSettingsStore(),
+      onOtpSettingsChanged: (_) {},
+      accessibilityPermission: service,
+    ),
+  ));
+  await tester.pumpAndSettle();
 }

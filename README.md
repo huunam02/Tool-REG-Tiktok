@@ -10,13 +10,19 @@ native và các script WebView nằm trong `lib/core/`. Mỗi màn có controlle
 
 ## Quản lý cấu hình
 
-Trong **Thiết lập chung**, phần **Cấu hình** hiển thị đầy đủ proxy, thông tin
+Trên màn **Home**, phần **Cấu hình** hiển thị đầy đủ proxy, thông tin
 xác thực proxy, User-Agent, email TikTok, mật khẩu TikTok, mật khẩu email OTP
 và trạng thái đăng ký. Nút **Quản lý cấu hình** mở danh sách các bộ dữ liệu.
 Mỗi bộ gộp proxy và tài khoản; không có ô tên riêng, danh sách nhận diện bằng
 email và địa chỉ proxy. Chọn một dòng rồi nhấn **Sử dụng cấu hình này**.
-Hai tab **Đăng ký** và **Đăng nhập** chỉ xem trước bộ dữ liệu đang chọn,
-không nhập/sửa hoặc import riêng. Cả hai tác vụ dùng cùng tài khoản này.
+Home hiển thị trực tiếp cấu hình và bình luận, không có thanh tab.
+Trên Android, **Cài đặt → Quyền Trợ năng** có switch hiển thị quyền thực tế.
+Chạm switch để mở Cài đặt Android và bật/tắt dịch vụ; khi quay lại app,
+switch tự cập nhật theo quyền đã cấp.
+Nút **Đăng ký tài khoản** ở cuối màn dành cho cấu hình chưa đăng ký;
+cấu hình đã đăng ký hiển thị **Đăng nhập tài khoản**. Nút này chạy tác vụ
+tương ứng, chỉ hiển thị khi đã chọn cấu hình và chỉ bật khi cấu hình có tài khoản.
+Nút **Mở TikTok** phía dưới mở TikTok bằng bộ dữ liệu đang chọn.
 
 Form tạo/sửa có switch **Đã đăng ký**. Bật lưu `statusAccount = registered`,
 tắt lưu `statusAccount = unregistered` (mặc định). Đây là trạng thái do người
@@ -28,14 +34,15 @@ cấu hình có proxy, User-Agent hoặc tài khoản khác, app xóa phiên Web
 khi chuyển. **Bỏ chọn cấu hình** chuyển sang kết nối trực tiếp và bỏ tài khoản
 khỏi phần xem trước, giữ danh sách và phiên trình duyệt.
 
-Form **Tạo cấu hình** tự tạo User-Agent mặc định. Nút **Lấy User-Agent Chrome desktop** trên Android hoặc **Tạo User-Agent mới** trên iOS
+Form **Tạo cấu hình** tự tạo User-Agent mặc định. Nút **Đổi User-Agent**
 cập nhật chuỗi trong form thêm hoặc sửa. App lưu chuỗi đang hiển thị cùng
 proxy bằng SQLite; chọn lại proxy hoặc mở lại app sẽ khôi phục cấu hình đó.
-Trên Android, chuỗi được chuẩn hóa khi mở WebView theo Chrome bật desktop:
-`Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/<major>.0.0.0 Safari/537.36`.
-`major` lấy từ Chromium thực tế trên thiết bị, không random phiên bản 120–140
-nữa. Client Hints dùng `Google Chrome`/`Chromium`, cùng phiên bản thực tế,
-`platform="Linux"`, `mobile=false`, `formFactors=["Desktop"]`, model trống và kiến trúc x86/64 bit.
+Trên Android, nút đổi random UA Chrome desktop Linux hoặc Windows cùng phiên bản
+Chrome 120–140. Bộ có 42 UA; dùng hết bộ trước khi lặp, không lặp ngay UA cuối.
+Lịch sử được giữ qua các lần mở app. Không tạo mẫu macOS trên Android.
+WebView giữ nguyên chuỗi đã lưu, kể cả UA nhập tay. Client Hints dùng
+`Google Chrome`/`Chromium`, phiên bản và platform tương ứng với UA đã chọn,
+`mobile=false`, `formFactors=["Desktop"]`, model trống và kiến trúc x86/64 bit.
 Điện thoại vẫn giữ khả năng cảm ứng. Metadata được cấu hình native trước
 request đầu tiên, cho cả WebView TikTok và WebView kiểm tra IP. Nếu Android
 System WebView không hỗ trợ `USER_AGENT_METADATA` và `USER_AGENT_METADATA_FORM_FACTORS`, app báo lỗi thay vì tải
@@ -76,11 +83,27 @@ và cờ chọn cấu hình hiện tại. Migration giữ proxy/User-Agent, tài
 đã có và bộ dữ liệu đang chọn; chuyển dữ liệu rồi xóa hai bảng cũ.
 Các proxy cũ chưa có tài khoản có thể bổ sung ở màn sửa cấu hình.
 
-Màn tạo có **Import data** và nút dán từ clipboard, nhận đúng một dòng:
-`host:port:username:password email|mật_khẩu_TikTok|mật_khẩu_email_OTP`.
-Proxy và tài khoản cách nhau một dấu cách. Import điền cả hai phần cùng lúc,
-giữ nguyên các ký tự mật khẩu và User-Agent đang hiển thị. Dữ liệu lỗi không
-thay thế các ô đã điền. Kiểm tra rồi nhấn **Tạo cấu hình** để lưu.
+Nút **Import data** trên màn tạo mở bottom sheet có hai mục:
+**Từ file** (Excel `.xlsx`, `.xls` hoặc `.txt`) và **Dán từ clipboard**.
+TXT và clipboard nhận nhiều cấu hình,
+mỗi cấu hình một dòng theo định dạng:
+`host:port:username:password email|mật_khẩu_TikTok|mật_khẩu_email_OTP[|0/1]`.
+Thêm `|1` ở cuối để đặt **Đã đăng ký**; `|0` hoặc không thêm trạng thái đặt
+**Chưa đăng ký**, kể cả khi công tắc đang bật. Giá trị khác báo lỗi import.
+Proxy và tài khoản cách nhau một dấu cách. Dòng trống được bỏ qua. Nếu có dòng
+lỗi, app báo số dòng và giữ nguyên dữ liệu trước đó để sửa rồi import lại.
+Mỗi dòng hiển thị một mục **Thông tin cấu hình** riêng, có proxy, tài khoản,
+trạng thái và User-Agent độc lập, chỉnh sửa riêng trước khi lưu.
+Cấu hình đầu giữ User-Agent đang hiển thị; các cấu hình tiếp theo tự tạo
+User-Agent riêng và có nút đổi riêng. Nhấn **Tạo N cấu hình** để lưu
+cả danh sách trong một giao dịch; lỗi lưu không để lại cấu hình lưu dở.
+
+Excel nhận dữ liệu trên tất cả sheet, mỗi cấu hình một dòng: toàn bộ chuỗi
+trong một ô; hai cột proxy và chuỗi tài khoản; hoặc các cột proxy, email,
+mật khẩu TikTok, mật khẩu email và trạng thái (cột trạng thái không bắt buộc).
+Có thể đặt tiêu đề `Proxy` hoặc `Data` ở dòng đầu. Dòng trống được bỏ qua;
+lỗi Excel hiển thị tên sheet và số dòng. Ô nhập thủ công vẫn dùng được,
+nhấn dấu ✓ trong ô để import dữ liệu đã nhập.
 
 Đăng ký, đăng nhập và xem TikTok đều áp dụng cùng proxy trước khi mở WebView.
 Các thao tác tự động nhập email/mật khẩu/OTP, chọn Email, gửi biểu mẫu và Skip
@@ -115,9 +138,9 @@ hiện không được inject. Dừng app và build/chạy lại hoàn toàn đ�
 
 ## OTP API
 
-Tab **Đăng ký** và **Đăng nhập** dùng tài khoản và mật khẩu hộp thư của
-cấu hình đang chọn. Tạo hoặc sửa dữ liệu qua **Quản lý cấu hình** trong tab
-**Thiết lập chung**, rồi chọn cấu hình để chạy tác vụ.
+Luồng đăng ký và đăng nhập dùng tài khoản và mật khẩu hộp thư của
+cấu hình đang chọn. Tạo hoặc sửa dữ liệu qua **Quản lý cấu hình** trên
+màn **Home**, rồi chọn cấu hình để sử dụng.
 
 Khi chạy đăng ký, app tự tạo ngày sinh ngẫu nhiên trong khoảng 1960–2004,
 bao gồm ngày hợp lệ theo số ngày của từng tháng và năm nhuận.
@@ -134,7 +157,9 @@ thành công; nút **Dừng** vẫn hủy được thao tác trong thời gian c
 Luồng **Tự động đăng nhập** mở trang chủ TikTok → bấm Account → mở dialog Login
 → Use phone or email → Username or Email, rồi tiếp tục nhập tài khoản, mật khẩu
 và xử lý OTP như trước, kể cả khi dialog giữ nguyên URL trang chủ.
-Khi hiện **Verify it’s really you**, app tự bấm đúng ô **Email**, chờ TikTok
+Khi hiện **Verify it’s really you**, app chờ 5 giây trước khi chọn ô **Email**.
+Trên Android, app lấy lại tọa độ từ WebView và dùng `dispatchGesture()` chạm
+80 ms, có kiểm tra ô đang hiển thị và không bị che. Sau đó app chờ TikTok
 mở bước nhập mã rồi gọi API OTP. Luồng đăng nhập có tối đa 120 giây để mở
 biểu mẫu; sau khi gửi mật khẩu, chọn Email hoặc gửi OTP, mỗi bước có thêm
 45 giây chờ kết quả để tránh dừng ngay khi hộp xác minh xuất hiện trên mạng chậm.
@@ -145,7 +170,7 @@ Các bước mở Account, chọn phương thức/email, gửi mã, xác nhận 
 đăng ký và Skip đều có chốt theo bước trong mỗi lần chạy. Trang tạo lại nút DOM
 không khiến app bấm lại bước đã thực hiện; cùng một nút vẫn có thể được dùng
 ở hai bước khác nhau như gửi mật khẩu rồi xác nhận OTP. Trên Android, Send code
-của cả đăng ký và đăng nhập, Sign up sau OTP, Skip tạo username và Continue
+của cả đăng ký và đăng nhập, ô Email xác minh đăng nhập, Sign up sau OTP, Skip tạo username và Continue
 trong biểu mẫu đăng nhập dùng
 `flutter_accessibility_service 1.2.0` để
 `dispatchGesture()` một cú chạm 80 ms tại tọa độ nút trong WebView, sau khi
@@ -163,7 +188,7 @@ App luôn lấy OTP qua API cho **Đăng nhập** và **Đăng ký**. Mở biể
 **Cài đặt** trên AppBar, chọn **Cấu hình OTP API** để sửa URL và token dùng chung
 cho hai luồng. App lưu cấu hình bằng `SharedPreferences`; các giá trị
 `otpApiUrl` và `otpApiToken` trong `lib/core/config.dart` là mặc định lần đầu.
-Trong từng tab, nhập mật khẩu hộp thư của email tương ứng.
+Nhập mật khẩu hộp thư của email trong màn tạo hoặc sửa cấu hình.
 Mật khẩu hộp thư là trường riêng với mật khẩu TikTok. App tự lấy mã OTP từ API.
 
 App dùng thư viện `http` để gọi `POST /api/code` sau khi TikTok yêu cầu OTP, với JSON
@@ -188,8 +213,11 @@ lần thử và dừng luồng tài khoản/OTP. Lỗi `account-api` hoặc `ema
 được hiển thị riêng với mã lỗi; không suy đoán nguyên nhân chỉ từ mã 7.
 Luồng tự động cũng nhận diện thông báo giới hạn hiển thị trực tiếp trong
 biểu mẫu, kể cả màn mật khẩu sau OTP không có `role=alert`. Khi gặp lỗi này,
-app dừng thao tác và hủy yêu cầu OTP đang chờ; nút **Quay về cấu hình** trở về
-màn trước và giữ thông tin đã nhập. Đây là phản hồi từ TikTok; app không gỡ
+app dừng thao tác và hủy yêu cầu OTP đang chờ. Lỗi tài khoản và cảnh báo proxy
+hiện bằng toast phía dưới, không thêm banner làm co WebView. Toast lỗi tài khoản
+có nút **Cấu hình** trở về màn trước và giữ thông tin đã nhập. Trạng thái auto
+và nút Dừng cũng nằm đè phía dưới để giữ nguyên kích thước WebView.
+Đây là phản hồi từ TikTok; app không gỡ
 giới hạn hay tự gửi lại đăng ký. Không có thời gian chờ cụ thể trong phản hồi.
 
 Trong bản debug, mở **Debug Console** và lọc `[OTP API]` để xem request,

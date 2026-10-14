@@ -14,8 +14,12 @@ void main() {
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-            const MethodChannel('test_tiktok/webview_identity'),
-            (call) async => 'test-agent');
+          const MethodChannel('test_tiktok/webview_identity'),
+          (call) async {
+            expect(call.arguments['userAgent'], 'test-agent');
+            return 'test-agent';
+          },
+        );
     final previousPlatform = InAppWebViewPlatform.instance;
     platform = TestProxyIpPlatform();
     InAppWebViewPlatform.instance = platform;
@@ -28,7 +32,9 @@ void main() {
   });
 
   Future<String?> check(WebViewProxyIpChecker checker) => checker.check(
-      userAgent: 'test-agent', onAuth: (controller, challenge) async => null);
+    userAgent: 'test-agent',
+    onAuth: (controller, challenge) async => null,
+  );
 
   Future<void> flush() => Future<void>.delayed(Duration.zero);
 
@@ -46,8 +52,10 @@ void main() {
       expect(view.params.initialSettings!.incognito, isFalse);
       expect(view.params.initialSettings!.cacheEnabled, isTrue);
       expect(view.params.initialSettings!.userAgent, 'test-agent');
-      expect(view.params.initialSettings!.preferredContentMode,
-          UserPreferredContentMode.DESKTOP);
+      expect(
+        view.params.initialSettings!.preferredContentMode,
+        UserPreferredContentMode.DESKTOP,
+      );
       view.loaded('{"ip":"203.0.113.7"}');
       expect(await result, '203.0.113.7');
       expect(view.controller.scripts, ['document.body.innerText']);
@@ -63,11 +71,11 @@ void main() {
     expect(first.disposed, isTrue);
     final fallback = platform.probes.last;
     expect(
-        (fallback.controller.loadedRequest ??
-                fallback.params.initialUrlRequest!)
-            .url!
-            .host,
-        'api64.ipify.org');
+      (fallback.controller.loadedRequest ?? fallback.params.initialUrlRequest!)
+          .url!
+          .host,
+      'api64.ipify.org',
+    );
     fallback.loaded('{"ip":"2001:db8::7"}');
     expect(await result, '2001:db8::7');
     expect(fallback.disposed, isTrue);
@@ -79,15 +87,18 @@ void main() {
     platform.probes.single.loaded('{"ip":"proxy error"}');
     await flush();
     final fallback = platform.probes.last;
-    fallback.loaded('{"ip":"203.0.113.7"}',
-        url: WebUri('https://unexpected.example/'));
+    fallback.loaded(
+      '{"ip":"203.0.113.7"}',
+      url: WebUri('https://unexpected.example/'),
+    );
     expect(await result, isNull);
     expect(fallback.controller.scripts, isEmpty);
   });
 
   test('timeout releases both WebViews', () async {
-    final result =
-        check(WebViewProxyIpChecker(timeout: const Duration(milliseconds: 5)));
+    final result = check(
+      WebViewProxyIpChecker(timeout: const Duration(milliseconds: 5)),
+    );
     expect(await result, isNull);
     expect(platform.probes, hasLength(2));
     expect(platform.probes.every((view) => view.disposed), isTrue);
@@ -102,37 +113,45 @@ void main() {
     expect(platform.probes.single.disposed, isTrue);
   });
 
-  test('a native view that starts after cancellation is still released',
-      () async {
-    platform.startupGate = Completer<void>();
-    final checker = WebViewProxyIpChecker();
-    final result = check(checker);
-    checker.cancel();
-    expect(await result, isNull);
-    expect(platform.probes.single.disposed, isFalse);
-    platform.startupGate!.complete();
-    await flush();
-    expect(platform.probes.single.disposed, isTrue);
-    expect(platform.probes, hasLength(1));
-  });
+  test(
+    'a native view that starts after cancellation is still released',
+    () async {
+      platform.startupGate = Completer<void>();
+      final checker = WebViewProxyIpChecker();
+      final result = check(checker);
+      checker.cancel();
+      expect(await result, isNull);
+      expect(platform.probes.single.disposed, isFalse);
+      platform.startupGate!.complete();
+      await flush();
+      expect(platform.probes.single.disposed, isTrue);
+      expect(platform.probes, hasLength(1));
+    },
+  );
 
-  test('auth callback receives challenge and rejected auth stops fallback',
-      () async {
-    final challenge = HttpAuthenticationChallenge(
+  test(
+    'auth callback receives challenge and rejected auth stops fallback',
+    () async {
+      final challenge = HttpAuthenticationChallenge(
         protectionSpace: URLProtectionSpace(host: 'proxy.example.com'),
-        previousFailureCount: 2);
-    final result = WebViewProxyIpChecker().check(
+        previousFailureCount: 2,
+      );
+      final result = WebViewProxyIpChecker().check(
         userAgent: 'test-agent',
         onAuth: (controller, received) async {
           expect(received, same(challenge));
           return HttpAuthResponse(action: HttpAuthResponseAction.CANCEL);
-        });
-    final view = platform.probes.single;
-    final response = await view.params.onReceivedHttpAuthRequest!(
-        view.callbackController, challenge);
-    expect(response!.action, HttpAuthResponseAction.CANCEL);
-    expect(await result, isNull);
-    expect(platform.probes, hasLength(1));
-    expect(view.disposed, isTrue);
-  });
+        },
+      );
+      final view = platform.probes.single;
+      final response = await view.params.onReceivedHttpAuthRequest!(
+        view.callbackController,
+        challenge,
+      );
+      expect(response!.action, HttpAuthResponseAction.CANCEL);
+      expect(await result, isNull);
+      expect(platform.probes, hasLength(1));
+      expect(view.disposed, isTrue);
+    },
+  );
 }

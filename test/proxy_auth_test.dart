@@ -177,8 +177,9 @@ void main() {
       expect((await challenge('proxy.example.com', firstCount + 1))?.action,
           HttpAuthResponseAction.CANCEL);
       await tester.pump();
-      expect(find.text('Proxy từ chối xác thực'), findsOneWidget);
-      expect(find.byKey(const Key('proxyWarningBanner')), findsOneWidget);
+      expect(find.textContaining('Proxy từ chối xác thực'), findsOneWidget);
+      expect(find.byKey(const Key('proxyWarningBanner')), findsNothing);
+      expect(find.byType(SnackBar), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       debugDefaultTargetPlatformOverride = null;
     });
@@ -201,7 +202,8 @@ void main() {
         error);
     await tester.pump();
     expect(find.byKey(const Key('webViewFailure')), findsNothing);
-    expect(find.byKey(const Key('proxyWarningBanner')), findsOneWidget);
+    expect(find.byKey(const Key('proxyWarningBanner')), findsNothing);
+    expect(find.byType(SnackBar), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     params.onReceivedError!(
@@ -249,7 +251,7 @@ void main() {
             previousFailureCount: 1));
     await tester.pump();
     expect(response?.action, HttpAuthResponseAction.CANCEL);
-    expect(find.text('Proxy yêu cầu xác thực'), findsOneWidget);
+    expect(find.textContaining('Proxy yêu cầu xác thực'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
     debugDefaultTargetPlatformOverride = null;
   });
@@ -272,9 +274,9 @@ void main() {
     await tester.pump();
     platform.probes.last.failed();
     await tester.pumpAndSettle();
-    expect(find.text('Chưa xác minh được IP qua proxy'), findsOneWidget);
+    expect(find.textContaining('Chưa xác minh được IP qua proxy'), findsOneWidget);
     expect(find.byKey(const Key('webViewFailure')), findsNothing);
-    await tester.tap(find.byKey(const Key('retryProxyWarning')));
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Thử lại'));
     await tester.pump();
     final previousProbe = platform.probes.last;
     previousProbe.loaded('{"ip":"203.0.113.7"}');

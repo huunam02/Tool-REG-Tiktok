@@ -24,8 +24,10 @@ class WebViewProxyIpChecker {
   Future<String?> check({
     required String userAgent,
     required Future<HttpAuthResponse?> Function(
-            InAppWebViewController, URLAuthenticationChallenge)
-        onAuth,
+      InAppWebViewController,
+      URLAuthenticationChallenge,
+    )
+    onAuth,
   }) async {
     for (final host in ['api.ipify.org', 'api64.ipify.org']) {
       if (_cancelled) return null;
@@ -37,20 +39,23 @@ class WebViewProxyIpChecker {
       }
 
       final request = URLRequest(
-        url: WebUri(Uri.https(host, '/', {
-          'format': 'json',
-          '_': DateTime.now().microsecondsSinceEpoch.toString(),
-        }).toString()),
-        headers: const {
-          'Cache-Control': 'no-cache',
-        },
+        url: WebUri(
+          Uri.https(host, '/', {
+            'format': 'json',
+            '_': DateTime.now().microsecondsSinceEpoch.toString(),
+          }).toString(),
+        ),
+        headers: const {'Cache-Control': 'no-cache'},
       );
       final view = HeadlessInAppWebView(
         initialUrlRequest: needsAndroidDesktopIdentity ? null : request,
         onWebViewCreated: (controller) async {
           if (!needsAndroidDesktopIdentity) return;
           try {
-            await configureAndroidDesktopIdentity(controller);
+            await configureAndroidDesktopIdentity(
+              controller,
+              userAgent: userAgent,
+            );
             if (_cancelled || result.isCompleted) return;
             await controller.loadUrl(urlRequest: request);
           } catch (_) {
@@ -73,12 +78,13 @@ class WebViewProxyIpChecker {
           }
           try {
             final body = await controller.evaluateJavascript(
-                source: 'document.body.innerText');
+              source: 'document.body.innerText',
+            );
             final data = body is String ? jsonDecode(body) : null;
             final ip = data is Map ? data['ip'] : null;
-            finish(ip is String && InternetAddress.tryParse(ip) != null
-                ? ip
-                : null);
+            finish(
+              ip is String && InternetAddress.tryParse(ip) != null ? ip : null,
+            );
           } catch (_) {
             finish(null);
           }
@@ -110,9 +116,13 @@ class WebViewProxyIpChecker {
       final startup = view.run();
       // A native view can finish starting after cancellation or timeout.
       // Release it then as well, because dispose() before run() ends is a no-op.
-      unawaited(startup.then((_) async {
-        if (finished) await view.dispose();
-      }).catchError((Object _) {}));
+      unawaited(
+        startup
+            .then((_) async {
+              if (finished) await view.dispose();
+            })
+            .catchError((Object _) {}),
+      );
       try {
         await Future.any<void>([startup, result.future.then((_) {})]);
         final ip = await result.future;

@@ -14,6 +14,7 @@ object NativeSendCodeTarget {
         }
         val targetMethod = when {
             action == "send-code" -> "getSendCodeTarget"
+            action == "select-verification-email" && context == "login" -> "getEmailVerificationTarget"
             action == "submit-password" && context == "signup" -> "getPasswordSubmitTarget"
             action == "skip-username" && context == "signup" -> "getUsernameSkipTarget"
             action == "continue-password" && context == "login" -> "getPasswordContinueTarget"

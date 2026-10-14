@@ -26,6 +26,10 @@ String buildAutoLoginScript({
 
   bool useAccessibilityContinue = false,
 
+  bool useAccessibilityEmailVerification = false,
+
+  int emailVerificationDelayMs = 5000,
+
 }) =>
 
     '''
@@ -57,6 +61,10 @@ String buildAutoLoginScript({
           'useAccessibilitySendCode': useAccessibilitySendCode,
 
           'useAccessibilityContinue': useAccessibilityContinue,
+
+          'useAccessibilityEmailVerification': useAccessibilityEmailVerification,
+
+          'emailVerificationDelayMs': emailVerificationDelayMs,
 
         })}, $allowSubmit
 
@@ -355,12 +363,19 @@ const String autoLoginStepScript = r'''
     const offsetY = viewport?.offsetTop || 0;
     const viewportWidth = viewport?.width || window.innerWidth;
     const viewportHeight = viewport?.height || window.innerHeight;
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
+    let x = rect.left + rect.width / 2;
+    let y = rect.top + rect.height / 2;
     if (![x, y, viewportWidth, viewportHeight].every(Number.isFinite) ||
         rect.width <= 0 || rect.height <= 0 || viewportWidth <= 0 || viewportHeight <= 0 ||
         x < offsetX || y < offsetY || x >= offsetX + viewportWidth ||
         y >= offsetY + viewportHeight) return null;
+    // Slightly vary each tap, keeping it inside the button and visible viewport.
+    const jitterX = Math.min(6, rect.width * 0.15,
+      (x - offsetX) * 0.8, (offsetX + viewportWidth - x) * 0.8);
+    const jitterY = Math.min(6, rect.height * 0.15,
+      (y - offsetY) * 0.8, (offsetY + viewportHeight - y) * 0.8);
+    x += (Math.random() * 2 - 1) * jitterX;
+    y += (Math.random() * 2 - 1) * jitterY;
     // Reject another DOM element covering the button (including modal overlays).
     const hit = document.elementFromPoint(x, y);
     if (!hit || hit !== control && !control.contains(hit)) return null;
@@ -371,6 +386,28 @@ const String autoLoginStepScript = r'''
 
   state.getSendCodeTarget = (attempt) => state.canSendCodeWithAccessibility(attempt)
     ? nativeButtonTarget(state.codeRequest.control) : null;
+
+  const findEmailVerificationMethod = (root) => {
+    const isEmailMethod = el => enabled(el) &&
+      /^e-?mail\s*([^\s@]+@[^\s@]+\.[^\s@]+)?$/i.test(controlText(el));
+    const row = Array.from(root.querySelectorAll('[class*="pc-home-item-"]')).find(isEmailMethod);
+    const semantic = Array.from(root.querySelectorAll(
+      'button, [role="button"], a, [role="link"]')).find(isEmailMethod);
+    const methods = Array.from(root.querySelectorAll('div, span')).filter(isEmailMethod).reverse();
+    return row || semantic || methods.find(el => /@/.test(controlText(el))) || methods[0];
+  };
+  state.getEmailVerificationTarget = (attempt) => {
+    const request = state.emailVerificationRequest;
+    const root = dialog();
+    if (!state.active || window.__flutterAutoLogin !== state || state.attempt !== attempt ||
+        document.hidden || location.origin !== 'https://www.tiktok.com' ||
+        location.pathname.startsWith('/signup') || !verificationActive() || !root ||
+        root !== request?.root || !hasTitle(root, identityTitle) || findVerification() ||
+        !request?.pending || request.failed || request.control.isConnected === false ||
+        findEmailVerificationMethod(root) !== request.control ||
+        find('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]')) return null;
+    return nativeButtonTarget(request.control);
+  };
 
   const continuePattern = /^(continue|tiếp tục)$/i;
   const passwordFormRoot = () => {
@@ -472,6 +509,13 @@ const String autoLoginStepScript = r'''
   };
 
   if (state.emailVerificationRequest || state.codeRequest) {
+    const emailRequest = state.emailVerificationRequest;
+    if (emailRequest?.failed) return 'email-verification-accessibility-failed';
+    if (emailRequest?.pending) return 'requesting-email-verification';
+    if (emailRequest?.selectedReported === false) {
+      emailRequest.selectedReported = true;
+      return 'email-verification-selected';
+    }
     // Some identity flows show a separate Send code screen after selecting Email.
     const send = state.emailVerificationRequest && codeControls().find(el =>
       enabled(el) && sendCodePattern.test(controlText(el)));
@@ -488,43 +532,57 @@ const String autoLoginStepScript = r'''
 
     if (state.emailVerificationSelected || state.otpSubmitted || config.allowOtpSubmit === false) return 'waiting-result';
 
-    // IDV's list, row and content all have the same text. Only the row owns
-
-    // the click handler; clicking its parent list does not bubble down to it.
-
-    const isEmailMethod = el => enabled(el) &&
-
-      /^e-?mail\s*([^\s@]+@[^\s@]+\.[^\s@]+)?$/i.test(controlText(el));
-
-    const idvRow = Array.from(verificationModal.querySelectorAll('[class*="pc-home-item-"]'))
-
-      .find(isEmailMethod);
-
-    const semanticMethod = Array.from(verificationModal.querySelectorAll(
-
-      'button, [role="button"], a, [role="link"]'
-
-    )).find(isEmailMethod);
-
-    const methods = Array.from(verificationModal.querySelectorAll(
-
-      'div, span'
-
-    )).filter(isEmailMethod).reverse();
-
-    const emailMethod = idvRow || semanticMethod ||
-
-      methods.find(el => /@/.test(controlText(el))) || methods[0];
-
-    if (!emailMethod) return 'waiting-form';
-
+    // Select the actionable row inside the foreground identity dialog.
+    const emailMethod = findEmailVerificationMethod(verificationModal);
+    if (!emailMethod) {
+      state.emailVerificationPreparation = null;
+      return 'waiting-form';
+    }
+    if (!state.emailVerificationPreparation ||
+        state.emailVerificationPreparation.control !== emailMethod ||
+        state.emailVerificationPreparation.root !== verificationModal) {
+      emailMethod.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+      emailMethod.focus?.({ preventScroll: true });
+      state.emailVerificationPreparation = { control: emailMethod, root: verificationModal, at: Date.now() };
+    }
+    const delayMs = Number.isFinite(config.emailVerificationDelayMs)
+      ? Math.max(0, config.emailVerificationDelayMs) : 5000;
+    if (Date.now() - state.emailVerificationPreparation.at < delayMs) return 'waiting-email-verification';
+    state.emailVerificationPreparation = null;
     state.emailVerificationSelected = true;
-
-    state.emailVerificationRequest = { at: Date.now() };
-
-    clickOnce(emailMethod, 'select-verification-email');
-
-    return 'email-verification-selected';
+    if (!config.useAccessibilityEmailVerification) {
+      state.emailVerificationRequest = { at: Date.now() };
+      clickOnce(emailMethod, 'select-verification-email');
+      return 'email-verification-selected';
+    }
+    // Reserve this selection before crossing the bridge, and wait for the
+    // native gesture to finish before starting TikTok's acknowledgement timer.
+    state.actions.add('select-verification-email');
+    const current = state.emailVerificationRequest = {
+      control: emailMethod, root: verificationModal,
+      at: null, pending: true, failed: false, selectedReported: false,
+    };
+    try {
+      const request = window.flutter_inappwebview?.callHandler('FlutterLoginEmailVerification', config.attempt);
+      if (!request?.then) {
+        current.pending = false;
+        current.failed = true;
+      } else request.then(tapped => {
+        if (!state.active || window.__flutterAutoLogin !== state || state.emailVerificationRequest !== current) return;
+        current.pending = false;
+        current.failed = tapped !== true;
+        if (!current.failed) current.at = Date.now();
+      }).catch(() => {
+        if (state.active && state.emailVerificationRequest === current) {
+          current.pending = false;
+          current.failed = true;
+        }
+      });
+    } catch (_) {
+      current.pending = false;
+      current.failed = true;
+    }
+    return current.failed ? 'email-verification-accessibility-failed' : 'requesting-email-verification';
 
   }
 
@@ -594,9 +652,17 @@ const String autoLoginStepScript = r'''
 
   const paste = (editor, field, text) => {
 
-    if (state.pasted.get(editor)?.failed) return 'paste-failed';
+    const previousPaste = state.pasted.get(editor);
 
-    if (editor.value === text) return null;
+    if (previousPaste?.failed) return 'paste-failed';
+
+    if (editor.value === text) {
+      if (previousPaste?.accepted && !previousPaste.committed) {
+        previousPaste.committed = true;
+        if (document.activeElement === editor) editor.blur?.();
+      }
+      return null;
+    }
 
     if (state.pasted.has(editor)) {
 
@@ -638,11 +704,16 @@ const String autoLoginStepScript = r'''
 
       state.pending = null;
 
-      state.pasted.set(editor, { at: Date.now(), failed: pasted !== true });
+      const result = { at: Date.now(), failed: pasted !== true,
+        accepted: pasted === true, committed: false };
+      state.pasted.set(editor, result);
 
-      // Commit the native editor before checking validation and Continue.
-
-      if (pasted === true && document.activeElement === editor) editor.blur?.();
+      // Android can acknowledge paste before Chromium delivers the input.
+      // Keep focus until the expected value arrives, then commit validation.
+      if (pasted === true && editor.value === text) {
+        result.committed = true;
+        if (document.activeElement === editor) editor.blur?.();
+      }
 
     };
 

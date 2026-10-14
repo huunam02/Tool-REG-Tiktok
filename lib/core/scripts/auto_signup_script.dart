@@ -377,12 +377,19 @@ const String autoSignupStepScript = r'''
     const offsetY = viewport?.offsetTop || 0;
     const viewportWidth = viewport?.width || window.innerWidth;
     const viewportHeight = viewport?.height || window.innerHeight;
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
+    let x = rect.left + rect.width / 2;
+    let y = rect.top + rect.height / 2;
     if (![x, y, viewportWidth, viewportHeight].every(Number.isFinite) ||
         rect.width <= 0 || rect.height <= 0 || viewportWidth <= 0 || viewportHeight <= 0 ||
         x < offsetX || y < offsetY || x >= offsetX + viewportWidth ||
         y >= offsetY + viewportHeight) return null;
+    // Slightly vary each tap, keeping it inside the button and visible viewport.
+    const jitterX = Math.min(6, rect.width * 0.15,
+      (x - offsetX) * 0.8, (offsetX + viewportWidth - x) * 0.8);
+    const jitterY = Math.min(6, rect.height * 0.15,
+      (y - offsetY) * 0.8, (offsetY + viewportHeight - y) * 0.8);
+    x += (Math.random() * 2 - 1) * jitterX;
+    y += (Math.random() * 2 - 1) * jitterY;
     const hit = document.elementFromPoint(x, y);
     if (!hit || hit !== control && !control.contains(hit)) return null;
     return { x: x - offsetX, y: y - offsetY, viewportWidth, viewportHeight };
@@ -544,6 +551,61 @@ const String autoSignupStepScript = r'''
   };
 
   if (state.codeRequest) return codeRequestResult();
+
+  const activeVideo = () => Array.from(document.querySelectorAll('video'))
+    .filter(video => visible(video) && video.getBoundingClientRect().bottom > 0 &&
+      video.getBoundingClientRect().top < innerHeight)
+    .sort((a, b) => {
+      const area = video => {
+        const rect = video.getBoundingClientRect();
+        return Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) *
+          Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+      };
+      return area(b) - area(a);
+    })[0] || null;
+
+  // Start signup from a real Home feed interaction so TikTok opens its
+  // account dialog through the same path as a normal viewer.
+  if (!signupFormVisible() && !dialog()) {
+    const video = activeVideo();
+    if (video) {
+      const preSignup = window.__flutterSignupHomeInteraction ||= {
+        video: null, startedAt: 0, liked: false,
+      };
+      if (preSignup.video !== video) {
+        preSignup.video = video;
+        preSignup.startedAt = Date.now();
+        preSignup.liked = false;
+      }
+      if (!preSignup.liked) {
+        if (video.paused) video.play?.().catch?.(() => {});
+        const duration = Number(video.duration);
+        const watched = video.ended ||
+          Number.isFinite(duration) && duration > 0 &&
+            video.currentTime >= Math.min(duration - 0.2, 8) ||
+          Date.now() - preSignup.startedAt >= 10000;
+        if (!watched) return 'waiting-home-video';
+
+        const root = video.closest('article') || document;
+        const like = Array.from(root.querySelectorAll(
+          'button, [role="button"], [data-e2e*="like" i]'
+        )).find(control => {
+          const label = (control.getAttribute('aria-label') ||
+            control.getAttribute('title') || control.getAttribute('data-e2e') ||
+            control.textContent || '').trim();
+          return visible(control) && control.getAttribute('aria-pressed') !== 'true' &&
+            /^(like|like video|thích|thích video)$/i.test(label) ||
+            visible(control) && control.getAttribute('aria-pressed') !== 'true' &&
+            /like|thích/i.test(label);
+        });
+        if (!like) return 'waiting-home-like';
+        like.click();
+        preSignup.liked = true;
+        return 'home-video-liked';
+      }
+      return 'waiting-login-modal';
+    }
+  }
 
 
 
@@ -771,9 +833,17 @@ const String autoSignupStepScript = r'''
 
   const paste = (editor, field, text) => {
 
-    if (state.pasted.get(editor)?.failed) return 'paste-failed';
+    const previousPaste = state.pasted.get(editor);
 
-    if (editor.value === text) return null;
+    if (previousPaste?.failed) return 'paste-failed';
+
+    if (editor.value === text) {
+      if (previousPaste?.accepted && !previousPaste.committed) {
+        previousPaste.committed = true;
+        if (document.activeElement === editor) editor.blur?.();
+      }
+      return null;
+    }
 
     if (state.pasted.has(editor)) {
 
@@ -821,13 +891,16 @@ const String autoSignupStepScript = r'''
 
       state.pending = null;
 
-      state.pasted.set(editor, { at: Date.now(), failed: pasted !== true });
+      const result = { at: Date.now(), failed: pasted !== true,
+        accepted: pasted === true, committed: false };
+      state.pasted.set(editor, result);
 
-      // Native paste can leave the editor focused. Commit blur validation
-
-      // before the next poll clicks Send code or submits the form.
-
-      if (pasted === true && document.activeElement === editor) editor.blur?.();
+      // Android can acknowledge paste before Chromium delivers the input.
+      // Keep focus until the expected value arrives, then commit validation.
+      if (pasted === true && editor.value === text) {
+        result.committed = true;
+        if (document.activeElement === editor) editor.blur?.();
+      }
 
     };
 

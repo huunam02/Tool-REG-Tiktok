@@ -10,7 +10,6 @@ import 'tiktok_page.dart';
 
 import '../controller/home_controller.dart';
 import 'widgets/controller_scope.dart';
-import 'widgets/accessibility_permission_prompt.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({
@@ -194,15 +193,6 @@ class _HomeView extends StatelessWidget {
               ],
             ),
             actions: [
-              if (supportsAccessibilityPermission)
-                IconButton(
-                  key: const Key('accessibilitySettings'),
-                  tooltip: 'Trợ năng',
-                  onPressed: logic.busy
-                      ? null
-                      : () => showAccessibilityPermissionDialog(context),
-                  icon: const Icon(Icons.accessibility_new),
-                ),
               IconButton(
                 key: const Key('openSettings'),
                 tooltip: 'Cài đặt',
@@ -211,31 +201,6 @@ class _HomeView extends StatelessWidget {
               ),
               const SizedBox(width: 8),
             ],
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(48),
-              child: AbsorbPointer(
-                absorbing: logic.busy,
-                child: TabBar(
-                  key: const Key('homeTabs'),
-                  controller: logic.tabs,
-                  isScrollable: true,
-                  tabAlignment: TabAlignment.start,
-                  labelColor: _HomeStyle.cyan,
-                  unselectedLabelColor: _HomeStyle.muted,
-                  indicatorColor: _HomeStyle.cyan,
-                  dividerColor: _HomeStyle.border,
-                  labelStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  tabs: const [
-                    Tab(key: Key('generalTab'), text: 'Thiết lập chung'),
-                    Tab(key: Key('signupTab'), text: 'Đăng ký'),
-                    Tab(key: Key('loginTab'), text: 'Đăng nhập'),
-                  ],
-                ),
-              ),
-            ),
           ),
           body: SafeArea(
             bottom: false,
@@ -244,21 +209,10 @@ class _HomeView extends StatelessWidget {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final wide = constraints.maxWidth >= 760;
-                  return IndexedStack(
-                    index: logic.selectedTab,
-                    children: [
-                      _tabPage(logic.formKey, 'general', wide, [
-                        _pair(_proxySection(context), _commentsSection(), wide),
-                        const SizedBox(height: 18),
-                      ]),
-                      _tabPage(null, 'signup', wide, [
-                        _accountPreview(context, signup: true),
-                      ]),
-                      _tabPage(null, 'login', wide, [
-                        _accountPreview(context, signup: false),
-                      ]),
-                    ],
-                  );
+                  return _homeContent(wide, [
+                    _pair(_proxySection(context), _commentsSection(), wide),
+                    const SizedBox(height: 18),
+                  ]);
                 },
               ),
             ),
@@ -267,16 +221,14 @@ class _HomeView extends StatelessWidget {
         ),
       );
 
-  Widget _tabPage(
-    GlobalKey<FormState>? formKey,
-    String name,
+  Widget _homeContent(
     bool wide,
     List<Widget> sections,
   ) =>
       Form(
-        key: formKey,
+        key: logic.formKey,
         child: SingleChildScrollView(
-          key: PageStorageKey('home-$name'),
+          key: const PageStorageKey('home-general'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsets.fromLTRB(wide ? 28 : 16, 16, wide ? 28 : 16, 24),
           child: Center(
@@ -304,47 +256,39 @@ class _HomeView extends StatelessWidget {
               heightFactor: 1,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1080),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: switch (logic.selectedTab) {
-                    2 => FilledButton(
-                        key: const Key('runAutoLogin'),
-                        onPressed: logic.busy || logic.proxyLoadFailed
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (logic.currentProxy != null) ...[
+                      FilledButton(
+                        key: const Key('runAccountAction'),
+                        onPressed: logic.busy ||
+                                logic.proxyLoadFailed ||
+                                logic.currentProxy?.account == null
                             ? null
-                            : () =>
-                                _openTikTok(context, TikTokLaunchAction.login),
+                            : () => _openTikTok(context, logic.accountAction),
                         child: Text(
-                          logic.opening
-                              ? 'Đang mở TikTok…'
-                              : 'Chạy đăng nhập tự động',
+                          logic.accountAction == TikTokLaunchAction.login
+                              ? 'Đăng nhập tài khoản'
+                              : 'Đăng ký tài khoản',
                           textAlign: TextAlign.center,
                         ),
                       ),
-                    1 => FilledButton(
-                        key: const Key('runAutoSignup'),
-                        onPressed: logic.busy || logic.proxyLoadFailed
-                            ? null
-                            : () =>
-                                _openTikTok(context, TikTokLaunchAction.signup),
-                        child: Text(
-                          logic.opening
-                              ? 'Đang mở TikTok…'
-                              : 'Chạy đăng ký tự động',
-                          textAlign: TextAlign.center,
-                        ),
+                      const SizedBox(height: 10),
+                    ],
+                    OutlinedButton(
+                      key: const Key('openTikTok'),
+                      onPressed: logic.busy || logic.proxyLoadFailed
+                          ? null
+                          : () =>
+                              _openTikTok(context, TikTokLaunchAction.browse),
+                      child: Text(
+                        logic.opening ? 'Đang mở TikTok…' : 'Mở TikTok',
+                        textAlign: TextAlign.center,
                       ),
-                    _ => OutlinedButton(
-                        key: const Key('openTikTok'),
-                        onPressed: logic.busy || logic.proxyLoadFailed
-                            ? null
-                            : () =>
-                                _openTikTok(context, TikTokLaunchAction.browse),
-                        child: Text(
-                          logic.opening ? 'Đang mở TikTok…' : 'Mở TikTok',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                  },
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -366,7 +310,7 @@ class _HomeView extends StatelessWidget {
           ),
         ] else if (logic.currentProxy == null) ...[
           const SelectableText(
-            'Kết nối trực tiếp — không dùng proxy',
+            'Chưa chọn cấu hình',
             key: Key('currentProxyAddress'),
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
@@ -401,40 +345,6 @@ class _HomeView extends StatelessWidget {
               'Nội dung bình luận',
               helper: 'Mỗi dòng là một bình luận.',
             ),
-          ),
-        ],
-      );
-
-  Widget _accountPreview(
-    BuildContext context, {
-    required bool signup,
-  }) =>
-      _section(
-        signup ? 'Đăng ký' : 'Đăng nhập',
-        'Xem trước dữ liệu của cấu hình đang chọn. Chỉnh sửa trong Quản lý cấu hình.',
-        signup ? Icons.person_add_alt_1 : Icons.login,
-        [
-          if (logic.loadingProxy)
-            const LinearProgressIndicator()
-          else if (logic.proxyLoadFailed)
-            const Text(
-                'Không thể tải cấu hình. Hãy thử tải lại ở Thiết lập chung.')
-          else if (logic.currentProxy == null)
-            const Text(
-              'Chưa chọn cấu hình. Vào Quản lý cấu hình để tạo hoặc chọn dữ liệu.',
-            )
-          else
-            ProxyDetails(
-              profile: logic.currentProxy!,
-              keyPrefix: signup ? 'signupPreview' : 'loginPreview',
-            ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            key: Key(
-              signup ? 'manageSignupConfiguration' : 'manageLoginConfiguration',
-            ),
-            onPressed: logic.busy ? null : () => _manageProxies(context),
-            child: const Text('Quản lý cấu hình'),
           ),
         ],
       );

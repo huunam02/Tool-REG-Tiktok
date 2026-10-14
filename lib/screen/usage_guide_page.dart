@@ -19,12 +19,13 @@ class UsageGuidePage extends StatelessWidget {
     (
       '3',
       'Chọn và xem trước dữ liệu',
-      'Chọn cấu hình để sử dụng. Tab Đăng ký và Đăng nhập chỉ xem trước proxy và tài khoản đã chọn.',
+      'Chọn cấu hình để sử dụng. Màn Home hiển thị proxy và tài khoản đã chọn.',
     ),
     (
       '4',
       'Chạy tác vụ',
-      'Bấm nút chạy ở cuối màn hình. App mở TikTok ở chế độ desktop: '
+      'Bấm Đăng ký tài khoản hoặc Đăng nhập tài khoản theo trạng thái cấu hình; '
+          'bấm Mở TikTok để mở trang. App dùng chế độ desktop: '
           'iOS và Android đều dùng đúng User-Agent đã chọn.',
     ),
   ];
@@ -49,7 +50,7 @@ class UsageGuidePage extends StatelessWidget {
                       ),
                       SizedBox(height: 8),
                       Text(
-                        'Thực hiện lần lượt các bước bên dưới để chạy đăng ký, đăng nhập hoặc tự động xem TikTok.',
+                        'Thực hiện lần lượt các bước bên dưới để cấu hình và mở TikTok.',
                         style:
                             TextStyle(color: SettingsStyle.muted, height: 1.55),
                       ),

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
+import 'package:test_tiktok/controller/home_controller.dart';
 
 import 'package:test_tiktok/core/desktop_user_agents.dart';
 import 'package:test_tiktok/screen/home_page.dart';
@@ -64,6 +66,7 @@ void main() {
           (call) {
             expect(call.method, 'configure');
             expect(call.arguments['id'], 0);
+            expect(call.arguments['userAgent'], 'test-agent');
             return gate.future;
           },
         );
@@ -162,22 +165,9 @@ void main() {
         find.byKey(const Key('comments')),
         ' First comment \n\n Second comment ',
       );
-      await _selectHomeTab(tester, 'signupTab');
-      expect(
-        find.byKey(const Key('signupOtp'), skipOffstage: false),
-        findsNothing,
-      );
-      expect(find.byKey(const Key('signupBirthday')), findsNothing);
-      expect(find.text('Chạy đăng ký tự động'), findsOneWidget);
-      expect(find.byKey(const Key('runAutoLogin')), findsNothing);
-      await _selectHomeTab(tester, 'loginTab');
-      expect(
-        find.byKey(const Key('loginOtp'), skipOffstage: false),
-        findsNothing,
-      );
-      expect(find.text('Chạy đăng nhập tự động'), findsOneWidget);
+      expect(find.byType(TabBar), findsNothing);
       expect(find.byKey(const Key('runAutoSignup')), findsNothing);
-      await _selectHomeTab(tester, 'generalTab');
+      expect(find.byKey(const Key('runAutoLogin')), findsNothing);
       await tester.tap(find.byKey(const Key('openTikTok')));
       await tester.pumpAndSettle();
       final page = tester.widget<TikTokPage>(find.byType(TikTokPage));
@@ -206,29 +196,44 @@ void main() {
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
       expect(find.byType(TikTokPage), findsNothing);
-      await _selectHomeTab(tester, 'signupTab');
       expect(
         tester
             .widget<SelectableText>(
-              find.byKey(const Key('signupPreviewAccountEmail')),
+              find.byKey(const Key('currentProxyAccountEmail')),
             )
             .data,
         'person@example.com',
       );
-      for (final entry in {
-        'runAutoLogin': TikTokLaunchAction.login,
-        'runAutoSignup': TikTokLaunchAction.signup,
-      }.entries) {
-        await _selectHomeTab(
-          tester,
-          entry.value == TikTokLaunchAction.login ? 'loginTab' : 'signupTab',
+      for (final action in [
+        TikTokLaunchAction.login,
+        TikTokLaunchAction.signup,
+      ]) {
+        proxyStore.currentStatus = action == TikTokLaunchAction.login
+            ? AccountStatus.registered
+            : AccountStatus.unregistered;
+        final homeController = tester
+            .state<GetBuilderState<HomeController>>(
+              find.byType(GetBuilder<HomeController>),
+            )
+            .controller!;
+        await homeController.restoreProxy();
+        await tester.pumpAndSettle();
+        expect(
+          find.text(action == TikTokLaunchAction.login
+              ? 'Đăng nhập tài khoản'
+              : 'Đăng ký tài khoản'),
+          findsOneWidget,
         );
-        await tester.tap(find.byKey(Key(entry.key)));
+        expect(
+          tester.getBottomLeft(find.byKey(const Key('runAccountAction'))).dy,
+          lessThan(tester.getTopLeft(find.byKey(const Key('openTikTok'))).dy),
+        );
+        await tester.tap(find.byKey(const Key('runAccountAction')));
         await tester.pumpAndSettle();
         final automaticPage = tester.widget<TikTokPage>(
           find.byType(TikTokPage),
         );
-        expect(automaticPage.launchAction, entry.value);
+        expect(automaticPage.launchAction, action);
         expect(automaticPage.configuration.proxy?.uri.host, '127.0.0.1');
         expect(automaticPage.configuration.proxy?.uri.port, 8888);
         expect(
@@ -237,10 +242,7 @@ void main() {
         );
         expect(proxyCalls.last.arguments['host'], '127.0.0.1');
         expect(proxyCalls.last.arguments['port'], 8888);
-        expect(
-          proxyCalls.length,
-          entry.value == TikTokLaunchAction.login ? 2 : 3,
-        );
+        expect(proxyCalls.length, action == TikTokLaunchAction.login ? 2 : 3);
         expect(
           tester
               .widget<InAppWebView>(find.byType(InAppWebView))
@@ -251,7 +253,7 @@ void main() {
           page.configuration.userAgent,
         );
         expect(find.byType(DatePickerDialog), findsNothing);
-        if (entry.value == TikTokLaunchAction.signup) {
+        if (action == TikTokLaunchAction.signup) {
           expect(
             automaticPage.configuration.birthday!.year,
             inInclusiveRange(1960, 2004),
@@ -361,8 +363,9 @@ void main() {
           ),
         ),
       );
-      await _selectHomeTab(tester, 'loginTab');
-      await tester.tap(find.byKey(const Key('runAutoLogin')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('runAccountAction')), findsNothing);
+      await _launchHomeAction(tester, TikTokLaunchAction.login);
       await tester.pumpAndSettle();
       expect(
         find.text(
@@ -372,8 +375,7 @@ void main() {
       );
       expect(find.text('Nhập email đăng ký hợp lệ.'), findsNothing);
       expect(find.byType(TikTokPage), findsNothing);
-      await _selectHomeTab(tester, 'signupTab');
-      await tester.tap(find.byKey(const Key('runAutoSignup')));
+      await _launchHomeAction(tester, TikTokLaunchAction.signup);
       await tester.pumpAndSettle();
       expect(
         find.text(
@@ -383,7 +385,6 @@ void main() {
       );
       expect(find.text('Nhập tài khoản đăng nhập.'), findsNothing);
       expect(find.byType(TikTokPage), findsNothing);
-      await _selectHomeTab(tester, 'generalTab');
       await tester.tap(find.byKey(const Key('openTikTok')));
       await tester.pumpAndSettle();
       expect(
@@ -395,7 +396,7 @@ void main() {
     },
   );
 
-  testWidgets('Home tabs fit a narrow screen with enlarged text', (
+  testWidgets('Home general settings fit a narrow screen with enlarged text', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(320, 700));
@@ -414,10 +415,11 @@ void main() {
         ),
       ),
     );
-    for (final tab in ['signupTab', 'loginTab', 'generalTab']) {
-      await _selectHomeTab(tester, tab);
-      expect(tester.takeException(), isNull);
-    }
+    await tester.pumpAndSettle();
+    expect(find.byType(TabBar), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('comments')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Home uses the shared account and default OTP API settings', (
@@ -453,16 +455,15 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    for (final prefix in ['login', 'signup']) {
-      await _selectHomeTab(tester, '${prefix}Tab');
-      expect(find.byType(TextFormField), findsNothing);
+    for (final action in [
+      TikTokLaunchAction.login,
+      TikTokLaunchAction.signup,
+    ]) {
       expect(find.text('URL API lấy OTP'), findsNothing);
-      await tester.tap(
-        find.byKey(Key(prefix == 'signup' ? 'runAutoSignup' : 'runAutoLogin')),
-      );
-      await tester.pumpAndSettle();
-      final configuration =
-          tester.widget<TikTokPage>(find.byType(TikTokPage)).configuration;
+      await _launchHomeAction(tester, action);
+      final configuration = tester
+          .widget<TikTokPage>(find.byType(TikTokPage))
+          .configuration;
       expect(configuration.otpApi!.url.toString(), config.otpApiUrl);
       expect(configuration.otpApi!.readerToken, config.otpApiToken.trim());
       expect(configuration.otpApi!.waitSeconds, 180);
@@ -835,7 +836,7 @@ void main() {
         ConsoleMessage(message: 'Login: account-api error: [7] unknown.'),
       );
       await tester.pump();
-      expect(find.byKey(const Key('accountFailureBanner')), findsOneWidget);
+      expect(find.byKey(const Key('accountFailureBanner')), findsNothing);
       expect(find.textContaining('mã 7'), findsOneWidget);
       expect(find.text('Dừng'), findsNothing);
       expect(reader.requests, isEmpty);
@@ -847,13 +848,13 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+      expect(find.textContaining('TikTok đang giới hạn số lần thử'), findsOneWidget);
       params.onConsoleMessage!(
         wrapped,
         ConsoleMessage(message: 'Login: email bind failed: 7 ().'),
       );
       await tester.pump();
-      expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+      expect(find.textContaining('TikTok đang giới hạn số lần thử'), findsOneWidget);
       await tester.pump(const Duration(seconds: 2));
       expect(reader.requests, isEmpty);
       expect(find.textContaining('Chưa hoàn tất đăng ký'), findsNothing);
@@ -896,7 +897,7 @@ void main() {
         hasLength(calls),
       );
       expect(find.text('Dừng'), findsNothing);
-      expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+      expect(find.textContaining('TikTok đang giới hạn số lần thử'), findsOneWidget);
     },
   );
 
@@ -916,9 +917,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
       expect(reader.closed, isTrue);
-      expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+      expect(find.textContaining('TikTok đang giới hạn số lần thử'), findsOneWidget);
       expect(
-        find.byKey(const Key('returnAccountConfiguration')),
+        find.widgetWithText(SnackBarAction, 'Cấu hình'),
         findsOneWidget,
       );
       expect(find.text('Dừng'), findsNothing);
@@ -946,8 +947,8 @@ void main() {
         routed: true);
     await tester.pump(const Duration(milliseconds: 2600));
     await tester.pump();
-    expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('returnAccountConfiguration')));
+    expect(find.textContaining('TikTok đang giới hạn số lần thử'), findsOneWidget);
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Cấu hình'));
     await tester.pumpAndSettle();
     expect(find.text('Thông tin cấu hình'), findsOneWidget);
     expect(find.byType(InAppWebView), findsNothing);
@@ -1418,10 +1419,29 @@ void main() {
   }
 }
 
-Future<void> _selectHomeTab(WidgetTester tester, String key) async {
-  final tab = find.byKey(Key(key));
-  await tester.ensureVisible(tab);
-  await tester.tap(tab);
+Future<void> _launchHomeAction(
+  WidgetTester tester,
+  TikTokLaunchAction action,
+) async {
+  await tester.pumpAndSettle();
+  final logic = tester
+      .state<GetBuilderState<HomeController>>(
+        find.byType(GetBuilder<HomeController>),
+      )
+      .controller!;
+  final context = tester.element(find.byType(HomePage));
+  unawaited(
+    logic.openTikTok(action, (configuration, launchAction) {
+      return Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => TikTokPage(
+            configuration: configuration,
+            launchAction: launchAction,
+          ),
+        ),
+      );
+    }),
+  );
   await tester.pumpAndSettle();
 }
 

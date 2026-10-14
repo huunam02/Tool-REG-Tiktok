@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../controller/settings_controller.dart';
+import '../core/accessibility_permission.dart';
 import '../core/otp_settings_store.dart';
 import 'otp_settings_page.dart';
 import 'usage_guide_page.dart';
@@ -13,11 +14,13 @@ class SettingsPage extends StatelessWidget {
     required this.initialOtpSettings,
     required this.otpSettingsStore,
     required this.onOtpSettingsChanged,
+    this.accessibilityPermission,
   });
 
   final OtpApiSettings initialOtpSettings;
   final OtpSettingsStore otpSettingsStore;
   final ValueChanged<OtpApiSettings> onOtpSettingsChanged;
+  final AccessibilityPermissionService? accessibilityPermission;
 
   @override
   Widget build(BuildContext context) => ControllerScope<SettingsController>(
@@ -25,6 +28,7 @@ class SettingsPage extends StatelessWidget {
           initialSettings: initialOtpSettings,
           store: otpSettingsStore,
           onSettingsChanged: onOtpSettingsChanged,
+          accessibilityPermission: accessibilityPermission,
         ),
         builder: (controller) => _SettingsView(controller),
       );
@@ -72,6 +76,44 @@ class _SettingsView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
+                if (controller.accessibilityPermission.supported) ...[
+                  SettingsPanel(
+                    child: SwitchListTile(
+                      key: const Key('accessibilitySettings'),
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text(
+                        'Quyền Trợ năng',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          controller.openingAccessibilitySettings
+                              ? 'Đang mở Cài đặt Trợ năng…'
+                              : controller.checkingAccessibility
+                                  ? 'Đang kiểm tra quyền…'
+                                  : controller.accessibilityError ??
+                                      (controller.accessibilityEnabled == true
+                                          ? 'Đã bật. Chạm để thay đổi trong Cài đặt Android.'
+                                          : 'Chưa bật. Bật switch để cấp quyền thao tác trên TikTok.'),
+                          style: const TextStyle(
+                            color: SettingsStyle.muted,
+                            fontSize: 12,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                      value: controller.accessibilityEnabled ?? false,
+                      onChanged: controller.accessibilityBusy
+                          ? null
+                          : (_) => controller.openAccessibilitySettings(),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 SettingsPanel(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

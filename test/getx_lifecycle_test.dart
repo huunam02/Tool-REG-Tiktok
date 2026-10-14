@@ -8,6 +8,43 @@ import 'package:test_tiktok/screen/create_proxy_page.dart';
 
 void main() {
   testWidgets(
+      'discarding imported forms ignores their pending User-Agent generation',
+      (tester) async {
+    final pending = Completer<String>();
+    var calls = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: CreateProxyPage(generateUserAgent: () {
+        calls++;
+        return calls == 1 ? Future.value('first-agent') : pending.future;
+      }),
+    ));
+    await tester.pumpAndSettle();
+    final logic = tester
+        .state<GetBuilderState<ProxyFormController>>(
+            find.byType(GetBuilder<ProxyFormController>))
+        .controller!;
+    logic.importData.text =
+        '192.0.2.7:8080:user:pass first@example.com|tiktok|mail\n'
+        '192.0.2.8:8080:user:pass second@example.com|tiktok|mail\n'
+        '192.0.2.9:8080:user:pass third@example.com|tiktok|mail';
+    logic.importProxy();
+    await tester.pumpAndSettle();
+    final discarded = logic.configurations.skip(1).toList();
+    expect(logic.generating, isTrue);
+    expect(calls, 2);
+    logic.clearImportedConfigurations();
+    await tester.pumpAndSettle();
+    pending.complete('discarded-agent');
+    await tester.pumpAndSettle();
+    expect(logic.configurations, hasLength(1));
+    expect(discarded.every((fields) => fields.disposed), isTrue);
+    expect(logic.userAgent.text, 'first-agent');
+    expect(logic.generating, isFalse);
+    expect(calls, 2);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
       'proxy editors have independent state and close pending generation',
       (tester) async {
     final pendingAgent = Completer<String>();

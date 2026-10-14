@@ -1,6 +1,7 @@
 package com.stalliondz.tool.tiktok
 
 import android.util.Log
+import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import android.webkit.WebView
 
@@ -74,13 +75,34 @@ object NativeClipboardPaste {
             complete(false)
             return
         }
-        webView.evaluateJavascript(guardScript) { allowed ->
-            if (allowed != "true" || !ready(webView) || !webView.hasFocus()) {
+        val targetScript = """
+            (() => {
+              if (!($guardScript)) return null;
+              return document.activeElement?.type === 'password';
+            })()
+        """.trimIndent()
+        webView.evaluateJavascript(targetScript) { passwordTarget ->
+            if ((passwordTarget != "true" && passwordTarget != "false") ||
+                !ready(webView) || !webView.hasFocus()) {
                 complete(false)
             } else {
                 val handled = try {
-                    val connection = webView.onCreateInputConnection(EditorInfo())
-                    connection?.performContextMenuAction(android.R.id.paste) == true
+                    val info = EditorInfo()
+                    val connection = webView.onCreateInputConnection(info)
+                    val variation = info.inputType and InputType.TYPE_MASK_VARIATION
+                    val nativePassword = (info.inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT &&
+                        (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                         variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+                         variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
+                    if (passwordTarget == "true" && !nativePassword) {
+                        // After OTP auto-advances, DOM focus can precede the IME
+                        // editor update. Reject before sending paste so Dart can
+                        // retry this unhandled action against the correct field.
+                        Log.d("NativeClipboardPaste", "Rejected: native password editor is not ready")
+                        false
+                    } else {
+                        connection?.performContextMenuAction(android.R.id.paste) == true
+                    }
                 } catch (_: RuntimeException) {
                     // Some WebView providers can reject a connection during navigation.
                     false

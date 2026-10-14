@@ -35,9 +35,9 @@ abstract final class ProxyColors {
           surfaceTintColor: Colors.transparent,
         ),
         textTheme: Theme.of(context).textTheme.apply(
-              bodyColor: const Color(0xFFF0F4FA),
-              displayColor: const Color(0xFFF0F4FA),
-            ),
+          bodyColor: const Color(0xFFF0F4FA),
+          displayColor: const Color(0xFFF0F4FA),
+        ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: input,
@@ -93,18 +93,17 @@ class ProxyBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.10),
-          border: Border.all(color: color.withValues(alpha: 0.20)),
-          borderRadius: BorderRadius.circular(9),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-              color: color, fontSize: 11, fontWeight: FontWeight.w600),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.10),
+      border: Border.all(color: color.withValues(alpha: 0.20)),
+      borderRadius: BorderRadius.circular(9),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+    ),
+  );
 }
 
 class ProxyUsageBadge extends StatelessWidget {
@@ -113,9 +112,9 @@ class ProxyUsageBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ProxyBadge(
-        label: used ? 'Đã sử dụng' : 'Chưa sử dụng',
-        color: used ? ProxyColors.green : ProxyColors.amber,
-      );
+    label: used ? 'Đã sử dụng' : 'Chưa sử dụng',
+    color: used ? ProxyColors.green : ProxyColors.amber,
+  );
 }
 
 class ProxyPanel extends StatelessWidget {
@@ -129,14 +128,14 @@ class ProxyPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          color: ProxyColors.surface,
-          border: Border.all(color: ProxyColors.border),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: child,
-      );
+    padding: padding,
+    decoration: BoxDecoration(
+      color: ProxyColors.surface,
+      border: Border.all(color: ProxyColors.border),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: child,
+  );
 }
 
 class ProxyDetails extends StatelessWidget {
@@ -158,61 +157,58 @@ class ProxyDetails extends StatelessWidget {
     String value,
     IconData icon, {
     Key? valueKey,
-  }) =>
-      Container(
-        padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
-        decoration: BoxDecoration(
-          color: ProxyColors.input,
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: ProxyColors.border.withValues(alpha: 0.7)),
+  }) => Container(
+    padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+    decoration: BoxDecoration(
+      color: ProxyColors.input,
+      borderRadius: BorderRadius.circular(13),
+      border: Border.all(color: ProxyColors.border.withValues(alpha: 0.7)),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 17, color: ProxyColors.muted),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Icon(icon, size: 17, color: ProxyColors.muted),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style:
-                        const TextStyle(fontSize: 11, color: ProxyColors.muted),
-                  ),
-                  const SizedBox(height: 5),
-                  SelectableText(
-                    value,
-                    key: valueKey,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      height: 1.55,
-                      color: Color(0xFFF0F4FA),
-                    ),
-                  ),
-                ],
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(fontSize: 11, color: ProxyColors.muted),
               ),
-            ),
-            IconButton(
-              tooltip: 'Sao chép ${label.toLowerCase()}',
-              visualDensity: VisualDensity.compact,
-              iconSize: 16,
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: value));
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                      content: Text('Đã sao chép ${label.toLowerCase()}.')),
-                );
-              },
-              icon: const Icon(Icons.copy_outlined),
-            ),
-          ],
+              const SizedBox(height: 5),
+              SelectableText(
+                value,
+                key: valueKey,
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.55,
+                  color: Color(0xFFF0F4FA),
+                ),
+              ),
+            ],
+          ),
         ),
-      );
+        IconButton(
+          tooltip: 'Sao chép ${label.toLowerCase()}',
+          visualDensity: VisualDensity.compact,
+          iconSize: 16,
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: value));
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Đã sao chép ${label.toLowerCase()}.')),
+            );
+          },
+          icon: const Icon(Icons.copy_outlined),
+        ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -222,7 +218,7 @@ class ProxyDetails extends StatelessWidget {
       children: [
         if (showName &&
             profile.name.isNotEmpty &&
-            profile.name != proxyAddress(proxy)) ...[
+            profile.name != proxyLabel(proxy)) ...[
           Text(
             profile.name,
             style: const TextStyle(
@@ -236,7 +232,7 @@ class ProxyDetails extends StatelessWidget {
         _field(
           context,
           'Địa chỉ proxy',
-          proxyAddress(proxy),
+          proxyLabel(proxy),
           Icons.link,
           valueKey: Key('${keyPrefix}Address'),
         ),
@@ -244,16 +240,18 @@ class ProxyDetails extends StatelessWidget {
         _field(
           context,
           'Tài khoản proxy',
-          proxy.username.isEmpty ? 'Không yêu cầu xác thực' : proxy.username,
+          proxy?.username.isEmpty ?? true
+              ? 'Không yêu cầu xác thực'
+              : proxy!.username,
           Icons.person_outline,
           valueKey: Key('${keyPrefix}Username'),
         ),
-        if (proxy.password.isNotEmpty) ...[
+        if (proxy?.password.isNotEmpty ?? false) ...[
           const SizedBox(height: 10),
           _field(
             context,
             'Mật khẩu proxy',
-            proxy.password,
+            proxy!.password,
             Icons.lock_outline,
             valueKey: Key('${keyPrefix}Password'),
           ),

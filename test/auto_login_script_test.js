@@ -15,7 +15,7 @@ function setup({ autoPaste = true, pasteResult = true, sendCodeAcknowledged = tr
   const requests = [];
   const pending = [];
   let time = 0;
-  const config = { email: 'test@example.com', password: 'test-password', attempt: 1 };
+  const config = { email: 'test@example.com', password: 'test-password', attempt: 1, emailVerificationDelayMs: 0 };
   const location = {
     origin: 'https://www.tiktok.com', pathname: '/login/phone-or-email/email',
   };
@@ -66,6 +66,7 @@ function setup({ autoPaste = true, pasteResult = true, sendCodeAcknowledged = tr
   };
   const execute = runInNewContext(`(${step})`, {
     window, location, document,
+    Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
     Date: class extends Date { static now() { return time; } },
     getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
   });
@@ -423,6 +424,108 @@ test('Continue rejects a changed password form, blocked button or stopped attemp
   assert.notEqual(target(), null);
   state.stop();
   assert.equal(target(), null);
+});
+
+test('identity Email waits five seconds, reads its live point and awaits native completion', async () => {
+  const env = setup();
+  env.config.useAccessibilityEmailVerification = true;
+  env.config.waitForOtpApi = true;
+  delete env.config.emailVerificationDelayMs;
+  const identity = identityDialog(env);
+  let top = 240;
+  identity.email.getBoundingClientRect = () => ({left: 150, top, width: 100, height: 40});
+  env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
+  env.document.elementFromPoint = () => identity.email;
+  let complete;
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return new Promise(resolve => { complete = resolve; });
+  };
+  assert.equal(env.run(false), 'waiting-email-verification');
+  assert.equal(env.window.__flutterAutoLogin.getEmailVerificationTarget(1), null);
+  env.advance(4999);
+  assert.equal(env.run(false), 'waiting-email-verification');
+  assert.equal(env.requests.length, 0);
+  top = 280;
+  env.advance(1);
+  assert.equal(env.run(false), 'requesting-email-verification');
+  assert.deepEqual(env.requests, [['FlutterLoginEmailVerification', 1]]);
+  const state = env.window.__flutterAutoLogin;
+  assert.deepEqual(JSON.parse(JSON.stringify(state.getEmailVerificationTarget(1))),
+    {x: 100, y: 100, viewportWidth: 400, viewportHeight: 600});
+  assert.equal(identity.email.clicks, 0);
+  env.advance(12000);
+  identity.showCode();
+  assert.equal(env.run(false), 'requesting-email-verification');
+  assert.equal(state.otpRequestedAt, null);
+  complete(true);
+  await flush();
+  assert.equal(env.run(false), 'email-verification-selected');
+  assert.equal(state.emailVerificationRequest.at, 17000);
+  assert.equal(env.run(false), 'verification-requested');
+  assert.equal(state.otpRequestedAt, 17000);
+  assert.equal(env.run(false), 'otp-required');
+  assert.equal(env.requests.length, 1);
+});
+
+test('native Email target rejects stale, covered, hidden and cancelled identity rows', () => {
+  const env = setup();
+  env.config.useAccessibilityEmailVerification = true;
+  const identity = identityDialog(env);
+  identity.email.getBoundingClientRect = () => ({left: 150, top: 240, width: 100, height: 40});
+  env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
+  env.document.elementFromPoint = () => identity.email;
+  env.window.flutter_inappwebview.callHandler = () => new Promise(() => {});
+  assert.equal(env.run(false), 'requesting-email-verification');
+  const state = env.window.__flutterAutoLogin;
+  const target = () => state.getEmailVerificationTarget(1);
+  assert.notEqual(target(), null);
+  assert.equal(state.getEmailVerificationTarget(2), null);
+  env.document.elementFromPoint = () => null;
+  assert.equal(target(), null);
+  env.document.elementFromPoint = () => identity.email;
+  env.window.visualViewport.offsetTop = 300;
+  assert.equal(target(), null);
+  env.window.visualViewport.offsetTop = 200;
+  identity.email.disabled = true;
+  assert.equal(target(), null);
+  identity.email.disabled = false;
+  identity.email.isConnected = false;
+  assert.equal(target(), null);
+  identity.email.isConnected = true;
+  env.document.hidden = true;
+  assert.equal(target(), null);
+  env.document.hidden = false;
+  env.location.origin = 'https://example.com';
+  assert.equal(target(), null);
+  env.location.origin = 'https://www.tiktok.com';
+  env.location.pathname = '/signup';
+  assert.equal(target(), null);
+  env.location.pathname = '/login/phone-or-email/email';
+  const other = identityDialog(env);
+  assert.equal(target(), null);
+  other.modal.hidden = true;
+  assert.notEqual(target(), null);
+  state.stop();
+  assert.equal(target(), null);
+});
+
+test('failed native Email gesture neither repeats the touch nor starts OTP', async () => {
+  const env = setup();
+  env.config.useAccessibilityEmailVerification = true;
+  env.config.waitForOtpApi = true;
+  const identity = identityDialog(env);
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(false);
+  };
+  assert.equal(env.run(false), 'requesting-email-verification');
+  await flush();
+  assert.equal(env.run(false), 'email-verification-accessibility-failed');
+  assert.equal(env.run(false), 'email-verification-accessibility-failed');
+  assert.equal(env.window.__flutterAutoLogin.otpRequestedAt, null);
+  assert.equal(identity.email.clicks, 0);
+  assert.equal(env.requests.length, 1);
 });
 
 test('clicks the real IDV Email row instead of its non-clickable list wrapper', () => {
@@ -996,6 +1099,23 @@ test('pastes credentials before waiting for a disabled Send code button', async 
   assert.equal(env.run(), 'waiting-otp-paste');
   assert.equal(otp.value, '');
   assert.equal(send.clicks, 1);
+});
+
+test('login waits for acknowledged password paste to reach the DOM before blurring', async () => {
+  const env = setup({ autoPaste: false });
+  env.email.value = env.config.email;
+  assert.equal(env.run(), 'waiting-next');
+  await env.resolvePaste();
+  assert.equal(env.document.activeElement, env.password);
+  assert.equal(env.password.value, '');
+  env.advance(1000);
+  assert.equal(env.run(), 'waiting-next');
+  assert.equal(env.document.activeElement, env.password);
+  assert.equal(env.requests.length, 1);
+  env.password.value = env.config.password;
+  assert.equal(env.run(), 'submitted');
+  assert.equal(env.document.activeElement, null);
+  assert.equal(env.submit.clicks, 1);
 });
 
 test('failed or ineffective native paste stops without submitting or retrying', async () => {

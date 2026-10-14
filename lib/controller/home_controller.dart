@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
 
 import '../core/app_configuration.dart';
+import '../core/configuration_data.dart';
 import '../core/desktop_user_agents.dart';
 import '../core/otp_api.dart';
 import '../core/otp_settings_store.dart';
@@ -14,8 +14,7 @@ import '../core/webview_user_agent.dart';
 import '../core/tiktok_launch_action.dart';
 import 'app_controller.dart';
 
-class HomeController extends AppController
-    with GetSingleTickerProviderStateMixin {
+class HomeController extends AppController {
   HomeController({
     required this.initialUserAgent,
     required this.initialOtpSettings,
@@ -30,8 +29,6 @@ class HomeController extends AppController
   final OtpSettingsStore otpSettingsStore;
 
   final formKey = GlobalKey<FormState>();
-  late final TabController tabs;
-  int selectedTab = 0;
   late String userAgent;
   late String directUserAgent;
   late OtpApiSettings otpSettings;
@@ -43,11 +40,14 @@ class HomeController extends AppController
   bool managingProxies = false;
   late final ProxyStore proxyStore;
   bool get busy => opening || loadingProxy || managingProxies;
+  TikTokLaunchAction get accountAction =>
+      currentProxy?.statusAccount == AccountStatus.registered
+          ? TikTokLaunchAction.login
+          : TikTokLaunchAction.signup;
 
   @override
   void onInit() {
     super.onInit();
-    tabs = TabController(length: 3, vsync: this)..addListener(tabChanged);
     userAgent = initialUserAgent;
     directUserAgent = initialUserAgent;
     otpSettings = initialOtpSettings;
@@ -91,16 +91,8 @@ class HomeController extends AppController
 
   @override
   void onClose() {
-    tabs.removeListener(tabChanged);
-    tabs.dispose();
     comments.dispose();
     super.onClose();
-  }
-
-  void tabChanged() {
-    if (tabs.index == selectedTab) return;
-    FocusManager.instance.primaryFocus?.unfocus();
-    mutate(() => selectedTab = tabs.index);
   }
 
   void updateOtpSettings(OtpApiSettings settings) =>

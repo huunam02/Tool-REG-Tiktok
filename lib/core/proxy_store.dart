@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'app_configuration.dart';
 import 'configuration_data.dart';
+import 'proxy_draft.dart';
 import 'desktop_user_agents.dart';
 
 class ProxyProfile {
@@ -16,7 +17,7 @@ class ProxyProfile {
     this.configurationId,
   });
 
-  final WebViewProxy proxy;
+  final WebViewProxy? proxy;
   final String userAgent;
   final String name;
   final bool hasBeenUsed;
@@ -49,10 +50,14 @@ bool sameProfile(ProxyProfile? first, ProxyProfile? second) =>
     sameAccount(first?.account, second?.account);
 
 String proxyAddress(WebViewProxy proxy) {
-  final host =
-      proxy.uri.host.contains(':') ? '[${proxy.uri.host}]' : proxy.uri.host;
+  final host = proxy.uri.host.contains(':')
+      ? '[${proxy.uri.host}]'
+      : proxy.uri.host;
   return '${proxy.uri.scheme}://$host:${proxy.uri.port}';
 }
+
+String proxyLabel(WebViewProxy? proxy) =>
+    proxy == null ? 'Mặc định của máy' : proxyAddress(proxy);
 
 /// All configurations and the active selection live in one table.
 /// An unlisted active row preserves the selected snapshot when its saved entry
@@ -62,9 +67,9 @@ class ProxyStore {
     DatabaseFactory? factory,
     String? databasePath,
     Future<String> Function()? selectUserAgent,
-  })  : _factory = factory,
-        _databasePath = databasePath,
-        _selectUserAgent = selectUserAgent ?? selectNextDesktopUserAgent;
+  }) : _factory = factory,
+       _databasePath = databasePath,
+       _selectUserAgent = selectUserAgent ?? selectNextDesktopUserAgent;
 
   static final instance = ProxyStore();
   final DatabaseFactory? _factory;
@@ -101,7 +106,8 @@ class ProxyStore {
     Database? db;
     try {
       final factory = _factory ?? databaseFactory;
-      final filename = _databasePath ??
+      final filename =
+          _databasePath ??
           path.join(await factory.getDatabasesPath(), 'proxies.db');
       db = await factory.openDatabase(
         filename,
@@ -155,13 +161,14 @@ class ProxyStore {
       final agent = (row['user_agent'] as String?) ?? '';
       final matches = await db.query(
         'configurations',
-        where: 'url = ? AND username = ? AND password = ? '
+        where:
+            'url = ? AND username = ? AND password = ? '
             'AND account_email = ? AND account_password = ? AND mailbox_password = ?'
             '${agent.isEmpty ? '' : ' AND user_agent = ?'}',
         whereArgs: [
-          proxyAddress(proxy),
-          proxy.username,
-          proxy.password,
+          proxy == null ? '' : proxyAddress(proxy),
+          proxy?.username ?? '',
+          proxy?.password ?? '',
           row['account_email'] ?? '',
           row['account_password'] ?? '',
           row['mailbox_password'] ?? '',
@@ -176,7 +183,7 @@ class ProxyStore {
       } else {
         id = await db.insert('configurations', {
           ..._values(proxy),
-          'name': row['name'] ?? proxyAddress(proxy),
+          'name': row['name'] ?? proxyLabel(proxy),
           'user_agent': agent.isEmpty ? await _selectUserAgent() : agent,
           'account_email': row['account_email'] ?? '',
           'account_password': row['account_password'] ?? '',
@@ -195,57 +202,58 @@ class ProxyStore {
     await db.execute('DROP TABLE proxies');
   }
 
-  static Map<String, Object?> _values(WebViewProxy proxy) => {
-        'url': proxyAddress(proxy),
-        'username': proxy.username,
-        'password': proxy.password,
-      };
+  static Map<String, Object?> _values(WebViewProxy? proxy) => {
+    'url': proxy == null ? '' : proxyAddress(proxy),
+    'username': proxy?.username ?? '',
+    'password': proxy?.password ?? '',
+  };
   static Map<String, Object?> _accountValues(AccountCredentials account) => {
-        'account_email': account.email.trim(),
-        'account_password': account.password,
-        'mailbox_password': account.mailboxPassword,
-      };
-  static WebViewProxy _readProxy(Map<String, Object?> row) =>
+    'account_email': account.email.trim(),
+    'account_password': account.password,
+    'mailbox_password': account.mailboxPassword,
+  };
+  static WebViewProxy? _readProxy(Map<String, Object?> row) =>
       WebViewProxy.parse(
-        row['url'] as String,
-        username: row['username'] as String,
-        password: row['password'] as String,
-      )!;
+        (row['url'] as String?) ?? '',
+        username: (row['username'] as String?) ?? '',
+        password: (row['password'] as String?) ?? '',
+      );
   static AccountCredentials? _readAccount(Map<String, Object?> row) =>
       (row['account_email'] as String).isEmpty
-          ? null
-          : AccountCredentials(
-              email: row['account_email'] as String,
-              password: row['account_password'] as String,
-              mailboxPassword: row['mailbox_password'] as String,
-            );
+      ? null
+      : AccountCredentials(
+          email: row['account_email'] as String,
+          password: row['account_password'] as String,
+          mailboxPassword: row['mailbox_password'] as String,
+        );
   static AccountStatus _readStatus(Map<String, Object?> row) =>
       row['statusAccount'] == 'registered'
-          ? AccountStatus.registered
-          : AccountStatus.unregistered;
+      ? AccountStatus.registered
+      : AccountStatus.unregistered;
   static ProxyProfile _readProfile(Map<String, Object?> row) => ProxyProfile(
-        proxy: _readProxy(row),
-        userAgent: row['user_agent'] as String,
-        name: row['name'] as String,
-        account: _readAccount(row),
-        statusAccount: _readStatus(row),
-        hasBeenUsed: row['has_been_used'] == 1,
-        configurationId: row['id'] as int,
-      );
+    proxy: _readProxy(row),
+    userAgent: row['user_agent'] as String,
+    name: row['name'] as String,
+    account: _readAccount(row),
+    statusAccount: _readStatus(row),
+    hasBeenUsed: row['has_been_used'] == 1,
+    configurationId: row['id'] as int,
+  );
 
   static Future<Map<String, Object?>?> _findSaved(
     DatabaseExecutor db,
-    WebViewProxy proxy, {
+    WebViewProxy? proxy, {
     String? accountEmail,
   }) async {
     final rows = await db.query(
       'configurations',
-      where: 'listed = 1 AND url = ? AND username = ? AND password = ?'
+      where:
+          'listed = 1 AND url = ? AND username = ? AND password = ?'
           '${accountEmail == null ? '' : ' AND account_email = ?'}',
       whereArgs: [
-        proxyAddress(proxy),
-        proxy.username,
-        proxy.password,
+        proxy == null ? '' : proxyAddress(proxy),
+        proxy?.username ?? '',
+        proxy?.password ?? '',
         if (accountEmail != null) accountEmail,
       ],
       orderBy: 'id ASC',
@@ -266,12 +274,9 @@ class ProxyStore {
   }
 
   static Future<void> _applyCurrent(DatabaseExecutor db, int? id) async {
-    await db.update(
-        'configurations',
-        {
-          'is_current': 0,
-        },
-        where: 'is_current = 1');
+    await db.update('configurations', {
+      'is_current': 0,
+    }, where: 'is_current = 1');
     if (id != null) {
       await db.update(
         'configurations',
@@ -344,7 +349,50 @@ class ProxyStore {
   Future<int> save({
     int? id,
     required String name,
-    required WebViewProxy proxy,
+    required WebViewProxy? proxy,
+    String? userAgent,
+    AccountCredentials? account,
+    AccountStatus? statusAccount,
+  }) async {
+    final db = await _database;
+    return db.transaction(
+      (txn) => _save(
+        txn,
+        id: id,
+        name: name,
+        proxy: proxy,
+        userAgent: userAgent,
+        account: account,
+        statusAccount: statusAccount,
+      ),
+    );
+  }
+
+  Future<List<int>> saveDrafts(List<ProxyDraft> drafts) async {
+    final db = await _database;
+    return db.transaction((txn) async {
+      final ids = <int>[];
+      for (final draft in drafts) {
+        ids.add(
+          await _save(
+            txn,
+            name: draft.name,
+            proxy: draft.proxy,
+            userAgent: draft.userAgent,
+            account: draft.account,
+            statusAccount: draft.statusAccount,
+          ),
+        );
+      }
+      return ids;
+    });
+  }
+
+  Future<int> _save(
+    DatabaseExecutor txn, {
+    int? id,
+    required String name,
+    required WebViewProxy? proxy,
     String? userAgent,
     AccountCredentials? account,
     AccountStatus? statusAccount,
@@ -356,66 +404,65 @@ class ProxyStore {
             RegExp(r'[\r\n]').hasMatch(requestedAgent))) {
       throw const FormatException('Nhập User-Agent hợp lệ trên một dòng.');
     }
-    final db = await _database;
-    return db.transaction((txn) async {
-      Map<String, Object?>? existing;
-      if (id != null) {
-        final rows = await txn.query(
-          'configurations',
-          where: 'id = ? AND listed = 1',
-          whereArgs: [id],
-        );
-        if (rows.isEmpty) throw StateError('Configuration no longer exists');
-        existing = rows.single;
-      } else {
-        existing = await _findSaved(
-          txn,
-          proxy,
-          accountEmail: account?.email.trim() ?? '',
-        );
-      }
-      final values = <String, Object?>{
-        'name': name.trim().isEmpty ? proxyAddress(proxy) : name.trim(),
-        ..._values(proxy),
-        if (requestedAgent != null) 'user_agent': requestedAgent,
-        if (account != null) ..._accountValues(account),
-        if (statusAccount != null) 'statusAccount': statusAccount.name,
-      };
-      if (existing != null) {
-        final savedId = existing['id'] as int;
-        final sameConnection = sameProxy(_readProxy(existing), proxy) &&
-            (requestedAgent == null ||
-                requestedAgent == existing['user_agent']) &&
-            (account == null || sameAccount(_readAccount(existing), account));
-        if (existing['is_current'] == 1 && !sameConnection) {
-          await txn.update(
-            'configurations',
-            {'is_current': 0},
-            where: 'id = ?',
-            whereArgs: [savedId],
-          );
-          final snapshot = Map<String, Object?>.from(existing)..remove('id');
-          await txn.insert('configurations', {...snapshot, 'listed': 0});
-        }
+    Map<String, Object?>? existing;
+    if (id != null) {
+      final rows = await txn.query(
+        'configurations',
+        where: 'id = ? AND listed = 1',
+        whereArgs: [id],
+      );
+      if (rows.isEmpty) throw StateError('Configuration no longer exists');
+      existing = rows.single;
+    } else {
+      existing = await _findSaved(
+        txn,
+        proxy,
+        accountEmail: account?.email.trim() ?? '',
+      );
+    }
+    final values = <String, Object?>{
+      'name': name.trim().isEmpty ? proxyLabel(proxy) : name.trim(),
+      ..._values(proxy),
+      if (requestedAgent != null) 'user_agent': requestedAgent,
+      if (account != null) ..._accountValues(account),
+      if (statusAccount != null) 'statusAccount': statusAccount.name,
+    };
+    if (existing != null) {
+      final savedId = existing['id'] as int;
+      final sameConnection =
+          sameProxy(_readProxy(existing), proxy) &&
+          (requestedAgent == null ||
+              requestedAgent == existing['user_agent']) &&
+          (account == null || sameAccount(_readAccount(existing), account));
+      if (existing['is_current'] == 1 && !sameConnection) {
         await txn.update(
           'configurations',
-          values,
+          {'is_current': 0},
           where: 'id = ?',
           whereArgs: [savedId],
         );
-        return savedId;
+        final snapshot = Map<String, Object?>.from(existing)..remove('id');
+        await txn.insert('configurations', {...snapshot, 'listed': 0});
       }
-      final current = await txn.query(
+      await txn.update(
         'configurations',
-        where: 'is_current = 1',
-        limit: 1,
+        values,
+        where: 'id = ?',
+        whereArgs: [savedId],
       );
-      final agent = requestedAgent ??
-          (current.isNotEmpty && sameProxy(_readProxy(current.single), proxy)
-              ? current.single['user_agent'] as String
-              : await _selectUserAgent());
-      return txn.insert('configurations', {...values, 'user_agent': agent});
-    });
+      return savedId;
+    }
+    final current = await txn.query(
+      'configurations',
+      where: 'is_current = 1',
+      limit: 1,
+    );
+    final agent =
+        requestedAgent ??
+        (current.isNotEmpty && sameProxy(_readProxy(current.single), proxy)
+            ? current.single['user_agent'] as String
+            : await _selectUserAgent());
+    return txn.insert('configurations', {...values, 'user_agent': agent});
   }
 
   Future<void> delete(int id) async {

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/webview_proxy_ip.dart';
@@ -11,6 +12,10 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late TestProxyIpPlatform platform;
   setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('test_tiktok/webview_identity'),
+            (call) async => 'test-agent');
     final previousPlatform = InAppWebViewPlatform.instance;
     platform = TestProxyIpPlatform();
     InAppWebViewPlatform.instance = platform;
@@ -31,12 +36,13 @@ void main() {
     test('$target reads IP without executing fetch in TikTok', () async {
       debugDefaultTargetPlatformOverride = target;
       final result = check(WebViewProxyIpChecker());
+      await flush();
       final view = platform.probes.single;
-      expect(view.params.initialUrlRequest!.url!.host, 'api.ipify.org');
-      expect(
-          view.params.initialUrlRequest!.headers?['Accept-Language'], isNull);
-      expect(
-          view.params.initialUrlRequest!.headers?['Cache-Control'], 'no-cache');
+      final request =
+          view.controller.loadedRequest ?? view.params.initialUrlRequest!;
+      expect(request.url!.host, 'api.ipify.org');
+      expect(request.headers?['Accept-Language'], isNull);
+      expect(request.headers?['Cache-Control'], 'no-cache');
       expect(view.params.initialSettings!.incognito, isFalse);
       expect(view.params.initialSettings!.cacheEnabled, isTrue);
       expect(view.params.initialSettings!.userAgent, 'test-agent');
@@ -56,7 +62,12 @@ void main() {
     await flush();
     expect(first.disposed, isTrue);
     final fallback = platform.probes.last;
-    expect(fallback.params.initialUrlRequest!.url!.host, 'api64.ipify.org');
+    expect(
+        (fallback.controller.loadedRequest ??
+                fallback.params.initialUrlRequest!)
+            .url!
+            .host,
+        'api64.ipify.org');
     fallback.loaded('{"ip":"2001:db8::7"}');
     expect(await result, '2001:db8::7');
     expect(fallback.disposed, isTrue);
@@ -64,6 +75,7 @@ void main() {
 
   test('invalid IP and redirected pages cannot be reported as IP', () async {
     final result = check(WebViewProxyIpChecker());
+    await flush();
     platform.probes.single.loaded('{"ip":"proxy error"}');
     await flush();
     final fallback = platform.probes.last;

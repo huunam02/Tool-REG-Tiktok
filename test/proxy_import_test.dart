@@ -48,7 +48,7 @@ void main() {
     }
   });
 
-  testWidgets('import requires a manually entered name before persisting proxy',
+  testWidgets('import generates a host-only name before persisting proxy',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -62,7 +62,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('proxyImportData')), record);
     await tester.tap(find.byKey(const Key('importProxyData')));
     await tester.pumpAndSettle();
-    expect(text(tester, 'savedProxyName'), isEmpty);
+    expect(text(tester, 'savedProxyName'), 'Proxy 192.0.2.7');
     expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
     expect(text(tester, 'savedProxyUsername'), 'proxy-user');
     expect(text(tester, 'savedProxyPassword'), 'proxy-password');
@@ -71,12 +71,7 @@ void main() {
     expect(store.entries, isEmpty);
     await tester.tap(find.byKey(const Key('saveProxyEntry')));
     await tester.pumpAndSettle();
-    expect(find.text('Nhập tên proxy.'), findsOneWidget);
-    expect(store.entries, isEmpty);
-    await tester.enterText(find.byKey(const Key('savedProxyName')), 'My proxy');
-    await tester.tap(find.byKey(const Key('saveProxyEntry')));
-    await tester.pumpAndSettle();
-    expect(store.entries.single.name, 'My proxy');
+    expect(store.entries.single.name, 'Proxy 192.0.2.7');
     expect(store.entries.single.proxy.password, 'proxy-password');
     expect(store.entries.single.userAgent, agent);
     expect(store.current, isNull);
@@ -102,6 +97,7 @@ void main() {
     await tester.pump();
 
     expect(text(tester, 'proxyImportData'), isEmpty);
+    expect(text(tester, 'savedProxyName'), 'Proxy 192.0.2.7');
     expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
     expect(text(tester, 'savedProxyUsername'), 'proxy-user');
     expect(text(tester, 'savedProxyPassword'), 'proxy-password');
@@ -173,7 +169,7 @@ void main() {
     expect(find.text('Nhập proxy HTTP/HTTPS dạng host:port.'), findsNothing);
     await tester.tap(find.byKey(const Key('importProxyData')));
     await tester.pumpAndSettle();
-    expect(text(tester, 'savedProxyName'), 'Entered name');
+    expect(text(tester, 'savedProxyName'), 'Proxy 192.0.2.7');
     expect(text(tester, 'savedProxyUserAgent'), 'test-agent');
     expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
     expect(tester.takeException(), isNull);

@@ -5,12 +5,14 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../controller/tiktok_controller.dart';
 import '../core/scripts/auto_cookie_script.dart';
+import '../core/scripts/auto_interest_script.dart';
 import '../core/scripts/auto_watch_script.dart';
 import '../core/app_configuration.dart';
 import '../core/app_action_theme.dart';
 import '../core/otp_api.dart';
 import '../core/tiktok_launch_action.dart';
 import '../core/webview_failure.dart';
+import '../core/webview_user_agent.dart';
 import 'widgets/controller_scope.dart';
 
 export '../core/tiktok_launch_action.dart';
@@ -186,9 +188,11 @@ class _TikTokView extends StatelessWidget {
                 child: Stack(
               children: [
                 InAppWebView(
-                  initialUrlRequest: URLRequest(
-                    url: WebUri(logic.initialUrl),
-                  ),
+                  initialUrlRequest: needsAndroidDesktopIdentity
+                      ? null
+                      : URLRequest(
+                          url: WebUri(logic.initialUrl),
+                        ),
                   initialUserScripts: UnmodifiableListView([
                     UserScript(
                       source: inlineVideoScript,
@@ -196,6 +200,11 @@ class _TikTokView extends StatelessWidget {
                     ),
                     UserScript(
                       source: autoAcceptCookieScript,
+                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+                      forMainFrameOnly: true,
+                    ),
+                    UserScript(
+                      source: autoSelectInterestScript,
                       injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
                       forMainFrameOnly: true,
                     ),

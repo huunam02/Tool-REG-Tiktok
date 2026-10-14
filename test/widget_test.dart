@@ -13,9 +13,11 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/config.dart' as config;
 import 'package:test_tiktok/core/scripts/auto_login_script.dart';
 import 'package:test_tiktok/core/scripts/auto_cookie_script.dart';
+import 'package:test_tiktok/core/scripts/auto_interest_script.dart';
 import 'package:test_tiktok/core/scripts/auto_signup_script.dart';
 import 'package:test_tiktok/core/otp_api.dart';
 import 'package:test_tiktok/core/webview_locale.dart';
+import 'package:test_tiktok/controller/tiktok_controller.dart';
 
 import 'support/memory_proxy_store.dart';
 
@@ -42,6 +44,66 @@ class _TestWebView extends PlatformInAppWebViewWidget {
 }
 
 void main() {
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('test_tiktok/webview_identity'),
+            (call) async => 'test-agent');
+  });
+  for (final action in TikTokLaunchAction.values) {
+    testWidgets(
+        'Android $action waits for native Client Hints before the first URL',
+        (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final gate = Completer<String>();
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('test_tiktok/webview_identity'), (call) {
+        expect(call.method, 'configure');
+        expect(call.arguments['id'], 0);
+        return gate.future;
+      });
+      final logic = TikTokController(
+          configuration: AppConfiguration.defaults('test-agent'),
+          launchAction: action)
+        ..onInit();
+      addTearDown(logic.onClose);
+      final platform = _TestController(WebUri(tiktokHomeUrl));
+      final created = logic.onWebViewCreated(
+          InAppWebViewController.fromPlatform(platform: platform));
+      await tester.pump();
+      expect(platform.loads, isEmpty);
+      expect(logic.initialActionStarted, isFalse);
+      gate.complete('test-agent');
+      await created;
+      expect(platform.loads.single.url.toString(), action.initialUrl);
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets(
+        'Android $action metadata failure prevents any initial network navigation',
+        (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('test_tiktok/webview_identity'), (call) async {
+        throw PlatformException(code: 'identity_unsupported');
+      });
+      final logic = TikTokController(
+          configuration: AppConfiguration.defaults('test-agent'),
+          launchAction: action)
+        ..onInit();
+      addTearDown(logic.onClose);
+      final platform = _TestController(WebUri(tiktokHomeUrl));
+      await logic.onWebViewCreated(
+          InAppWebViewController.fromPlatform(platform: platform));
+      expect(platform.loads, isEmpty);
+      expect(logic.pageFailure?.title, 'Không thể cấu hình Chrome desktop');
+      await logic.runInitialAction();
+      expect(logic.initialActionStarted, isFalse);
+      debugDefaultTargetPlatformOverride = null;
+    });
+  }
   testWidgets(
       'Home passes edited configuration to a separate TikTok route and keeps it on return',
       (tester) async {
@@ -145,6 +207,22 @@ void main() {
       await tester.pumpAndSettle();
       final automaticPage = tester.widget<TikTokPage>(find.byType(TikTokPage));
       expect(automaticPage.launchAction, entry.value);
+      expect(automaticPage.configuration.proxy?.uri.host, '127.0.0.1');
+      expect(automaticPage.configuration.proxy?.uri.port, 8888);
+      expect(
+          automaticPage.configuration.userAgent, page.configuration.userAgent);
+      expect(proxyCalls.last.arguments['host'], '127.0.0.1');
+      expect(proxyCalls.last.arguments['port'], 8888);
+      expect(
+          proxyCalls.length, entry.value == TikTokLaunchAction.login ? 2 : 3);
+      expect(
+          tester
+              .widget<InAppWebView>(find.byType(InAppWebView))
+              .platform
+              .params
+              .initialSettings!
+              .userAgent,
+          page.configuration.userAgent);
       expect(find.byType(DatePickerDialog), findsNothing);
       if (entry.value == TikTokLaunchAction.signup) {
         expect(automaticPage.configuration.birthday!.year,
@@ -418,15 +496,19 @@ void main() {
           .widget<InAppWebView>(find.byType(InAppWebView))
           .platform
           .params;
-      expect(
-          params.initialUrlRequest!.url.toString(),
-          switch (action) {
-            TikTokLaunchAction.browse => tiktokHomeUrl,
-            TikTokLaunchAction.login => tiktokHomeUrl,
-            TikTokLaunchAction.signup => tiktokHomeUrl,
-          });
-      expect(params.initialUrlRequest!.url!.queryParameters['lang'], isNull);
-      expect(params.initialUrlRequest!.headers?['Accept-Language'], isNull);
+      if (debugDefaultTargetPlatformOverride != TargetPlatform.iOS) {
+        expect(params.initialUrlRequest, isNull);
+      } else {
+        expect(
+            params.initialUrlRequest!.url.toString(),
+            switch (action) {
+              TikTokLaunchAction.browse => tiktokHomeUrl,
+              TikTokLaunchAction.login => tiktokHomeUrl,
+              TikTokLaunchAction.signup => tiktokHomeUrl,
+            });
+        expect(params.initialUrlRequest!.url!.queryParameters['lang'], isNull);
+        expect(params.initialUrlRequest!.headers?['Accept-Language'], isNull);
+      }
       expect(params.initialSettings!.userAgent, configuration.userAgent);
       expect(params.initialSettings!.preferredContentMode,
           UserPreferredContentMode.DESKTOP);
@@ -440,6 +522,11 @@ void main() {
       expect(
           cookieScript.injectionTime, UserScriptInjectionTime.AT_DOCUMENT_END);
       expect(cookieScript.forMainFrameOnly, isTrue);
+      final interestScript = params.initialUserScripts!
+          .singleWhere((script) => script.source == autoSelectInterestScript);
+      expect(interestScript.injectionTime,
+          UserScriptInjectionTime.AT_DOCUMENT_END);
+      expect(interestScript.forMainFrameOnly, isTrue);
       final wrapped = InAppWebViewController.fromPlatform(platform: controller);
       params.onWebViewCreated!.call(wrapped);
       expect(
@@ -451,6 +538,7 @@ void main() {
       await tester.pump();
       expect(find.byType(DatePickerDialog), findsNothing);
       expect(controller.sources, contains(autoAcceptCookieScript));
+      expect(controller.sources, contains(autoSelectInterestScript));
       expect(
           controller.sources
               .where((source) => source.contains(autoLoginStepScript))
@@ -831,6 +919,47 @@ void main() {
     expect(reader.requests, isEmpty);
     expect(find.textContaining('TikTok chưa xác nhận gửi mã'), findsOneWidget);
     expect(find.text('Dừng'), findsNothing);
+  });
+
+  testWidgets(
+      'signup continues through delayed username Skip before reporting success',
+      (tester) async {
+    final reader = _TestOtpReader();
+    final controller =
+        await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
+      'otp-submitted',
+      'password-submitted',
+      'waiting-username-skip',
+      'username-skipped',
+      'signup-success',
+    ]);
+    await tester.pump(const Duration(milliseconds: 2600));
+    await tester.pump();
+    for (var i = 0; i < 2; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+    }
+    expect(find.text('Đang chờ trước khi bỏ qua tạo tên người dùng…'),
+        findsOneWidget);
+    expect(find.text('Dừng'), findsOneWidget);
+    expect(find.text('Đăng ký TikTok thành công.'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(
+        find.text('Đã bấm Skip, đang chờ hoàn tất đăng ký…'), findsOneWidget);
+    expect(find.text('Dừng'), findsOneWidget);
+    expect(find.text('Đăng ký TikTok thành công.'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(find.text('Đăng ký TikTok thành công.'), findsOneWidget);
+    expect(find.text('Dừng'), findsNothing);
+    final sources = controller.sources
+        .where((source) => source.contains(autoSignupStepScript));
+    expect(sources, hasLength(5));
+    expect(sources.last, contains('"allowPasswordSubmit":false'));
+    expect(sources.last, contains('"allowOtpSubmit":false'));
+    expect(reader.requests, isEmpty);
+    expect(tester.takeException(), isNull);
   });
 
   for (final action in [TikTokLaunchAction.login, TikTokLaunchAction.signup]) {
@@ -1221,6 +1350,15 @@ class _TestController extends PlatformInAppWebViewController {
   final sources = <String>[];
   final handlers = <String, JavaScriptHandlerCallback>{};
   bool allowAccountPaste = true;
+  final loads = <URLRequest>[];
+
+  @override
+  Future<void> loadUrl(
+      {required URLRequest urlRequest,
+      Uri? iosAllowingReadAccessTo,
+      WebUri? allowingReadAccessTo}) async {
+    loads.add(urlRequest);
+  }
 
   @override
   Future<WebUri?> getUrl() async => url;

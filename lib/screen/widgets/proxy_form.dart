@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/proxy_store.dart';
 import '../../core/app_configuration.dart';
+import '../../core/webview_user_agent.dart';
 import '../../controller/proxy_form_controller.dart';
 import 'controller_scope.dart';
 import 'proxy_widgets.dart';
@@ -237,7 +238,9 @@ class _ProxyFormView extends StatelessWidget {
                           child: Text(
                             logic.generating
                                 ? 'Đang tạo User-Agent…'
-                                : 'Tạo User-Agent mới',
+                                : needsAndroidDesktopIdentity
+                                    ? 'Lấy User-Agent Chrome desktop'
+                                    : 'Tạo User-Agent mới',
                           ),
                         ),
                         if (logic.generationFailed)

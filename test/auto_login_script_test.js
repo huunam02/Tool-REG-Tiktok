@@ -10,7 +10,7 @@ const source = readFileSync(
 const step = source.match(/autoLoginStepScript = r'''([\s\S]*?)''';/)[1];
 const flush = () => new Promise(setImmediate);
 
-function setup({ autoPaste = true, pasteResult = true } = {}) {
+function setup({ autoPaste = true, pasteResult = true, sendCodeAcknowledged = true } = {}) {
   const elements = [];
   const requests = [];
   const pending = [];
@@ -77,7 +77,13 @@ function setup({ autoPaste = true, pasteResult = true } = {}) {
     add: (selector, textContent = '') => {
       const element = { selector, textContent, disabled: false, hidden: false, clicks: 0,
         getClientRects() { return this.hidden ? [] : [{}]; }, getAttribute: () => null,
-        click() { this.clicks++; },
+        click() {
+          this.clicks++;
+          if (sendCodeAcknowledged && /^(send code|send verification code)$/i.test(this.textContent.trim())) {
+            this.textContent = 'Resend code (60s)';
+            this.disabled = true;
+          }
+        },
         querySelectorAll() { return []; },
       };
       elements.push(element);
@@ -591,6 +597,86 @@ test('requests a code once and pastes OTP as soon as it is ready', async () => {
   assert.deepEqual(env.requests[2], ['FlutterLoginPaste', 1, 'otp']);
   assert.equal(env.submit.clicks, 1);
   assert.equal(send.clicks, 1);
+});
+
+test('login waits for Send code feedback and never clicks a replacement button', async () => {
+  const env = setup({ sendCodeAcknowledged: false });
+  env.config.waitForOtpApi = true;
+  new env.Input('input[name="code"]');
+  const send = env.add('button', 'Send code');
+  await fill(env);
+  assert.equal(env.run(), 'requesting-verification');
+  assert.equal(env.window.__flutterAutoLogin.otpRequestedAt, null);
+  send.hidden = true;
+  const replacement = env.add('button', 'Send code');
+  env.advance(14999);
+  assert.equal(env.run(), 'requesting-verification');
+  env.advance(1);
+  assert.equal(env.run(), 'verification-request-failed');
+  assert.equal(send.clicks, 1);
+  assert.equal(replacement.clicks, 0);
+  assert.equal(env.requests.length, 2);
+  assert.equal(env.window.__flutterAutoLogin.otpRequestedAt, null);
+});
+
+test('login starts OTP only after a delayed resend countdown confirms Send code', async () => {
+  const env = setup({ sendCodeAcknowledged: false });
+  env.config.waitForOtpApi = true;
+  const send = env.add('button', 'Send code');
+  await fill(env);
+  assert.equal(env.run(), 'requesting-verification');
+  send.disabled = true;
+  env.advance(3000);
+  assert.equal(env.run(), 'requesting-verification');
+  send.textContent = 'Resend code 43s';
+  assert.equal(env.run(), 'verification-requested');
+  assert.equal(env.run(), 'otp-required');
+  assert.equal(send.clicks, 1);
+});
+
+test('login follows the code screen with a new heading after Send code', async () => {
+  const env = setup({ sendCodeAcknowledged: false });
+  env.config.waitForOtpApi = true;
+  const flow = homeLogin(env);
+  env.run(); env.run(); env.run();
+  await fill(env);
+  assert.equal(env.run(), 'requesting-verification');
+  env.email.hidden = env.password.hidden = flow.send.hidden = true;
+  flow.title.textContent = 'Enter 6-digit code';
+  assert.equal(env.run(), 'verification-requested');
+  assert.equal(env.run(), 'otp-required');
+  assert.equal(flow.send.clicks, 1);
+});
+
+test('login does not reopen Account when React replaces its button', () => {
+  const env = setup();
+  env.location.pathname = '/';
+  const account = env.add('[data-e2e="nav-profile"]', 'Account');
+  assert.equal(env.run(), 'waiting-form');
+  account.hidden = true;
+  const replacement = env.add('[data-e2e="nav-profile"]', 'Account');
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(account.clicks, 1);
+  assert.equal(replacement.clicks, 0);
+});
+
+test('login keeps password and OTP submission latched after button replacement', async () => {
+  const env = setup();
+  env.config.otp = '012345';
+  await fill(env);
+  assert.equal(env.run(), 'submitted');
+  env.submit.hidden = true;
+  const replacement = env.add('button', 'Log in');
+  assert.equal(env.run(false), 'submitted');
+  assert.equal(replacement.clicks, 0);
+  const otp = new env.Input('input[name="code"]');
+  otp.value = env.config.otp;
+  assert.equal(env.run(false), 'otp-submitted');
+  replacement.hidden = true;
+  const next = env.add('button', 'Next');
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(replacement.clicks, 1);
+  assert.equal(next.clicks, 0);
 });
 
 test('pastes an OTP challenge after password submission', async () => {

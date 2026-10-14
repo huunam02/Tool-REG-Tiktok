@@ -66,12 +66,17 @@ void main() {
         safariDesktopUserAgent(nativeIphone));
   });
 
-  test('Android keeps the selected UA and does not request a native WebKit UA',
+  test(
+      'Android uses the installed Chromium version with the Chrome desktop template',
       () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     final agent = await resolveWebViewUserAgent(configured,
-        nativeAgentLoader: () async => throw StateError('Must not be called'));
-    expect(agent, configured);
+        nativeAgentLoader: () async =>
+            'Mozilla/5.0 (Linux; Android 16; sdk_gphone64_arm64; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.107 Mobile Safari/537.36');
+    expect(agent,
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36');
+    expect(agent, isNot(contains('Mobile')));
+    expect(agent, isNot(contains(' wv')));
   });
 
   test('iOS preserves a custom Safari UA as well as a Chromium UA', () async {

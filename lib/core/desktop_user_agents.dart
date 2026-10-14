@@ -3,7 +3,10 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Android: Chrome desktop 120–140 theo mẫu Linux x86_64.
+import 'webview_user_agent.dart';
+
+/// Legacy Android templates, used only if native version discovery is unavailable.
+/// Live Android sessions resolve these to the installed Chromium version.
 final List<String> androidDesktopUserAgents = List<String>.unmodifiable([
   for (var version = 120; version <= 140; version++)
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -36,6 +39,15 @@ const _directUserAgentKey = 'desktop_user_agent_direct';
 Future<String> loadDirectDesktopUserAgent() async {
   final preferences = await SharedPreferences.getInstance();
   final stored = preferences.getString(_directUserAgentKey);
+  if (needsAndroidDesktopIdentity) {
+    final used = preferences.getStringList(_usedUserAgentsKey) ?? [];
+    final selected = await resolveWebViewUserAgent(stored ??
+        (used.isNotEmpty ? used.last : androidDesktopUserAgents.first));
+    if (!await preferences.setString(_directUserAgentKey, selected)) {
+      throw StateError('Cannot persist direct User-Agent');
+    }
+    return selected;
+  }
   if (stored != null && desktopUserAgents.contains(stored)) return stored;
   final used = preferences.getStringList(_usedUserAgentsKey) ?? [];
   final selected = used.isNotEmpty && desktopUserAgents.contains(used.last)
@@ -48,9 +60,17 @@ Future<String> loadDirectDesktopUserAgent() async {
 }
 
 /// Lưu lịch sử ngoài WebView để xóa cookie không làm mất các UA đã dùng.
-/// Mỗi vòng dùng hết bộ UA của nền tảng trước khi lặp, kể cả sau khi đóng/mở app.
+/// iOS uses every template before repeating. Android uses the installed engine.
 Future<String> selectNextDesktopUserAgent() async {
   final preferences = await SharedPreferences.getInstance();
+  if (needsAndroidDesktopIdentity) {
+    final selected =
+        await resolveWebViewUserAgent(androidDesktopUserAgents.first);
+    if (!await preferences.setStringList(_usedUserAgentsKey, [selected])) {
+      throw StateError('Cannot persist User-Agent history');
+    }
+    return selected;
+  }
   var used = (preferences.getStringList(_usedUserAgentsKey) ?? [])
       .where(desktopUserAgents.contains)
       .toList();

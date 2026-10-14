@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import 'webview_user_agent.dart';
+
 /// Navigate a separate WebView so TikTok's CSP/CORS cannot block the IP check.
 /// Both views use Android's global override or iOS's default data store proxy.
 class WebViewProxyIpChecker {
@@ -34,16 +36,27 @@ class WebViewProxyIpChecker {
         if (!result.isCompleted) result.complete(ip);
       }
 
+      final request = URLRequest(
+        url: WebUri(Uri.https(host, '/', {
+          'format': 'json',
+          '_': DateTime.now().microsecondsSinceEpoch.toString(),
+        }).toString()),
+        headers: const {
+          'Cache-Control': 'no-cache',
+        },
+      );
       final view = HeadlessInAppWebView(
-        initialUrlRequest: URLRequest(
-          url: WebUri(Uri.https(host, '/', {
-            'format': 'json',
-            '_': DateTime.now().microsecondsSinceEpoch.toString(),
-          }).toString()),
-          headers: const {
-            'Cache-Control': 'no-cache',
-          },
-        ),
+        initialUrlRequest: needsAndroidDesktopIdentity ? null : request,
+        onWebViewCreated: (controller) async {
+          if (!needsAndroidDesktopIdentity) return;
+          try {
+            await configureAndroidDesktopIdentity(controller);
+            if (_cancelled || result.isCompleted) return;
+            await controller.loadUrl(urlRequest: request);
+          } catch (_) {
+            finish(null);
+          }
+        },
         initialSettings: InAppWebViewSettings(
           userAgent: userAgent,
           preferredContentMode: UserPreferredContentMode.DESKTOP,

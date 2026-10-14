@@ -20,16 +20,24 @@ proxy hoặc User-Agent khác, app mới xóa cookie, dữ liệu phiên và cac
 trước khi lưu cấu hình mới. Nếu xóa phiên thất bại, proxy hiện tại không đổi
 và có thể thử lại.
 
-Form **Thêm proxy** tự random User-Agent mặc định. Nút **Tạo User-Agent ngẫu
-nhiên** cho phép random lại trong form thêm hoặc sửa; có thể nhập User-Agent
-riêng. App lưu đúng User-Agent đang hiển thị cùng proxy bằng SQLite. Chọn lại
-proxy hoặc mở lại app sẽ khôi phục đúng User-Agent đó.
-Trên Android, User-Agent tạo ngẫu nhiên dùng mẫu
-`Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36`,
-với phiên bản Chrome ngẫu nhiên từ 120 đến 140. Mỗi vòng dùng hết 21 chuỗi
-trước khi lặp; lịch sử vẫn được giữ khi đóng/mở app hoặc xóa phiên WebView.
-Trên iOS và Android, WebView dùng đúng User-Agent đã chọn và đặt chế độ
-`DESKTOP`. iOS không tự thay chuỗi đã chọn bằng Safari native của máy;
+Form **Thêm proxy** tự tạo User-Agent mặc định. Nút **Lấy User-Agent Chrome desktop** trên Android hoặc **Tạo User-Agent mới** trên iOS
+cập nhật chuỗi trong form thêm hoặc sửa. App lưu chuỗi đang hiển thị cùng
+proxy bằng SQLite; chọn lại proxy hoặc mở lại app sẽ khôi phục cấu hình đó.
+Trên Android, chuỗi được chuẩn hóa khi mở WebView theo Chrome bật desktop:
+`Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/<major>.0.0.0 Safari/537.36`.
+`major` lấy từ Chromium thực tế trên thiết bị, không random phiên bản 120–140
+nữa. Client Hints dùng `Google Chrome`/`Chromium`, cùng phiên bản thực tế,
+`platform="Linux"`, `mobile=false`, `formFactors=["Desktop"]`, model trống và kiến trúc x86/64 bit.
+Điện thoại vẫn giữ khả năng cảm ứng. Metadata được cấu hình native trước
+request đầu tiên, cho cả WebView TikTok và WebView kiểm tra IP. Nếu Android
+System WebView không hỗ trợ `USER_AGENT_METADATA` và `USER_AGENT_METADATA_FORM_FACTORS`, app báo lỗi thay vì tải
+trang với nhận diện không đồng nhất. Cần build và chạy lại ứng dụng khi thay
+phần native; hot reload không cập nhật MethodChannel Android.
+Android dùng AndroidX WebKit 1.16.0 và yêu cầu Android 7.0 (API 24) trở lên.
+Đây vẫn là WebView; đồng bộ User-Agent/Client Hints không biến engine thành Chrome thật.
+Trên iOS, User-Agent vẫn được random, dùng hết bộ trước khi lặp và giữ lịch sử
+qua các lần mở app. WebView dùng đúng chuỗi đã chọn và đặt chế độ `DESKTOP`.
+iOS không tự thay chuỗi đã chọn bằng Safari native của máy;
 việc đó từng khiến các User-Agent khác nhau trở thành cùng một chuỗi thực tế.
 Safari desktop từ thông tin native chỉ là phương án dự phòng khi chưa có
 User-Agent cấu hình. Đổi chuỗi User-Agent không thay đổi engine WebKit trên iOS
@@ -63,18 +71,31 @@ và đưa proxy đang cache chưa có trong danh sách vào danh sách quản l�
 
 Màn tạo proxy có khối **Import data** riêng và nút **Import proxy**: dán một dòng
 `host:port:username:password` để điền địa chỉ HTTP, tài khoản và mật khẩu.
-**Tên proxy** bắt buộc nhập riêng, không lấy từ dữ liệu import; tên đã nhập và
+Import tự điền **Tên proxy** theo dạng `Proxy <host>`, không có dấu gạch ngang
+và không kèm port, ví dụ `Proxy 31.57.78.19`; có thể sửa tên trước khi lưu.
 User-Agent được giữ khi import. User-Agent nằm cùng khối **Thông tin kết nối**
 với tên, địa chỉ, tài khoản và mật khẩu proxy. Màn sửa proxy không có import.
 Kiểm tra các ô rồi bấm tạo/lưu để lưu proxy.
 
 Đăng ký, đăng nhập và xem TikTok đều áp dụng cùng proxy trước khi mở WebView.
+Các thao tác tự động nhập email/mật khẩu/OTP, chọn Email, gửi biểu mẫu và Skip
+chạy trong cùng WebView, giữ cùng User-Agent/Client Hints và cấu hình proxy.
+API lấy OTP dùng HTTP client Dart riêng: cấu hình proxy và User-Agent của
+WebView không áp dụng cho request API này.
 Android cần WebView hỗ trợ `PROXY_OVERRIDE`; iOS cần iOS 17 trở lên.
 IP được kiểm tra bằng WebView nền dùng cùng proxy và kho dữ liệu mặc định,
 không gọi `fetch` từ trang TikTok để tránh bị CSP/CORS chặn. App thử hai dịch vụ
 IP, mỗi dịch vụ tối đa 8 giây; nút **Thử lại** chỉ kiểm tra lại IP. Nếu chưa nhận
 được IP, app báo chưa xác minh, không kết luận proxy hỏng. Việc kiểm tra chạy
 độc lập và không trì hoãn đăng ký/đăng nhập.
+
+## Chọn sở thích
+
+Khi modal **What would you like to watch on TikTok?** xuất hiện, app tự chọn
+ngẫu nhiên 3 sở thích khác nhau rồi bấm **Continue** khi đã đủ 3 và nút được bật.
+Nếu đã chọn sẵn 1–2 mục, app giữ các mục đó và chọn thêm cho đủ 3. Bộ quan sát
+hoạt động cả khi modal xuất hiện muộn trong lúc xem, đăng ký hoặc đăng nhập;
+không bấm lại Continue trong cùng modal và tạm ngưng khi trang ở nền.
 
 ## Ngôn ngữ WebView
 
@@ -104,13 +125,28 @@ Luồng **Tự động đăng ký** mở trang chủ TikTok → bấm Account �
 → bấm Sign up → Use phone or email → Use Email, rồi tiếp tục điền ngày sinh,
 email, mật khẩu và xử lý OTP như trước. Biểu mẫu trong dialog được hỗ trợ cả
 khi URL vẫn ở trang chủ.
+Sau khi gửi OTP và mật khẩu, nếu xuất hiện màn **Create username**, app chờ
+2 giây khi nút **Skip** sẵn sàng rồi bấm một lần để bỏ qua bước tạo tên người
+dùng, kể cả khi tên gợi ý không khả dụng. App tiếp tục chờ xác nhận đăng ký
+thành công; nút **Dừng** vẫn hủy được thao tác trong thời gian chờ.
 
 Luồng **Tự động đăng nhập** mở trang chủ TikTok → bấm Account → mở dialog Login
 → Use phone or email → Username or Email, rồi tiếp tục nhập tài khoản, mật khẩu
 và xử lý OTP như trước, kể cả khi dialog giữ nguyên URL trang chủ.
+Khi hiện **Verify it’s really you**, app tự bấm đúng ô **Email**, chờ TikTok
+mở bước nhập mã rồi gọi API OTP. Luồng đăng nhập có tối đa 120 giây để mở
+biểu mẫu; sau khi gửi mật khẩu, chọn Email hoặc gửi OTP, mỗi bước có thêm
+45 giây chờ kết quả để tránh dừng ngay khi hộp xác minh xuất hiện trên mạng chậm.
 Đăng ký và đăng nhập tự động nghỉ 2,5 giây giữa các thao tác thông thường.
 Từ bước yêu cầu/nhập OTP, app kiểm tra mỗi 300 ms để nhập mã và bấm tiếp
 ngay khi sẵn sàng; không chờ cố định 5 giây trước khi nhập OTP.
+Các bước mở Account, chọn phương thức/email, gửi mã, xác nhận OTP, gửi mật khẩu,
+đăng ký và Skip đều có chốt theo bước trong mỗi lần chạy. Trang tạo lại nút DOM
+không khiến app bấm lại bước đã thực hiện; cùng một nút vẫn có thể được dùng
+ở hai bước khác nhau như gửi mật khẩu rồi xác nhận OTP. Mỗi thao tác nút chỉ
+gọi click, không phát thêm chuỗi pointer/mouse. Bước Send code đăng nhập cũng
+chờ bộ đếm gửi lại hoặc màn OTP xác nhận gửi mã; hết 15 giây không có xác nhận
+thì dừng, chưa gọi API lấy OTP và không tự gửi lại mã.
 
 App luôn lấy OTP qua API cho **Đăng nhập** và **Đăng ký**. Mở biểu tượng
 **Cài đặt** trên AppBar, chọn **Cấu hình OTP API** để sửa URL và token dùng chung
@@ -124,7 +160,9 @@ App dùng thư viện `http` để gọi `POST /api/code` sau khi TikTok yêu c�
 `X-Reader-Token`, `ngrok-skip-browser-warning: 1`. Khi API trả
 `{"ok":true,"code":"012345"}`, app dán mã bằng clipboard native rồi xác nhận.
 Trong thời gian chờ, app vẫn theo dõi CAPTCHA, lỗi biểu mẫu và nút Dừng.
-Ở luồng đăng ký, app bỏ focus khỏi ô vừa dán và chờ phản hồi của Send code
+Ở luồng đăng ký, app bỏ focus khỏi ô vừa dán và chỉ gọi click một lần cho
+Send code, không phát thêm chuỗi pointer/mouse có thể kích hoạt handler khác.
+App chờ phản hồi của Send code
 (đếm ngược/gửi lại mã hoặc chuyển sang ô OTP) trước khi gọi API. Nếu TikTok
 chưa phản hồi trong 15 giây, app báo lỗi và dừng; app không tự gửi mã lần nữa.
 App cũng đọc lỗi tài khoản trong console TikTok. Nếu TikTok báo

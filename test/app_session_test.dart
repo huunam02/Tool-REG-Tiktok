@@ -201,7 +201,7 @@ void main() {
         selected);
   });
 
-  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+  for (final platform in [TargetPlatform.iOS]) {
     test('$platform uses every UA before repeating across cycle boundaries',
         () async {
       debugDefaultTargetPlatformOverride = platform;
@@ -218,6 +218,21 @@ void main() {
       expect(secondCycle.first, isNot(firstCycle.last));
     });
   }
+
+  test('Android generation uses the actual Chromium version consistently',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    _platform.nativeUserAgent =
+        'Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.107 Mobile Safari/537.36';
+    final first = await selectNextDesktopUserAgent();
+    expect(first, contains('Chrome/154.0.0.0'));
+    expect(await selectNextDesktopUserAgent(), first);
+    expect(await loadDirectDesktopUserAgent(), first);
+    expect(
+        (await SharedPreferences.getInstance())
+            .getStringList('desktop_user_agents_used'),
+        [first]);
+  });
 
   test(
       'direct User-Agent reuses the last known identity instead of selecting a new one',

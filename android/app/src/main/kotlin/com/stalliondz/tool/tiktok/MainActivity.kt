@@ -3,6 +3,7 @@ package com.stalliondz.tool.tiktok
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import com.pichillilorenzo.flutter_inappwebview_android.InAppWebViewFlutterPlugin
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -10,6 +11,32 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity: FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/webview_identity")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "configure") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val id = call.argument<Any>("id")
+                val root = if (id is Number) {
+                    flutterEngine.platformViewsController.getPlatformViewById(id.toInt())
+                } else {
+                    val plugin = flutterEngine.plugins.get(InAppWebViewFlutterPlugin::class.java)
+                        as? InAppWebViewFlutterPlugin
+                    plugin?.headlessInAppWebViewManager?.webViews?.get(id as? String)
+                        ?.flutterWebView?.view
+                }
+                val webView = root?.let { findIdentityWebView(it) }
+                if (webView == null) {
+                    result.error("identity_view_missing", "Không tìm thấy WebView để cấu hình Chrome desktop.", null)
+                    return@setMethodCallHandler
+                }
+                try {
+                    result.success(DesktopChromeIdentity.configure(webView))
+                } catch (error: Exception) {
+                    result.error("identity_unsupported", error.message, null)
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/comment_input")
             .setMethodCallHandler { call, result ->
                 if (call.method != "paste") {
@@ -55,6 +82,17 @@ class MainActivity: FlutterActivity() {
         if (view is ViewGroup) {
             for (index in 0 until view.childCount) {
                 findWebView(view.getChildAt(index))?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun findIdentityWebView(view: View): WebView? {
+        // Headless IP probes are invisible but need the same HTTP identity.
+        if (view is WebView) return view
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                findIdentityWebView(view.getChildAt(index))?.let { return it }
             }
         }
         return null

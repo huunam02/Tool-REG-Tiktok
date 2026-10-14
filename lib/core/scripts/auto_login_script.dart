@@ -53,7 +53,8 @@ const String autoLoginStepScript = r'''
   const verificationActive = () => !allowSubmit || config.otpRequestedAt != null ||
     config.emailVerificationRequestedAt != null ||
     window.__flutterAutoLogin?.attempt === config.attempt &&
-      (window.__flutterAutoLogin.submitted || window.__flutterAutoLogin.emailVerificationSelected) ||
+      (window.__flutterAutoLogin.submitted || window.__flutterAutoLogin.emailVerificationSelected ||
+        window.__flutterAutoLogin.codeRequest || window.__flutterAutoLogin.otpRequestedAt != null) ||
     !!find('#idv-modal-container') && (hasTitle(find('#idv-modal-container'), identityTitle) ||
       hasTitle(find('#idv-modal-container'), codeTitle));
   const hasTitle = (root, pattern) => Array.from(root.querySelectorAll(headingSelector))
@@ -97,7 +98,8 @@ const String autoLoginStepScript = r'''
   if (!state || state.attempt !== config.attempt) {
     state?.stop();
     state = {
-      attempt: config.attempt, active: true, pending: null, pasted: new WeakMap(), clicked: new WeakSet(),
+      attempt: config.attempt, active: true, pending: null, pasted: new WeakMap(), clicked: new WeakSet(), actions: new Set(),
+      codeRequest: null,
       submitted: false, otpSubmitted: false, otpRequestedAt: config.otpRequestedAt ?? null,
       emailVerificationSelected: config.emailVerificationRequestedAt != null,
       emailVerificationRequest: config.emailVerificationRequestedAt != null && config.otpRequestedAt == null
@@ -147,26 +149,35 @@ const String autoLoginStepScript = r'''
       ? state.pending.field === 'otp' ? 'waiting-otp-paste' : 'waiting-paste'
       : 'paste-failed';
   }
-  const clickOnce = (control) => {
-    if (!control || state.clicked.has(control)) return;
-    state.clicked.add(control);
+  const clickOnce = (control, action) => {
+    if (!control || !enabled(control) ||
+        (action ? state.actions.has(action) : state.clicked.has(control))) return false;
+    // A named step survives React replacing the DOM node. The same node may
+    // legitimately be reused for password submission and then OTP submission.
+    if (action) state.actions.add(action);
+    else state.clicked.add(control);
     control.click();
+    return true;
   };
   const sendCodePattern = /^(send code|send verification code|gửi mã|gửi mã xác minh)$/i;
   const codeControls = () => Array.from((dialog() || document).querySelectorAll('button, [role="button"]'))
     .filter(visible);
-  if (state.emailVerificationRequest) {
+  const codeRequestResult = () => {
+    const request = state.emailVerificationRequest || state.codeRequest;
     const controls = codeControls();
     const acknowledged = verification && !controls.some(el => sendCodePattern.test(controlText(el))) ||
-      controls.some(el => /^(resend( code)?|send (code )?again|gửi lại( mã)?)(\b|\s|\()/i.test(controlText(el)));
+      controls.some(el => /^(resend( code)?|send (code )?again|gửi lại( mã)?)(\b|\s|\()/i.test(controlText(el)) ||
+        /^(\d+\s*s|resend.*\d|send.*\d+\s*s|gửi lại.*\d)/i.test(controlText(el)));
     if (acknowledged) {
-      state.otpRequestedAt = state.emailVerificationRequest.at;
+      state.otpRequestedAt = request.at;
       state.emailVerificationRequest = null;
+      state.codeRequest = null;
       return 'verification-requested';
     }
-    return Date.now() - state.emailVerificationRequest.at >= 15000
+    return Date.now() - request.at >= 15000
       ? 'verification-request-failed' : 'requesting-verification';
-  }
+  };
+  if (state.emailVerificationRequest || state.codeRequest) return codeRequestResult();
   const verificationModal = dialog();
   if (verificationActive() && verificationModal && hasTitle(verificationModal, identityTitle) && !verification) {
     if (state.emailVerificationSelected || state.otpSubmitted || config.allowOtpSubmit === false) return 'waiting-result';
@@ -187,7 +198,7 @@ const String autoLoginStepScript = r'''
     if (!emailMethod) return 'waiting-form';
     state.emailVerificationSelected = true;
     state.emailVerificationRequest = { at: Date.now() };
-    clickOnce(emailMethod);
+    clickOnce(emailMethod, 'select-verification-email');
     return 'email-verification-selected';
   }
   // Open Login through Home's Account icon. Its dialog can keep the Home URL.
@@ -199,7 +210,7 @@ const String autoLoginStepScript = r'''
         '[aria-label="Account"], [aria-label="Profile"], [aria-label="Tài khoản"], [aria-label="Hồ sơ"]') ||
         Array.from(document.querySelectorAll('a, button, [role="button"], [role="link"]'))
           .find(el => enabled(el) && /^(account|profile|tài khoản|hồ sơ)$/i.test(el.textContent.trim()));
-      if (account && enabled(account)) clickOnce(account);
+      if (account && enabled(account)) clickOnce(account, 'open-account');
     }
     return 'waiting-form';
   }
@@ -213,13 +224,13 @@ const String autoLoginStepScript = r'''
     const emailTab = controls.find(el => enabled(el) &&
       /^(username or e-?mail|e-?mail or username|(use|log\s*in with) (e-?mail or username|username or e-?mail)|đăng nhập bằng (email hoặc tên người dùng|tên người dùng hoặc email))$/i.test(el.textContent.trim()));
     if (emailTab) {
-      clickOnce(emailTab);
+      clickOnce(emailTab, 'select-email-tab');
       return 'waiting-form';
     }
     if (phoneInput) return 'waiting-form';
     const method = controls.find(el => enabled(el) &&
       /^(use phone or email|use phone\s*\/\s*email(\s*\/\s*username)?|sử dụng số điện thoại hoặc email)$/i.test(el.textContent.trim()));
-    clickOnce(method);
+    clickOnce(method, 'select-login-method');
     return 'waiting-form';
   }
   const paste = (editor, field, text) => {
@@ -273,7 +284,7 @@ const String autoLoginStepScript = r'''
     const verify = button(/^(log\s*in|verify|confirm|continue|next|đăng nhập|xác minh|xác nhận|tiếp tục|tiếp theo)$/i);
     if (!verify) return 'waiting-submit';
     state.otpSubmitted = true;
-    verify.click();
+    clickOnce(verify, 'submit-otp');
     return 'otp-submitted';
   }
   if (state.submitted) return 'submitted';
@@ -286,9 +297,9 @@ const String autoLoginStepScript = r'''
     if (passwordResult) return passwordResult;
   }
   if (sendCode) {
-    state.otpRequestedAt = Date.now();
-    sendCode.click();
-    return 'verification-requested';
+    state.codeRequest = { at: Date.now() };
+    clickOnce(sendCode, 'send-code');
+    return codeRequestResult();
   }
   if (sendCodeControl) return 'waiting-submit';
   if (verification) return 'verification-required';
@@ -304,7 +315,7 @@ const String autoLoginStepScript = r'''
   if (!submit) return 'waiting-submit';
   // Latch before clicking in case navigation interrupts the result delivery.
   state.submitted = true;
-  submit.click();
+  clickOnce(submit, 'submit-password');
   return 'submitted';
 }
 ''';

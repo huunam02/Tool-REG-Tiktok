@@ -84,7 +84,7 @@ class WebViewProxy {
   final String username;
   final String password;
 
-  /// Import host:port:username:password; the name is supplied separately.
+  /// Import host:port:username:password into connection settings.
   static WebViewProxy parseImport(String value) {
     final line = value.replaceAll(RegExp(r'^[\r\n]+|[\r\n]+$'), '');
     final match =

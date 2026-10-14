@@ -8,10 +8,12 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../core/scripts/auto_login_script.dart';
 import '../core/scripts/auto_cookie_script.dart';
+import '../core/scripts/auto_interest_script.dart';
 import '../core/scripts/auto_signup_script.dart';
 import '../core/scripts/auto_watch_script.dart';
 import '../core/scripts/country_modal_script.dart';
 import '../core/webview_proxy_ip.dart';
+import '../core/webview_user_agent.dart';
 import '../core/app_configuration.dart';
 import '../core/otp_api.dart';
 import '../core/webview_failure.dart';
@@ -23,11 +25,14 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   TikTokController(
       {required this.configuration,
       this.launchAction = TikTokLaunchAction.browse,
-      this.otpReaderFactory});
+      this.otpReaderFactory,
+      DateTime Function()? now})
+      : _now = now ?? DateTime.now;
 
   final AppConfiguration configuration;
   final TikTokLaunchAction launchAction;
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
+  final DateTime Function() _now;
   String get initialUrl => launchAction.initialUrl;
 
   static const commentInputChannel = MethodChannel('test_tiktok/comment_input');
@@ -462,6 +467,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             'Đã nhập mật khẩu, chờ trước khi đăng ký…',
           'otp-submitted' => 'Đang chờ kết quả đăng ký…',
           'password-submitted' => 'Đã gửi mật khẩu, đang chờ kết quả đăng ký…',
+          'waiting-username-skip' =>
+            'Đang chờ trước khi bỏ qua tạo tên người dùng…',
+          'username-skipped' => 'Đã bấm Skip, đang chờ hoàn tất đăng ký…',
           _ => null,
         };
         if (status != null && signupStatus != status) {
@@ -602,10 +610,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     try {
       await stopAutoWatch();
       if (!isActive()) return;
-      var deadline = DateTime.now().add(const Duration(seconds: 45));
+      var deadline = _now().add(const Duration(seconds: 120));
+      String? lastStep;
       message =
           'Không tìm thấy biểu mẫu đăng nhập. Bạn có thể đăng nhập thủ công.';
-      while (isActive() && DateTime.now().isBefore(deadline)) {
+      while (isActive() && _now().isBefore(deadline)) {
         await Future<void>.delayed(
             fastSteps ? otpActionInterval : accountActionInterval);
         if (!isActive()) return;
@@ -640,7 +649,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
                   configuration.otpApi != null && activeLoginOtp.isEmpty,
             ),
           );
-        } catch (_) {
+        } catch (error) {
+          debugPrint('Auto login: evaluation failed (${error.runtimeType}).');
           continue;
         }
         if (!isActive()) return;
@@ -649,30 +659,39 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           return;
         }
         fastSteps = fastSteps || isFastAccountStep(result);
+        if (result is String && result != lastStep) {
+          debugPrint('Auto login: $result.');
+          lastStep = result;
+        }
         if (result == 'email-verification-selected') {
-          emailVerificationRequestedAt ??=
-              DateTime.now().millisecondsSinceEpoch;
+          emailVerificationRequestedAt ??= _now().millisecondsSinceEpoch;
+          deadline = _now().add(const Duration(seconds: 45));
           message = 'Đã chọn Email. Đang chờ TikTok gửi mã xác minh…';
         }
         if ((result == 'verification-requested' || result == 'otp-required') &&
             activeLoginOtp.isEmpty &&
             configuration.otpApi != null &&
             otpRequest == null) {
-          otpRequestedAt ??= DateTime.now().millisecondsSinceEpoch;
+          otpRequestedAt ??= _now().millisecondsSinceEpoch;
           otpRequest = requestOtp(signup: false);
           mutate(() => loginOtpRequest = otpRequest);
-          deadline = DateTime.now()
+          deadline = _now()
               .add(Duration(seconds: configuration.otpApi!.waitSeconds + 45));
           message = 'Đã yêu cầu mã. Đang lấy OTP đăng nhập từ API…';
           continue;
         }
         if (result == 'submitted' || result == 'otp-submitted') {
+          if (!submitted) {
+            // Opening the login methods can use most of the initial budget.
+            // Give the post-password identity dialog its own waiting period.
+            deadline = _now().add(const Duration(seconds: 45));
+          }
           submitted = true;
           if (result == 'otp-submitted') {
             otpSubmitted = true;
             // Give TikTok time to finish Next and load the signed-in page,
             // even if entering the code used most of the original deadline.
-            deadline = DateTime.now().add(const Duration(seconds: 45));
+            deadline = _now().add(const Duration(seconds: 45));
           }
           message = 'Đã gửi đăng nhập nhưng chưa xác nhận được kết quả. '
               'Hãy kiểm tra trên TikTok.';
@@ -682,7 +701,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
               : 'Đăng nhập TikTok thành công.';
           break;
         } else if (result == 'verification-requested') {
-          otpRequestedAt ??= DateTime.now().millisecondsSinceEpoch;
+          otpRequestedAt ??= _now().millisecondsSinceEpoch;
           if (activeLoginOtp.isEmpty && otpRequest == null) {
             message = 'Đã gửi mã. Hãy nhập OTP trên trang đăng nhập, '
                 'hoặc điền Mã OTP đăng nhập ở màn Cấu hình rồi chạy lại.';
@@ -692,11 +711,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         } else if (result == 'otp-required') {
           message = 'Đang lấy OTP đăng nhập từ API…';
         } else if (result == 'verification-request-failed') {
-          message = 'TikTok chưa xác nhận gửi mã sau khi chọn Email. '
+          message = 'TikTok chưa xác nhận gửi mã. '
               'Đã dừng và chưa gọi API OTP. Hãy kiểm tra hộp xác minh rồi thử lại.';
           break;
         } else if (result == 'waiting-otp' || result == 'waiting-otp-paste') {
-          otpRequestedAt ??= DateTime.now().millisecondsSinceEpoch;
+          otpRequestedAt ??= _now().millisecondsSinceEpoch;
           message = 'Đang chờ ô OTP đăng nhập để tự nhập mã.';
         } else if (result == 'draft-exists') {
           message =
@@ -794,6 +813,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     try {
       await webViewController?.evaluateJavascript(
           source: autoAcceptCookieScript);
+      await webViewController?.evaluateJavascript(
+          source: autoSelectInterestScript);
     } catch (_) {
       // A navigation can destroy the old document; the next document installs it again.
     }
@@ -917,7 +938,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     });
   }
 
-  void onWebViewCreated(InAppWebViewController controller) {
+  Future<void> onWebViewCreated(InAppWebViewController controller) async {
     webViewController = controller;
     controller.addJavaScriptHandler(
       handlerName: 'FlutterCommentPaste',
@@ -941,6 +962,20 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         }
       },
     );
+    if (needsAndroidDesktopIdentity) {
+      try {
+        await configureAndroidDesktopIdentity(controller);
+        if (!active) return;
+        await controller.loadUrl(
+            urlRequest: URLRequest(url: WebUri(initialUrl)));
+      } catch (_) {
+        if (active) {
+          showPageFailure(const WebViewFailure(
+              'Không thể cấu hình Chrome desktop',
+              'Hãy cập nhật Android System WebView rồi mở lại TikTok.'));
+        }
+      }
+    }
   }
 
   Future<HttpAuthResponse?> onReceivedHttpAuthRequest(

@@ -54,13 +54,10 @@ const String autoSignupStepScript = r'''
       'h1, h2, h3, [data-e2e="signup-title"], [class*="DivTitle"], [class*="DivModalTitle"]'
     )).some(el => visible(el) &&
       (/^(sign\s*up( for tiktok)?|create (an |your )?account|đăng ký( tiktok)?)$/i.test(el.textContent.trim()) ||
-        awaitingCode && /^(verify (your )?email|email verification|enter (the |your )?(verification |6[- ]digit )?code|nhập mã xác minh|xác minh email)$/i.test(el.textContent.trim())));
+        awaitingCode && /^(verify (your )?email|email verification|enter (the |your )?(verification |6[- ]digit )?code|create (a |your )?username|nhập mã xác minh|xác minh email|tạo tên người dùng)$/i.test(el.textContent.trim())));
   };
   const findForm = (selector) => signupFormVisible() ?
     Array.from((dialog() || document).querySelectorAll(selector)).find(visible) : null;
-  if (find('[data-e2e="profile-icon"]')) {
-    return allowSubmit ? 'already-logged-in' : 'signup-success';
-  }
   const emailInput = findForm('input[name="email"], input[type="email"], input[autocomplete="email"]');
   const passwordInput = findForm('input[type="password"]');
   const findVerification = () => findForm('input[autocomplete="one-time-code"], input[name="code"], ' +
@@ -73,6 +70,19 @@ const String autoSignupStepScript = r'''
   const phoneInput = findPhone();
   const previousState = window.__flutterAutoSignup?.attempt === config.attempt
     ? window.__flutterAutoSignup : null;
+  const usernameScreen = signupFormVisible() && !emailInput && !passwordInput &&
+    !verification && !phoneInput && Array.from((dialog() || document).querySelectorAll(
+      'h1, h2, h3, p, div, span, label'
+    )).some(el => visible(el) && /^(create (a |your )?username|tạo tên người dùng)$/i.test(
+      (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim()));
+  const usernameStep = usernameScreen && (previousState?.passwordSubmitted ||
+    config.allowPasswordSubmit === false || previousState?.submitted && previousState?.otpSubmitted ||
+    !allowSubmit && config.allowOtpSubmit === false);
+  // The profile icon can already be visible behind the username dialog.
+  // Finish the requested Skip step before reporting account success.
+  if (!usernameScreen && find('[data-e2e="profile-icon"]')) {
+    return allowSubmit ? 'already-logged-in' : 'signup-success';
+  }
   // Email signup can put the password on a separate screen after OTP. A
   // submitted OTP does not mean the final account form has been submitted.
   const passwordStep = !!passwordInput && !emailInput && !verification && !phoneInput &&
@@ -102,21 +112,23 @@ const String autoSignupStepScript = r'''
       /^(maximum number of attempts reached|too many (attempts|requests))\b/i.test(text);
   })) return 'account-rate-limited';
   const error = findForm('[data-e2e="signup-error"], [role="alert"]');
-  if (error?.textContent.trim()) return 'signup-error';
+  // An unavailable suggested username does not prevent using Skip.
+  if (error?.textContent.trim() && !usernameStep) return 'signup-error';
   if (passwordStep && (config.allowPasswordSubmit === false || previousState?.passwordSubmitted)) return 'waiting-result';
-  if (!allowSubmit && !passwordStep && (!verification || !otp && !config.waitForOtpApi || config.allowOtpSubmit === false)) return 'waiting-result';
+  if (!allowSubmit && !passwordStep && !usernameStep && (!verification || !otp && !config.waitForOtpApi || config.allowOtpSubmit === false)) return 'waiting-result';
 
   let state = window.__flutterAutoSignup;
   if (!state || state.attempt !== config.attempt) {
     state?.stop();
     state = {
       attempt: config.attempt, active: true, pending: null,
-      pasted: new WeakMap(), clicked: new WeakSet(), birthdayFields: new Set(),
+      pasted: new WeakMap(), clicked: new WeakSet(), actions: new Set(), birthdayFields: new Set(),
       birthdayMenuIndex: null, birthdayMenuAt: 0,
       submitted: false, emailEntered: false, codeRequest: null,
       otpRequestedAt: config.otpRequestedAt ?? null, otpSubmitted: false,
       passwordSubmitted: false,
       passwordEditor: null, passwordScreenAt: null, passwordReadyAt: null,
+      usernameSkipButton: null, usernameSkipReadyAt: null, usernameSkipped: false,
       canPasteFromClipboard(attempt, field, text) {
         const p = this.pending;
         return this.active && !document.hidden &&
@@ -141,7 +153,7 @@ const String autoSignupStepScript = r'''
     window.__flutterAutoSignup = state;
   }
   if (!state.active) return 'cancelled';
-  if (state.submitted && !passwordStep && (!verification || !otp && !config.waitForOtpApi || state.otpSubmitted)) return 'submitted';
+  if (state.submitted && !passwordStep && !usernameStep && (!verification || !otp && !config.waitForOtpApi || state.otpSubmitted)) return 'submitted';
   if (state.pending) {
     return Date.now() - state.pending.at < 10000
       ? state.pending.field === 'otp' ? 'waiting-otp-paste' : 'waiting-paste'
@@ -149,14 +161,37 @@ const String autoSignupStepScript = r'''
   }
   const enabled = (button) => visible(button) && !button.disabled &&
     button.getAttribute('aria-disabled') !== 'true';
-  const clickOnce = (button) => {
-    if (!button || state.clicked.has(button)) return false;
-    state.clicked.add(button);
+  const clickOnce = (button, action) => {
+    if (!button || (action && !enabled(button)) ||
+        (action ? state.actions.has(action) : state.clicked.has(button))) return false;
+    if (action) state.actions.add(action);
+    else state.clicked.add(button);
     button.click();
     return true;
   };
   const button = (pattern) => Array.from((dialog() || document).querySelectorAll('button, [role="button"]'))
     .find((el) => enabled(el) && pattern.test(el.textContent.trim()));
+  if (usernameScreen) {
+    if (!usernameStep || state.usernameSkipped) return 'waiting-result';
+    const root = dialog() || document;
+    const isSkip = el => enabled(el) && !el.closest?.('[disabled], [aria-disabled="true"]') && /^(skip|bỏ qua)$/i.test(
+      (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim());
+    const skip = Array.from(root.querySelectorAll('a, button, [role="button"], [role="link"]')).find(isSkip) ||
+      Array.from(root.querySelectorAll('div, span')).reverse().find(isSkip);
+    if (!skip) {
+      state.usernameSkipButton = null;
+      state.usernameSkipReadyAt = null;
+      return 'waiting-username-skip';
+    }
+    if (state.usernameSkipButton !== skip) {
+      state.usernameSkipButton = skip;
+      state.usernameSkipReadyAt = Date.now();
+    }
+    if (Date.now() - state.usernameSkipReadyAt < 2000) return 'waiting-username-skip';
+    state.usernameSkipped = true;
+    clickOnce(skip, 'skip-username');
+    return 'username-skipped';
+  }
   if (state.otpRequestedAt == null && config.otpRequestedAt != null) {
     state.otpRequestedAt = config.otpRequestedAt;
   }
@@ -190,7 +225,7 @@ const String autoSignupStepScript = r'''
       const signup = Array.from((modal || document).querySelectorAll(
         'a, button, [role="button"], [role="link"], [data-e2e="bottom-sign-up"], [data-e2e="signup-link"]'
       )).find(el => enabled(el) && /^(sign\s*up|đăng ký)$/i.test(el.textContent.trim()));
-      clickOnce(signup);
+      clickOnce(signup, 'open-signup');
       return 'waiting-form';
     }
     const account = find('[data-e2e="nav-profile"], [data-e2e="nav-account"], ' +
@@ -198,7 +233,7 @@ const String autoSignupStepScript = r'''
       '[aria-label="Account"], [aria-label="Profile"], [aria-label="Tài khoản"], [aria-label="Hồ sơ"]') ||
       Array.from(document.querySelectorAll('a, button, [role="button"], [role="link"]'))
         .find(el => enabled(el) && /^(account|profile|tài khoản|hồ sơ)$/i.test(el.textContent.trim()));
-    if (account && enabled(account)) clickOnce(account);
+    if (account && enabled(account)) clickOnce(account, 'open-account');
     return 'waiting-form';
   }
 
@@ -208,7 +243,7 @@ const String autoSignupStepScript = r'''
       'a, button, [role="tab"], [role="button"], [data-e2e="signup-email-tab"]'
     )).find((el) => enabled(el) && /^(email|e-mail|sign up with (email|e-mail)|use (email|e-mail)|đăng ký bằng (email|e-mail)|sử dụng (email|e-mail))$/i.test(el.textContent.trim()));
     if (emailTab) {
-      clickOnce(emailTab);
+      clickOnce(emailTab, 'select-email-tab');
       return 'waiting-form';
     }
     if (phoneInput) return 'waiting-form';
@@ -258,7 +293,7 @@ const String autoSignupStepScript = r'''
           i === 0 && (o.textContent.trim().toLowerCase() === months[config.month - 1].toLowerCase() ||
             o.textContent.trim().toLowerCase() === `tháng ${config.month}`));
       if (option) {
-        option.click();
+        clickOnce(option, `birthday-option-${i}`);
         state.birthdayFields.add(i);
         state.birthdayMenuIndex = null;
       } else {
@@ -266,7 +301,7 @@ const String autoSignupStepScript = r'''
           // TikTok's combobox handles keyboard events on the root, but the
           // pointer handler lives on its label. Clicking the root does nothing.
           const label = field.querySelector('[class*="DivSelectLabel"]');
-          (label || field).click();
+          clickOnce(label || field, `birthday-menu-${i}`);
           state.birthdayMenuIndex = i;
           state.birthdayMenuAt = Date.now();
         } else if (Date.now() - state.birthdayMenuAt >= 3000) {
@@ -276,7 +311,7 @@ const String autoSignupStepScript = r'''
       return 'waiting-form';
     }
     if (!emailInput && !passwordInput && !phoneInput) {
-      clickOnce(button(/^(next|continue|tiếp|tiếp theo|tiếp tục)$/i));
+      clickOnce(button(/^(next|continue|tiếp|tiếp theo|tiếp tục)$/i), 'birthday-next');
       return 'waiting-form';
     }
   }
@@ -289,7 +324,7 @@ const String autoSignupStepScript = r'''
     const method = Array.from((dialog() || document).querySelectorAll(
       'a, button, [role="button"], [role="link"], [data-e2e="channel-item"]'
     )).find((el) => enabled(el) && /^(use phone or email|use phone\s*\/\s*email|sử dụng số điện thoại hoặc email)$/i.test(el.textContent.trim()));
-    clickOnce(method);
+    clickOnce(method, 'select-signup-method');
     return 'waiting-form';
   }
 
@@ -328,6 +363,7 @@ const String autoSignupStepScript = r'''
     return 'waiting-paste';
   };
   if (passwordStep) {
+    if (state.passwordSubmitted) return 'waiting-result';
     if (passwordInput.value && passwordInput.value !== config.password) return 'draft-exists';
     // Let the post-OTP screen settle before pasting, then give validation
     // time to finish before the one final click. OTP polling stays fast.
@@ -348,7 +384,7 @@ const String autoSignupStepScript = r'''
     if (Date.now() - state.passwordReadyAt < 3000) return 'waiting-password-submit';
     state.passwordSubmitted = true;
     state.submitted = true;
-    clickOnce(submit);
+    clickOnce(submit, 'submit-password');
     return 'password-submitted';
   }
   // Keep polling after Send code. Enter the supplied OTP as soon as it is ready,
@@ -369,7 +405,7 @@ const String autoSignupStepScript = r'''
     if (!verify) return 'waiting-form';
     state.submitted = true;
     state.otpSubmitted = true;
-    verify.click();
+    clickOnce(verify, 'submit-otp');
     return 'otp-submitted';
   }
   if (emailInput) {
@@ -381,29 +417,16 @@ const String autoSignupStepScript = r'''
     const result = paste(passwordInput, 'password', config.password);
     if (result) return result;
   }
-  // Focus and pointer events also commit the editor and support controls whose
-  // handlers run on pointer/mouse down. Dispatch exactly one click, then wait
-  // for TikTok's countdown or OTP step before starting the mailbox API.
+  // Commit focus, then activate the button once. Dispatching pointer/mouse
+  // events in addition to click can invoke separate submission handlers.
+  // Wait for TikTok's countdown or OTP step before starting the mailbox API.
   if (sendCode) {
     if (!state.clicked.has(sendCode)) {
       sendCode.scrollIntoView?.({ block: 'center', inline: 'nearest' });
       sendCode.focus({ preventScroll: true });
       if (!enabled(sendCode)) return 'waiting-form';
-      const rect = sendCode.getBoundingClientRect?.();
-      const eventOptions = { bubbles: true, cancelable: true, view: window,
-        clientX: rect ? rect.left + rect.width / 2 : 0,
-        clientY: rect ? rect.top + rect.height / 2 : 0,
-        button: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true };
       state.codeRequest = { at: Date.now() };
-      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
-        const Constructor = type.startsWith('pointer') && typeof PointerEvent !== 'undefined'
-          ? PointerEvent : typeof MouseEvent !== 'undefined' ? MouseEvent : Event;
-        sendCode.dispatchEvent(new Constructor(type, {
-          ...eventOptions, buttons: type.endsWith('down') ? 1 : 0,
-        }));
-      }
-      if (enabled(sendCode)) clickOnce(sendCode);
-      else state.clicked.add(sendCode);
+      clickOnce(sendCode, 'send-code');
       return codeRequestResult();
     }
     return 'waiting-result';
@@ -413,10 +436,10 @@ const String autoSignupStepScript = r'''
   const submit = button(/^(sign\s*up|register|đăng ký)$/i);
   if (submit && state.emailEntered && passwordInput) {
     state.submitted = true;
-    submit.click();
+    clickOnce(submit, 'submit-signup');
     return 'submitted';
   }
-  clickOnce(button(/^(next|continue|tiếp|tiếp theo|tiếp tục)$/i));
+  clickOnce(button(/^(next|continue|tiếp|tiếp theo|tiếp tục)$/i), 'form-next');
   return 'waiting-form';
 }
 ''';

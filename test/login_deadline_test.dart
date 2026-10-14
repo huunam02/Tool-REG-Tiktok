@@ -1,0 +1,148 @@
+import 'dart:async';
+
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:test_tiktok/controller/tiktok_controller.dart';
+import 'package:test_tiktok/core/app_configuration.dart';
+import 'package:test_tiktok/core/otp_api.dart';
+import 'package:test_tiktok/core/scripts/auto_login_script.dart';
+
+void main() {
+  for (final submittedAt in [42, 119]) {
+    testWidgets(
+        'slow login submitted at ${submittedAt}s still selects Email and fetches OTP',
+        (tester) async {
+      final started = DateTime(2026, 10, 14);
+      var now = started;
+      final webView = _LoginView();
+      final reader = _OtpReader();
+      final notices = <String>[];
+      final logic = TikTokController(
+        configuration: _configuration(),
+        otpReaderFactory: (_) => reader,
+        now: () => now,
+      )..onInit();
+      logic.webViewController =
+          InAppWebViewController.fromPlatform(platform: webView);
+      logic.onNotice = (notice) => notices.add(notice.message);
+      addTearDown(logic.onClose);
+      final login = logic.autoLogin();
+      await tester.pump();
+
+      Future<void> step(String result, int seconds, {bool fast = true}) async {
+        webView.nextStep = result;
+        now = started.add(Duration(seconds: seconds));
+        await tester.pump(fast
+            ? const Duration(milliseconds: 300)
+            : const Duration(milliseconds: 2500));
+        await tester.pump();
+      }
+
+      await step('waiting-paste', submittedAt - 3, fast: false);
+      expect(logic.autoLoginBusy, isTrue);
+      await step('submitted', submittedAt, fast: false);
+      await step('waiting-result', submittedAt + 4);
+      expect(logic.autoLoginBusy, isTrue);
+      expect(reader.requests, isEmpty);
+      await step('email-verification-selected', submittedAt + 10);
+      await step('requesting-verification', submittedAt + 11);
+      expect(logic.autoLoginBusy, isTrue);
+      expect(reader.requests, isEmpty);
+      await step('verification-requested', submittedAt + 12);
+      expect(reader.requests, [('login@example.com', 'mail-password')]);
+      reader.response.complete('012345');
+      await tester.pump();
+      await step('waiting-otp-paste', submittedAt + 13);
+      await step('otp-submitted', submittedAt + 14);
+      await step('login-success', submittedAt + 15);
+      await login;
+      expect(logic.autoLoginBusy, isFalse);
+      expect(notices, ['Đăng nhập TikTok thành công.']);
+      expect(reader.requests, hasLength(1));
+      expect(reader.closed, isTrue);
+      expect(webView.sources.last, contains('"allowOtpSubmit":false'));
+    });
+  }
+
+  testWidgets('repeated submitted results do not extend the login wait forever',
+      (tester) async {
+    final started = DateTime(2026, 10, 14);
+    var now = started;
+    final webView = _LoginView()..nextStep = 'submitted';
+    final reader = _OtpReader();
+    final logic = TikTokController(
+      configuration: _configuration(),
+      otpReaderFactory: (_) => reader,
+      now: () => now,
+    )..onInit();
+    logic.webViewController =
+        InAppWebViewController.fromPlatform(platform: webView);
+    addTearDown(logic.onClose);
+    final login = logic.autoLogin();
+    await tester.pump();
+    now = started.add(const Duration(seconds: 40));
+    await tester.pump(const Duration(milliseconds: 2500));
+    await tester.pump();
+    now = started.add(const Duration(seconds: 80));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(logic.autoLoginBusy, isTrue);
+    now = started.add(const Duration(seconds: 86));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(logic.autoLoginBusy, isFalse);
+    expect(reader.requests, isEmpty);
+    await login;
+  });
+}
+
+AppConfiguration _configuration() => AppConfiguration(
+      userAgent: 'test-agent',
+      comments: [],
+      signupEmail: '',
+      signupPassword: '',
+      loginUsername: 'login@example.com',
+      loginPassword: 'login-password',
+      loginMailboxPassword: 'mail-password',
+      otpApi: OtpApiConfiguration(
+        url: Uri.parse('https://example.com/api/code'),
+        readerToken: 'test-token',
+      ),
+    );
+
+class _LoginView extends PlatformInAppWebViewController {
+  _LoginView()
+      : super.implementation(
+            const PlatformInAppWebViewControllerCreationParams(id: 0));
+
+  String nextStep = 'waiting-form';
+  final sources = <String>[];
+
+  @override
+  Future<WebUri?> getUrl() async => WebUri('https://www.tiktok.com/');
+
+  @override
+  Future<dynamic> evaluateJavascript(
+      {required String source, ContentWorld? contentWorld}) async {
+    if (source.contains(autoLoginStepScript)) {
+      sources.add(source);
+      return nextStep;
+    }
+    return true;
+  }
+}
+
+class _OtpReader implements OtpCodeReader {
+  final response = Completer<String>();
+  final requests = <(String, String)>[];
+  bool closed = false;
+
+  @override
+  Future<String> fetchCode({required String email, required String password}) {
+    requests.add((email, password));
+    return response.future;
+  }
+
+  @override
+  void close() => closed = true;
+}

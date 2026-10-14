@@ -232,6 +232,20 @@ class HomeController extends AppController
     try {
       final browserUserAgent = await resolveWebViewUserAgent(userAgent);
       if (!active) return;
+      if (needsAndroidDesktopIdentity) {
+        final profile = currentProxy;
+        mutate(() {
+          userAgent = browserUserAgent;
+          if (profile != null) {
+            currentProxy = ProxyProfile(
+              proxy: profile.proxy,
+              userAgent: browserUserAgent,
+              name: profile.name,
+              hasBeenUsed: profile.hasBeenUsed,
+            );
+          }
+        });
+      }
       final configuration = AppConfiguration(
         userAgent: browserUserAgent,
         proxy: currentProxy?.proxy,

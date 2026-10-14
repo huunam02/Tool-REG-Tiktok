@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../core/app_configuration.dart';
 import '../core/proxy_store.dart';
 import '../core/proxy_draft.dart';
+import '../core/webview_user_agent.dart';
 import 'app_controller.dart';
 
 class ProxyFormController extends AppController {
@@ -42,7 +43,7 @@ class ProxyFormController extends AppController {
     try {
       var generatedAgent = await selectUserAgent();
       if (!active) return;
-      if (generatedAgent == userAgent.text) {
+      if (generatedAgent == userAgent.text && !needsAndroidDesktopIdentity) {
         generatedAgent = await selectUserAgent();
         if (!active) return;
       }
@@ -91,6 +92,7 @@ class ProxyFormController extends AppController {
     try {
       final proxy = WebViewProxy.parseImport(importData.text);
       mutate(() {
+        name.text = 'Proxy ${proxy.uri.host}';
         url.text = proxyAddress(proxy);
         username.text = proxy.username;
         password.text = proxy.password;
@@ -98,7 +100,7 @@ class ProxyFormController extends AppController {
         importData.clear();
       });
       FocusManager.instance.primaryFocus?.unfocus();
-      notify('Đã import thông tin kết nối. Nhập tên proxy rồi lưu.');
+      notify('Đã import proxy. Kiểm tra thông tin rồi lưu.');
     } on FormatException catch (error) {
       mutate(() => importError = error.message);
     }

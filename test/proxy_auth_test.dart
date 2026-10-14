@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -58,10 +59,20 @@ class _Controller extends PlatformInAppWebViewController {
 
   @override
   Future<void> reload() async => reloads++;
+
+  @override
+  Future<void> loadUrl(
+      {required URLRequest urlRequest,
+      Uri? iosAllowingReadAccessTo,
+      WebUri? allowingReadAccessTo}) async {}
 }
 
 void main() {
   setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('test_tiktok/webview_identity'),
+            (call) async => 'test-agent');
     final previousPlatform = InAppWebViewPlatform.instance;
     InAppWebViewPlatform.instance = _Platform();
     addTearDown(() {

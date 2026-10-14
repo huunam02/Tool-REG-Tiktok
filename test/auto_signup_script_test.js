@@ -99,6 +99,167 @@ async function fill(env) {
   await env.resolvePaste();
 }
 
+async function reachUsernameScreen() {
+  const env = setup();
+  env.location.pathname = '/';
+  env.config.waitForOtpApi = true;
+  env.password.hidden = true;
+  const modal = env.add('[role="dialog"]');
+  const title = env.add('h2', 'Sign up');
+  modal.querySelectorAll = selector => env.document.querySelectorAll(selector);
+  const send = env.add('button', 'Send code', 'BUTTON');
+  assert.equal(env.run(), 'waiting-paste');
+  await env.resolvePaste();
+  assert.equal(env.run(), 'verification-requested');
+  env.config.otpRequestedAt = 0;
+  env.email.hidden = send.hidden = true;
+  const otp = env.add('input[name="code"]', '', 'INPUT');
+  env.config.otp = '012345';
+  assert.equal(env.run(), 'waiting-otp-paste');
+  await env.resolvePaste();
+  assert.equal(env.run(), 'otp-submitted');
+  env.config.allowOtpSubmit = false;
+  otp.hidden = true;
+  env.password.hidden = false;
+  assert.equal(env.run(false), 'waiting-password-screen');
+  env.advance(2500);
+  assert.equal(env.run(false), 'waiting-paste');
+  await env.resolvePaste();
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.advance(3000);
+  assert.equal(env.run(false), 'password-submitted');
+  env.config.allowPasswordSubmit = false;
+  env.password.hidden = env.submit.hidden = true;
+  const heading = env.add('div', 'Create username');
+  const username = env.add('input[name="username"]', '', 'INPUT');
+  username.value = 'Huu Nam';
+  const warning = env.add('[role="alert"]', 'This username isn’t available.');
+  const next = env.add('button', 'Continue', 'BUTTON');
+  next.disabled = true;
+  const skip = env.add('span', 'Skip');
+  return { ...env, modal, title, heading, username, warning, next, skip };
+}
+
+test('after OTP and password waits two seconds then skips an unavailable username once', async () => {
+  const env = await reachUsernameScreen();
+  env.add('[data-e2e="profile-icon"]'); // Already visible behind the dialog.
+  assert.equal(env.run(false), 'waiting-username-skip');
+  env.advance(1999);
+  assert.equal(env.run(false), 'waiting-username-skip');
+  assert.equal(env.skip.clicks, 0);
+  env.advance(1);
+  assert.equal(env.run(false), 'username-skipped');
+  assert.equal(env.skip.clicks, 1);
+  assert.equal(env.next.clicks, 0);
+  assert.equal(env.username.value, 'Huu Nam');
+  assert.deepEqual(env.requests.map(request => request[2]), ['email', 'otp', 'password']);
+  env.skip.hidden = true;
+  const replacement = env.add('button', 'Skip', 'BUTTON');
+  env.advance(10000);
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(replacement.clicks, 0);
+  env.modal.hidden = env.title.hidden = env.heading.hidden = true;
+  assert.equal(env.run(false), 'signup-success');
+});
+
+test('restores the username step after navigation using the final password submit guard', async () => {
+  const env = await reachUsernameScreen();
+  delete env.window.__flutterAutoSignup;
+  env.title.textContent = 'Create username';
+  assert.equal(env.run(false), 'waiting-username-skip');
+  env.advance(2000);
+  assert.equal(env.run(false), 'username-skipped');
+  assert.equal(env.skip.clicks, 1);
+});
+
+test('does not skip before signup submission or in an unrelated dialog', () => {
+  for (const titleText of ['Sign up', 'Log in']) {
+    const env = setup({ inputs: false });
+    env.location.pathname = '/';
+    const modal = env.add('[role="dialog"]');
+    env.add('h2', titleText);
+    env.add('div', 'Create username');
+    const skip = env.add('button', 'Skip', 'BUTTON');
+    modal.querySelectorAll = selector => env.document.querySelectorAll(selector);
+    env.run();
+    env.advance(10000);
+    env.run();
+    assert.equal(skip.clicks, 0);
+  }
+});
+
+test('username delay respects cancellation, hidden pages, changed origin and CAPTCHA', async () => {
+  for (const issue of ['cancelled', 'hidden', 'origin', 'captcha']) {
+    const env = await reachUsernameScreen();
+    assert.equal(env.run(false), 'waiting-username-skip');
+    env.advance(2000);
+    if (issue === 'cancelled') env.window.__flutterAutoSignup.stop();
+    if (issue === 'hidden') env.document.hidden = true;
+    if (issue === 'origin') env.location.origin = 'https://example.com';
+    if (issue === 'captcha') env.add('#captcha-verify-container');
+    assert.equal(env.run(false), {
+      cancelled: 'cancelled', hidden: 'waiting-form', origin: 'wrong-origin',
+      captcha: 'verification-required',
+    }[issue]);
+    assert.equal(env.skip.clicks, 0);
+  }
+});
+
+test('restarts the username delay when Skip is disabled, hidden or replaced', async () => {
+  for (const issue of ['disabled', 'hidden', 'aria-disabled', 'replaced']) {
+    const env = await reachUsernameScreen();
+    assert.equal(env.run(false), 'waiting-username-skip');
+    env.advance(1999);
+    if (issue === 'disabled') env.skip.disabled = true;
+    if (issue === 'hidden' || issue === 'replaced') env.skip.hidden = true;
+    if (issue === 'aria-disabled') env.skip.getAttribute = () => 'true';
+    const target = issue === 'replaced' ? env.add('a', 'Skip', 'A') : env.skip;
+    assert.equal(env.run(false), 'waiting-username-skip');
+    env.skip.disabled = env.skip.hidden = false;
+    env.skip.getAttribute = () => null;
+    assert.equal(env.run(false), 'waiting-username-skip');
+    env.advance(1999);
+    assert.equal(env.run(false), 'waiting-username-skip');
+    assert.equal(target.clicks, 0);
+    env.advance(1);
+    assert.equal(env.run(false), 'username-skipped');
+    assert.equal(target.clicks, 1);
+  }
+});
+
+test('supports Vietnamese username and Skip labels and ignores controls outside the signup modal', async () => {
+  const env = await reachUsernameScreen();
+  env.title.textContent = 'Đăng ký';
+  env.heading.textContent = 'Tạo tên người dùng';
+  env.skip.textContent = 'Bỏ qua';
+  const outside = env.add('button', 'Skip', 'BUTTON');
+  const members = new Set([env.title, env.heading, env.username, env.warning, env.next, env.skip]);
+  env.modal.querySelectorAll = selector => env.document.querySelectorAll(selector).filter(el => members.has(el));
+  assert.equal(env.run(false), 'waiting-username-skip');
+  env.advance(2000);
+  assert.equal(env.run(false), 'username-skipped');
+  assert.equal(env.skip.clicks, 1);
+  assert.equal(outside.clicks, 0);
+});
+
+test('does not click a Skip text nested inside a disabled button', async () => {
+  const env = await reachUsernameScreen();
+  const button = env.add('button', 'Skip', 'BUTTON');
+  button.disabled = true;
+  env.skip.closest = () => button.disabled ? button : null;
+  assert.equal(env.run(false), 'waiting-username-skip');
+  env.advance(5000);
+  assert.equal(env.run(false), 'waiting-username-skip');
+  assert.equal(env.skip.clicks, 0);
+  assert.equal(button.clicks, 0);
+  button.disabled = false;
+  assert.equal(env.run(false), 'waiting-username-skip');
+  env.advance(2000);
+  assert.equal(env.run(false), 'username-skipped');
+  assert.equal(button.clicks, 1);
+  assert.equal(env.skip.clicks, 0);
+});
+
 test('detects a plain inline rate limit before pasting or requesting a code', () => {
   for (const selector of ['div', 'span', '[role="alert"]']) {
     const env = setup();
@@ -882,7 +1043,7 @@ test('waits for an API OTP after Send code without requesting another code', asy
   assert.equal(env.run(), 'otp-submitted');
 });
 
-test('commits an email-only form and dispatches pointer events before its single Send code click', async () => {
+test('commits an email-only form and activates Send code with a single click event', async () => {
   const env = setup();
   env.config.waitForOtpApi = true;
   env.password.hidden = true;
@@ -891,7 +1052,7 @@ test('commits an email-only form and dispatches pointer events before its single
   send.click = function() {
     assert.notEqual(env.document.activeElement, env.email);
     assert.equal(env.email.value, env.config.email);
-    assert.deepEqual(this.events, ['pointerdown', 'mousedown', 'pointerup', 'mouseup']);
+    assert.deepEqual(this.events, []);
     originalClick.call(this);
   };
   assert.equal(env.run(), 'waiting-paste');
@@ -901,6 +1062,73 @@ test('commits an email-only form and dispatches pointer events before its single
   assert.equal(env.requests.length, 1);
   assert.equal(env.run(), 'otp-required');
   assert.equal(send.clicks, 1);
+  assert.deepEqual(send.events, ['click']);
+});
+
+test('does not activate both pointer handlers and click handlers for Send code', async () => {
+  const env = setup({ sendCodeAcknowledged: false });
+  env.config.waitForOtpApi = true;
+  const send = env.add('button', 'Send code', 'BUTTON');
+  let activations = 0;
+  send.dispatchEvent = function(event) {
+    this.events.push(event.type);
+    if (event.type === 'mousedown' || event.type === 'pointerdown') activations++;
+  };
+  const originalClick = send.click;
+  send.click = function() { activations++; originalClick.call(this); };
+  await fill(env);
+  assert.equal(env.run(), 'requesting-verification');
+  for (let i = 0; i < 4; i++) { env.advance(300); env.run(); }
+  assert.equal(activations, 1);
+  assert.deepEqual(send.events, ['click']);
+});
+
+test('does not click a replacement Send code button while waiting for acknowledgement', async () => {
+  const env = setup({ sendCodeAcknowledged: false });
+  env.config.waitForOtpApi = true;
+  const first = env.add('button', 'Send code', 'BUTTON');
+  await fill(env);
+  assert.equal(env.run(), 'requesting-verification');
+  first.hidden = true;
+  const replacement = env.add('button', 'Send code', 'BUTTON');
+  env.advance(300);
+  assert.equal(env.run(), 'requesting-verification');
+  env.advance(15000);
+  assert.equal(env.run(), 'verification-request-failed');
+  assert.equal(first.clicks, 1);
+  assert.equal(replacement.clicks, 0);
+  assert.equal(env.window.__flutterAutoSignup.otpRequestedAt, null);
+});
+
+test('signup does not reopen Account when React replaces its button', () => {
+  const env = setup({ inputs: false });
+  env.location.pathname = '/';
+  const account = env.add('[data-e2e="nav-profile"]', 'Account');
+  assert.equal(env.run(), 'waiting-form');
+  account.hidden = true;
+  const replacement = env.add('[data-e2e="nav-profile"]', 'Account');
+  assert.equal(env.run(), 'waiting-form');
+  assert.equal(account.clicks, 1);
+  assert.equal(replacement.clicks, 0);
+});
+
+test('signup does not resubmit a password after React replaces the submit button', async () => {
+  const env = setup();
+  env.config.otpRequestedAt = 0;
+  env.email.hidden = true;
+  assert.equal(env.run(false), 'waiting-password-screen');
+  env.advance(2500);
+  assert.equal(env.run(false), 'waiting-paste');
+  await env.resolvePaste();
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.advance(3000);
+  assert.equal(env.run(false), 'password-submitted');
+  env.submit.hidden = true;
+  const replacement = env.add('button', 'Sign up', 'BUTTON');
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(env.submit.clicks, 1);
+  assert.equal(replacement.clicks, 0);
 });
 
 test('does not claim OTP was requested or retry a Send code click without TikTok feedback', async () => {

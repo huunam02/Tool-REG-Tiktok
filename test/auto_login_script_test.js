@@ -95,9 +95,116 @@ function setup({ autoPaste = true, pasteResult = true, sendCodeAcknowledged = tr
 async function fill(env) {
   assert.equal(env.run(), 'waiting-paste');
   await env.resolvePaste();
-  assert.equal(env.run(), 'waiting-paste');
+  assert.equal(env.run(), 'waiting-next');
   await env.resolvePaste();
 }
+
+test('Android sends code through accessibility once and waits for TikTok feedback', async () => {
+  const env = setup();
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  env.email.value = env.config.email;
+  env.password.value = env.config.password;
+  new env.Input('input[name="code"]');
+  const send = env.add('button', 'Send code');
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(true);
+  };
+  assert.equal(env.run(), 'requesting-verification');
+  await flush();
+  assert.equal(env.run(), 'requesting-verification');
+  assert.equal(env.window.__flutterAutoLogin.otpRequestedAt, null);
+  assert.equal(send.clicks, 0);
+  assert.deepEqual(env.requests, [['FlutterLoginSendCode', 1]]);
+  const state = env.window.__flutterAutoLogin;
+  assert.equal(state.canSendCodeWithAccessibility(1), true);
+  assert.equal(state.canSendCodeWithAccessibility(2), false);
+  send.disabled = true;
+  assert.equal(state.canSendCodeWithAccessibility(1), false);
+  send.textContent = 'Resend code 60s';
+  assert.equal(env.run(), 'verification-requested');
+  assert.equal(env.run(), 'otp-required');
+  assert.equal(env.requests.length, 1);
+});
+
+test('accessibility failure stops without claiming a requested OTP or repeating the click', async () => {
+  const env = setup();
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  env.email.value = env.config.email;
+  env.password.value = env.config.password;
+  const send = env.add('button', 'Send code');
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(false);
+  };
+  assert.equal(env.run(), 'requesting-verification');
+  await flush();
+  assert.equal(env.run(), 'send-code-accessibility-failed');
+  assert.equal(env.run(), 'send-code-accessibility-failed');
+  assert.equal(env.window.__flutterAutoLogin.otpRequestedAt, null);
+  assert.equal(env.requests.length, 1);
+  assert.equal(send.clicks, 0);
+});
+
+test('DOM target accounts for the visual viewport and rejects covered or offscreen buttons', () => {
+  const env = setup();
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  env.email.value = env.config.email;
+  env.password.value = env.config.password;
+  const send = env.add('button', 'Send code');
+  send.getBoundingClientRect = () => ({left: 150, top: 240, width: 100, height: 40});
+  env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
+  let covered = false;
+  env.document.elementFromPoint = (x, y) => {
+    assert.equal(x, 200);
+    assert.equal(y, 260);
+    return covered ? null : send;
+  };
+  env.window.flutter_inappwebview.callHandler = () => Promise.resolve(true);
+  assert.equal(env.run(), 'requesting-verification');
+  const state = env.window.__flutterAutoLogin;
+  assert.deepEqual(JSON.parse(JSON.stringify(state.getSendCodeTarget(1))),
+    {x: 100, y: 60, viewportWidth: 400, viewportHeight: 600});
+  assert.equal(state.getSendCodeTarget(2), null);
+  covered = true;
+  assert.equal(state.getSendCodeTarget(1), null);
+  covered = false;
+  env.window.visualViewport.offsetTop = 300;
+  assert.equal(state.getSendCodeTarget(1), null);
+  state.stop();
+  assert.equal(state.getSendCodeTarget(1), null);
+});
+
+test('identity Email selection can require a separate accessibility Send code click', async () => {
+  const env = setup();
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  const identity = identityDialog(env);
+  const originalQuery = identity.modal.querySelectorAll;
+  const send = env.add('button', 'Send code');
+  send.hidden = true;
+  identity.modal.querySelectorAll = selector => [
+    ...originalQuery(selector), ...(selector.includes('button') ? [send] : []),
+  ];
+  assert.equal(env.run(false), 'email-verification-selected');
+  identity.showCode();
+  send.hidden = false;
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(true);
+  };
+  assert.equal(env.run(false), 'requesting-verification');
+  await flush();
+  assert.equal(env.window.__flutterAutoLogin.canSendCodeWithAccessibility(1), true);
+  assert.equal(env.run(false), 'requesting-verification');
+  send.textContent = 'Resend code 60s';
+  assert.equal(env.run(false), 'verification-requested');
+  assert.deepEqual(env.requests, [['FlutterLoginSendCode', 1]]);
+  assert.equal(send.clicks, 0);
+});
 
 test('detects an inline rate limit before pasting and after submission', async () => {
   const env = setup();
@@ -174,6 +281,150 @@ function identityDialog(env) {
   };
 }
 
+test('Android Continue uses the live point inside the login modal after native paste', async () => {
+  for (const label of ['Continue', 'Tiếp tục']) {
+    const env = setup();
+    env.config.useAccessibilityContinue = true;
+    const flow = homeLogin(env);
+    env.run(); env.run(); env.run();
+    flow.send.hidden = flow.otp.hidden = true;
+    env.submit.textContent = label;
+    env.submit.getAttribute = () => null;
+    env.submit.disabled = true;
+    const outside = env.add('button', label);
+    await fill(env);
+    assert.equal(env.document.activeElement, null);
+    assert.equal(env.run(), 'waiting-next');
+    assert.equal(env.requests.length, 2);
+    env.submit.getBoundingClientRect = () => ({left: 150, top: 240, width: 100, height: 40});
+    env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
+    env.document.elementFromPoint = () => env.submit;
+    env.window.flutter_inappwebview.callHandler = (...args) => {
+      env.requests.push(args);
+      return Promise.resolve(true);
+    };
+    env.submit.disabled = false;
+    assert.equal(env.run(), 'submitted');
+    await flush();
+    assert.deepEqual(env.requests[2], ['FlutterLoginPasswordContinue', 1]);
+    assert.equal(env.submit.clicks, 0);
+    assert.equal(outside.clicks, 0);
+    const state = env.window.__flutterAutoLogin;
+    assert.deepEqual(JSON.parse(JSON.stringify(state.getPasswordContinueTarget(1))),
+      {x: 100, y: 60, viewportWidth: 400, viewportHeight: 600});
+    assert.equal(state.getPasswordContinueTarget(2), null);
+    env.submit.hidden = true;
+    const replacement = env.add('button', label);
+    const query = flow.modal.querySelectorAll;
+    flow.modal.querySelectorAll = selector => [
+      ...query(selector), ...(selector.includes('button') ? [replacement] : []),
+    ];
+    assert.equal(env.run(false), 'submitted');
+    assert.equal(env.run(false), 'submitted');
+    assert.equal(env.requests.length, 3);
+    assert.equal(replacement.clicks, 0);
+  }
+});
+
+test('password and OTP Continue dispatch independent gestures even when sharing a DOM button', async () => {
+  const env = setup();
+  env.config.useAccessibilityContinue = true;
+  env.config.otp = '012345';
+  env.email.value = env.config.email;
+  env.password.value = env.config.password;
+  env.submit.textContent = 'Continue';
+  env.submit.getBoundingClientRect = () => ({left: 50, top: 100, width: 100, height: 40});
+  env.window.visualViewport = {width: 400, height: 600};
+  env.document.elementFromPoint = () => env.submit;
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(true);
+  };
+  assert.equal(env.run(), 'submitted');
+  await flush();
+  const otp = new env.Input('input[name="code"]');
+  otp.value = env.config.otp;
+  assert.equal(env.run(false), 'otp-submitted');
+  await flush();
+  assert.deepEqual(env.requests, [
+    ['FlutterLoginPasswordContinue', 1], ['FlutterLoginOtpContinue', 1],
+  ]);
+  const state = env.window.__flutterAutoLogin;
+  assert.equal(state.getPasswordContinueTarget(1), null);
+  assert.notEqual(state.getOtpContinueTarget(1), null);
+  otp.value = '654321';
+  assert.equal(state.getOtpContinueTarget(1), null);
+  env.config.allowOtpSubmit = false;
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(env.requests.length, 2);
+  assert.equal(env.submit.clicks, 0);
+});
+
+test('Continue gesture failures remain visible after either login submission is latched', async () => {
+  for (const stage of ['password', 'otp']) {
+    for (const rejected of [false, true]) {
+      const env = setup();
+      env.config.useAccessibilityContinue = true;
+      env.email.value = env.config.email;
+      env.password.value = env.config.password;
+      env.submit.textContent = 'Continue';
+      if (stage === 'otp') {
+        env.config.otp = '012345';
+        env.config.otpRequestedAt = 0;
+        new env.Input('input[name="code"]').value = env.config.otp;
+      }
+      env.window.flutter_inappwebview.callHandler = (...args) => {
+        env.requests.push(args);
+        return rejected ? Promise.reject(new Error('gesture cancelled')) : Promise.resolve(false);
+      };
+      assert.equal(env.run(), stage === 'otp' ? 'otp-submitted' : 'submitted');
+      await flush();
+      env.config.allowOtpSubmit = false;
+      assert.equal(env.run(false), 'continue-accessibility-failed');
+      assert.equal(env.run(false), 'continue-accessibility-failed');
+      assert.equal(env.submit.clicks, 0);
+      assert.equal(env.requests.length, 1);
+    }
+  }
+});
+
+test('Continue rejects a changed password form, blocked button or stopped attempt before tapping', () => {
+  const env = setup();
+  env.config.useAccessibilityContinue = true;
+  env.email.value = env.config.email;
+  env.password.value = env.config.password;
+  env.submit.textContent = 'Continue';
+  const form = {querySelectorAll: () => [env.submit]};
+  env.password.closest = () => form;
+  env.submit.getBoundingClientRect = () => ({left: 50, top: 100, width: 100, height: 40});
+  env.submit.contains = () => false;
+  env.window.visualViewport = {width: 400, height: 600};
+  env.document.elementFromPoint = () => env.submit;
+  env.window.flutter_inappwebview.callHandler = () => Promise.resolve(true);
+  assert.equal(env.run(), 'submitted');
+  const state = env.window.__flutterAutoLogin;
+  const target = () => state.getPasswordContinueTarget(1);
+  assert.notEqual(target(), null);
+  env.submit.disabled = true;
+  assert.equal(target(), null);
+  env.submit.disabled = false;
+  env.document.elementFromPoint = () => env.add('div', 'overlay');
+  assert.equal(target(), null);
+  env.document.elementFromPoint = () => env.submit;
+  env.password.closest = () => ({querySelectorAll: () => [env.submit]});
+  assert.equal(target(), null);
+  env.password.closest = () => form;
+  env.password.value = 'another password';
+  assert.equal(target(), null);
+  env.password.value = env.config.password;
+  env.location.pathname = '/signup';
+  assert.equal(target(), null);
+  env.location.pathname = '/login/phone-or-email/email';
+  assert.notEqual(target(), null);
+  state.stop();
+  assert.equal(target(), null);
+});
+
 test('clicks the real IDV Email row instead of its non-clickable list wrapper', () => {
   for (const allowSubmit of [true, false]) {
     const env = setup();
@@ -233,7 +484,7 @@ test('selects Email in the foreground identity dialog and waits for OTP feedback
   await env.resolvePaste();
   assert.equal(identity.code.value, '012345');
   identity.verify.disabled = true;
-  assert.equal(env.run(false), 'waiting-submit');
+  assert.equal(env.run(false), 'waiting-next');
   assert.equal(identity.verify.clicks, 0);
   identity.verify.disabled = false;
   assert.equal(env.run(false), 'otp-submitted');
@@ -336,7 +587,7 @@ for (const navigate of [false, true]) {
     assert.equal(env.run(), 'waiting-paste');
     assert.equal(env.window.__flutterAutoLogin.canPasteFromClipboard(1, 'email', env.config.email), true);
     await env.resolvePaste();
-    assert.equal(env.run(), 'waiting-paste');
+    assert.equal(env.run(), 'waiting-next');
     await env.resolvePaste();
     assert.equal(env.run(), 'verification-requested');
     assert.equal(env.run(), 'otp-required');
@@ -461,7 +712,7 @@ test('pastes each login credential through the bridge and submits once', async (
   assert.equal(env.run(), 'waiting-paste');
   assert.equal(env.requests.length, 1);
   await env.resolvePaste();
-  assert.equal(env.run(), 'waiting-paste');
+  assert.equal(env.run(), 'waiting-next');
   await env.resolvePaste();
   assert.equal(env.run(), 'submitted');
   assert.equal(env.email.value, 'test@example.com');
@@ -477,7 +728,7 @@ test('waits for a disabled submit button to become enabled', async () => {
   const env = setup();
   env.submit.disabled = true;
   await fill(env);
-  assert.equal(env.run(), 'waiting-submit');
+  assert.equal(env.run(), 'waiting-next');
   assert.equal(env.submit.clicks, 0);
   env.submit.disabled = false;
   assert.equal(env.run(), 'submitted');
@@ -497,7 +748,7 @@ test('commits native input and clicks Continue without a login-button attribute 
     };
     await fill(env);
     assert.equal(env.document.activeElement, null);
-    assert.equal(env.run(), 'waiting-submit');
+    assert.equal(env.run(), 'waiting-next');
     assert.equal(env.submit.clicks, 0);
     env.submit.disabled = false;
     assert.equal(env.run(), 'submitted');
@@ -517,7 +768,7 @@ test('only uses Continue inside the password form', async () => {
   env.password.closest = selector => selector === 'form' ? form : null;
   env.submit.disabled = true;
   await fill(env);
-  assert.equal(env.run(), 'waiting-submit');
+  assert.equal(env.run(), 'waiting-next');
   assert.equal(outside.clicks, 0);
   env.submit.disabled = false;
   assert.equal(env.run(), 'submitted');
@@ -590,7 +841,7 @@ test('requests a code once and pastes OTP as soon as it is ready', async () => {
   await env.resolvePaste();
   assert.equal(otp.value, '012345');
   env.submit.disabled = true;
-  assert.equal(env.run(), 'waiting-submit');
+  assert.equal(env.run(), 'waiting-next');
   env.submit.disabled = false;
   assert.equal(env.run(), 'otp-submitted');
   assert.equal(env.run(), 'waiting-result');

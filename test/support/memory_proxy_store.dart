@@ -1,11 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
+import 'package:test_tiktok/core/configuration_data.dart';
 
 class MemoryProxyStore extends ProxyStore {
   WebViewProxy? current;
   String currentUserAgent = 'cached-proxy-user-agent';
   String currentName = '';
+  AccountCredentials? currentAccount;
+  AccountStatus currentStatus = AccountStatus.unregistered;
+  int? currentId;
   final entries = <SavedProxy>[];
   bool failWrites = false;
   bool failReads = false;
@@ -25,13 +29,19 @@ class MemoryProxyStore extends ProxyStore {
   @override
   Future<ProxyProfile?> getCurrentProfile() {
     if (failReads) throw StateError('Storage unavailable');
-    return SynchronousFuture(current == null
-        ? null
-        : ProxyProfile(
-            proxy: current!,
-            userAgent: currentUserAgent,
-            name: currentName,
-            hasBeenUsed: true));
+    return SynchronousFuture(
+      current == null
+          ? null
+          : ProxyProfile(
+              proxy: current!,
+              userAgent: currentUserAgent,
+              name: currentName,
+              account: currentAccount,
+              statusAccount: currentStatus,
+              configurationId: currentId,
+              hasBeenUsed: true,
+            ),
+    );
   }
 
   @override
@@ -41,11 +51,15 @@ class MemoryProxyStore extends ProxyStore {
     if (saved.isNotEmpty) {
       currentUserAgent = saved.first.userAgent;
       currentName = saved.first.name;
+      currentAccount = saved.first.account;
+      currentStatus = saved.first.statusAccount;
+      currentId = saved.first.id;
       await setUsed(saved.first.id, true);
     } else if (proxy != null && !sameProxy(current, proxy)) {
       currentUserAgent = 'proxy-user-agent-${_nextAgent++}';
     }
     current = proxy;
+    if (proxy == null) currentAccount = null;
   }
 
   @override
@@ -58,18 +72,29 @@ class MemoryProxyStore extends ProxyStore {
     current = entry.proxy;
     currentUserAgent = entry.userAgent;
     currentName = entry.name;
+    currentAccount = entry.account;
+    currentStatus = entry.statusAccount;
+    currentId = entry.id;
     await setUsed(id, true);
   }
 
   @override
-  Future<int> save(
-      {int? id,
-      required String name,
-      required WebViewProxy proxy,
-      String? userAgent}) async {
+  Future<int> save({
+    int? id,
+    required String name,
+    required WebViewProxy proxy,
+    String? userAgent,
+    AccountCredentials? account,
+    AccountStatus? statusAccount,
+  }) async {
     if (failWrites) throw StateError('Storage unavailable');
+    account?.validate();
     final existing = entries.where(
-        (entry) => id == null ? sameProxy(entry.proxy, proxy) : entry.id == id);
+      (entry) => id == null
+          ? sameProxy(entry.proxy, proxy) &&
+              entry.account?.email == account?.email
+          : entry.id == id,
+    );
     final old = existing.isEmpty ? null : existing.first;
     final savedId = id ?? old?.id ?? _nextId++;
     final selectedUserAgent = userAgent?.trim() ??
@@ -78,12 +103,23 @@ class MemoryProxyStore extends ProxyStore {
             ? currentUserAgent
             : 'proxy-user-agent-${_nextAgent++}');
     entries.removeWhere((entry) => entry.id == savedId);
-    entries.add(SavedProxy(
+    entries.add(
+      SavedProxy(
         id: savedId,
         name: name,
         proxy: proxy,
         userAgent: selectedUserAgent,
-        hasBeenUsed: old?.hasBeenUsed ?? false));
+        account: account ?? old?.account,
+        statusAccount:
+            statusAccount ?? old?.statusAccount ?? AccountStatus.unregistered,
+        hasBeenUsed: old?.hasBeenUsed ?? false,
+      ),
+    );
+    final saved = entries.last;
+    if (currentId == savedId && old != null && sameProfile(old, saved)) {
+      currentName = saved.name;
+      currentStatus = saved.statusAccount;
+    }
     return savedId;
   }
 
@@ -99,10 +135,13 @@ class MemoryProxyStore extends ProxyStore {
     final index = entries.indexWhere((entry) => entry.id == id);
     final entry = entries[index];
     entries[index] = SavedProxy(
-        id: entry.id,
-        name: entry.name,
-        proxy: entry.proxy,
-        userAgent: entry.userAgent,
-        hasBeenUsed: used);
+      id: entry.id,
+      name: entry.name,
+      proxy: entry.proxy,
+      userAgent: entry.userAgent,
+      account: entry.account,
+      statusAccount: entry.statusAccount,
+      hasBeenUsed: used,
+    );
   }
 }

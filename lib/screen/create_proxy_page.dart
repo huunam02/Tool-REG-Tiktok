@@ -9,8 +9,8 @@ class CreateProxyPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ProxyForm(
-        title: 'Tạo proxy',
-        submitLabel: 'Tạo proxy',
+        title: 'Tạo cấu hình',
+        submitLabel: 'Tạo cấu hình',
         randomizeOnOpen: true,
         generateUserAgent: generateUserAgent,
       );

@@ -6,28 +6,39 @@ import 'package:flutter/services.dart';
 import '../core/app_configuration.dart';
 import '../core/proxy_store.dart';
 import '../core/proxy_draft.dart';
+import '../core/configuration_data.dart';
 import '../core/webview_user_agent.dart';
 import 'app_controller.dart';
 
 class ProxyFormController extends AppController {
-  ProxyFormController(
-      {this.entry,
-      required this.randomizeOnOpen,
-      required this.selectUserAgent});
+  ProxyFormController({
+    this.entry,
+    required this.randomizeOnOpen,
+    required this.selectUserAgent,
+  });
 
   final SavedProxy? entry;
   final bool randomizeOnOpen;
   final Future<String> Function() selectUserAgent;
 
   final form = GlobalKey<FormState>();
-  late final name = TextEditingController(text: entry?.name);
   late final url = TextEditingController(
-      text: entry == null ? '' : proxyAddress(entry!.proxy));
+    text: entry == null ? '' : proxyAddress(entry!.proxy),
+  );
   late final username = TextEditingController(text: entry?.proxy.username);
   late final password = TextEditingController(text: entry?.proxy.password);
   late final userAgent = TextEditingController(text: entry?.userAgent);
   late final importData = TextEditingController();
+  late final accountEmail = TextEditingController(text: entry?.account?.email);
+  late final accountPassword = TextEditingController(
+    text: entry?.account?.password,
+  );
+  late final mailboxPassword = TextEditingController(
+    text: entry?.account?.mailboxPassword,
+  );
   String? importError;
+  late AccountStatus statusAccount =
+      entry?.statusAccount ?? AccountStatus.unregistered;
   bool generating = false;
   bool generationFailed = false;
 
@@ -59,12 +70,14 @@ class ProxyFormController extends AppController {
   @override
   void onClose() {
     for (final controller in [
-      name,
       url,
       username,
       password,
       userAgent,
-      importData
+      importData,
+      accountEmail,
+      accountPassword,
+      mailboxPassword,
     ]) {
       controller.dispose();
     }
@@ -77,30 +90,49 @@ class ProxyFormController extends AppController {
       final fieldContext = invalid.first.context;
       await WidgetsBinding.instance.endOfFrame;
       if (!active || !fieldContext.mounted) return null;
-      await Scrollable.ensureVisible(fieldContext,
-          duration: const Duration(milliseconds: 220), alignment: 0.15);
+      await Scrollable.ensureVisible(
+        fieldContext,
+        duration: const Duration(milliseconds: 220),
+        alignment: 0.15,
+      );
       return null;
     }
-    final proxy = WebViewProxy.parse(url.text,
-        username: username.text, password: password.text)!;
+    final proxy = WebViewProxy.parse(
+      url.text,
+      username: username.text,
+      password: password.text,
+    )!;
     FocusManager.instance.primaryFocus?.unfocus();
-    return ProxyDraft(name.text.trim(), proxy, userAgent.text.trim());
+    return ProxyDraft(
+      accountEmail.text.trim(),
+      proxy,
+      userAgent.text.trim(),
+      account: AccountCredentials(
+        email: accountEmail.text.trim(),
+        password: accountPassword.text,
+        mailboxPassword: mailboxPassword.text,
+      ),
+      statusAccount: statusAccount,
+    );
   }
 
   void importProxy() {
     if (!active) return;
     try {
-      final proxy = WebViewProxy.parseImport(importData.text);
+      final data = ImportedConfiguration.parse(importData.text);
+      final proxy = data.proxy;
       mutate(() {
-        name.text = 'Proxy ${proxy.uri.host}';
         url.text = proxyAddress(proxy);
         username.text = proxy.username;
         password.text = proxy.password;
+        accountEmail.text = data.account.email;
+        accountPassword.text = data.account.password;
+        mailboxPassword.text = data.account.mailboxPassword;
         importError = null;
         importData.clear();
       });
       FocusManager.instance.primaryFocus?.unfocus();
-      notify('Đã import proxy. Kiểm tra thông tin rồi lưu.');
+      notify('Đã import cấu hình proxy và tài khoản. Kiểm tra rồi lưu.');
     } on FormatException catch (error) {
       mutate(() => importError = error.message);
     }

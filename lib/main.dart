@@ -8,11 +8,19 @@ import 'core/proxy_store.dart';
 import 'screen/home_page.dart';
 import 'screen/splash_page.dart';
 import 'screen/widgets/controller_scope.dart';
+import 'screen/widgets/accessibility_permission_prompt.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   runApp(const MyApp());
+}
+
+// flutter_accessibility_service initializes this engine when attaching
+// to the Activity, even when no accessibility overlay is displayed.
+@pragma('vm:entry-point')
+void accessibilityOverlay() {
+  runApp(const SizedBox.shrink());
 }
 
 class MyApp extends StatelessWidget {
@@ -56,11 +64,13 @@ class _AppStartupPage extends StatelessWidget {
         ),
         builder: (logic) {
           if (logic.userAgent != null) {
-            return HomePage(
-              userAgent: logic.userAgent!,
-              proxyStore: proxyStore,
-              initialOtpSettings: logic.otpSettings,
-              otpSettingsStore: otpSettingsStore,
+            return AccessibilityPermissionPrompt(
+              child: HomePage(
+                userAgent: logic.userAgent!,
+                proxyStore: proxyStore,
+                initialOtpSettings: logic.otpSettings,
+                otpSettingsStore: otpSettingsStore,
+              ),
             );
           }
           return SplashPage(

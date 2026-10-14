@@ -11,6 +11,26 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity: FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/send_code_target")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "getTarget") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val id = call.argument<Number>("id")
+                val attempt = call.argument<Number>("attempt")
+                val context = call.argument<String>("context") ?: "login"
+                val action = call.argument<String>("action") ?: "send-code"
+                val root = id?.let {
+                    flutterEngine.platformViewsController.getPlatformViewById(it.toInt())
+                }
+                val webView = root?.let { findWebView(it) }
+                if (webView == null || attempt == null) {
+                    result.success(null)
+                    return@setMethodCallHandler
+                }
+                NativeSendCodeTarget.read(webView, attempt.toInt(), context, action) { result.success(it) }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/webview_identity")
             .setMethodCallHandler { call, result ->
                 if (call.method != "configure") {

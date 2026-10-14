@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_accessibility_service/flutter_accessibility_service.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../core/scripts/auto_login_script.dart';
+import '../core/send_code_accessibility.dart';
 import '../core/scripts/auto_cookie_script.dart';
 import '../core/scripts/auto_interest_script.dart';
 import '../core/scripts/auto_signup_script.dart';
@@ -36,24 +40,60 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   String get initialUrl => launchAction.initialUrl;
 
   static const commentInputChannel = MethodChannel('test_tiktok/comment_input');
-  static const accountActionInterval = Duration(milliseconds: 2500);
-  static const otpActionInterval = Duration(milliseconds: 300);
+  // Randomize the login/signup JS evaluation cadence, not API timeouts.
+  // Most normal interactions wait 3-6s, while all waits remain inside 2-10s.
+  static final Random _actionRandom = Random();
 
-  static bool isFastAccountStep(dynamic result) => const {
-        'requesting-verification',
-        'verification-requested',
-        'email-verification-selected',
-        'otp-required',
-        'waiting-otp',
-        'waiting-otp-paste',
-        'submitted',
-        'otp-submitted',
-        'password-submitted',
-      }.contains(result);
+  static Duration get accountActionInterval {
+    final bucket = _actionRandom.nextInt(100);
+    final milliseconds = switch (bucket) {
+      < 70 => 3000 + _actionRandom.nextInt(3001), // 70%: 3-6 seconds
+      < 85 => 2000 + _actionRandom.nextInt(1001), // 15%: 2-3 seconds
+      _ => 6001 + _actionRandom.nextInt(4000),    // 15%: >6-10 seconds
+    };
+    return Duration(milliseconds: milliseconds);
+  }
+
+  // OTP entry and Next/Continue should be responsive, not delayed 2-10s.
+  static Duration get otpActionInterval =>
+      Duration(milliseconds: 200 + _actionRandom.nextInt(201));
+
+  static bool isFastAccountStep(dynamic result) {
+    if (result is! String) return false;
+    if (const {
+      'requesting-verification',
+      'waiting-send-code',
+      'verification-requested',
+      'email-verification-selected',
+      'otp-required',
+      'waiting-otp',
+      'waiting-otp-paste',
+      'waiting-next',
+      'waiting-password-screen', // Go to the post-OTP Next/password screen.
+      'waiting-password-submit', // Continue as soon as the form is ready.
+      'submitted',
+      'otp-submitted',
+      'password-submitted',
+    }.contains(result)) {
+      return true;
+    }
+    // Supports Next/Continue statuses returned by login/signup scripts.
+    return result == 'next' ||
+        result.startsWith('next-') ||
+        result.endsWith('-next') ||
+        result.startsWith('waiting-next') ||
+        result == 'continue' ||
+        result.startsWith('continue-');
+  }
   InAppWebViewController? webViewController;
   bool initialActionStarted = false;
   bool initialPageLoaded = false;
   bool autoLoginBusy = false;
+  SendCodeAccessibility? _sendCodeAccessibility;
+  final Map<String, int> _accountTapAttempts = {};
+  bool _requestingAccessibility = false;
+  bool get _usesAccessibility =>
+      !kIsWeb && Platform.isAndroid;
   int autoLoginAttempt = 0;
   bool autoSignupBusy = false;
   String signupStatus = 'Đang đăng ký tự động…';
@@ -88,6 +128,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   @override
   void onClose() {
+    unawaited(_sendCodeAccessibility?.dispose());
     _ipChecker?.cancel();
     cancelAutoLogin(updateUi: false);
     cancelAutoSignup(updateUi: false);
@@ -259,6 +300,85 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   Future<bool> pasteLoginFromClipboard(List<dynamic> args) =>
       pasteAccountFromClipboard(args, signup: false);
 
+  Future<bool> clickLoginSendCode(List<dynamic> args) =>
+      tapAccountButton(args, signup: false);
+
+  Future<bool> clickLoginPasswordContinue(List<dynamic> args) =>
+      tapAccountButton(args, signup: false, action: 'continue-password');
+
+  Future<bool> clickLoginOtpContinue(List<dynamic> args) =>
+      tapAccountButton(args, signup: false, action: 'continue-otp');
+
+  Future<bool> clickSignupSendCode(List<dynamic> args) =>
+      tapAccountButton(args, signup: true);
+
+  Future<bool> clickSignupPasswordSubmit(List<dynamic> args) =>
+      tapAccountButton(args, signup: true, action: 'submit-password');
+
+  Future<bool> clickSignupUsernameSkip(List<dynamic> args) =>
+      tapAccountButton(args, signup: true, action: 'skip-username');
+
+  Future<bool> tapAccountButton(List<dynamic> args,
+      {required bool signup, String action = 'send-code'}) async {
+    final controller = webViewController;
+    final accessibility = _sendCodeAccessibility;
+    final attempt = signup ? autoSignupAttempt : autoLoginAttempt;
+    final context = signup ? 'signup' : 'login';
+    const labels = {
+      'signup': {
+        'send-code': 'Send code',
+        'submit-password': 'Sign up',
+        'skip-username': 'Skip',
+      },
+      'login': {
+        'send-code': 'Send code',
+        'continue-password': 'Continue',
+        'continue-otp': 'Continue',
+      },
+    };
+    final buttonLabel = labels[context]?[action];
+    if (buttonLabel == null) return false;
+    bool isActive() => active && appActive &&
+        (signup ? autoSignupBusy && attempt == autoSignupAttempt
+            : autoLoginBusy && attempt == autoLoginAttempt);
+    if (!_usesAccessibility || controller == null || accessibility == null ||
+        args.length != 1 || args.first != attempt || !isActive()) {
+      return false;
+    }
+    // Keep the one-touch latch outside JavaScript so a page/context replacement
+    // cannot dispatch a second gesture for the same button step.
+    final stepKey = '$context/$action';
+    if (_accountTapAttempts[stepKey] == attempt) return false;
+    _accountTapAttempts[stepKey] = attempt;
+    debugPrint('[$buttonLabel] Gesture requested for $context attempt $attempt.');
+    try {
+      final completed = await accessibility.tapButton(buttonLabel: buttonLabel, getTarget: () async {
+        if (!isActive()) return null;
+        final url = await controller.getUrl();
+        if (!isActive() || url?.scheme != 'https' ||
+            url?.host != 'www.tiktok.com') {
+          return null;
+        }
+        final point = await const MethodChannel('test_tiktok/send_code_target')
+            .invokeMapMethod<String, dynamic>('getTarget', {
+          'id': controller.platform.params.id,
+          'attempt': attempt,
+          'context': context,
+          'action': action,
+        });
+        if (!isActive() || point == null) return null;
+        final x = point['x'];
+        final y = point['y'];
+        if (x is! num || y is! num) return null;
+        return Offset(x.toDouble(), y.toDouble());
+      });
+      debugPrint('[$buttonLabel] $context gesture completed: $completed.');
+      return completed;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> pasteAccountFromClipboard(List<dynamic> args,
       {required bool signup}) async {
     final controller = webViewController;
@@ -360,6 +480,31 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     );
   }
 
+  Future<bool> ensureAccountAccessibility() async {
+    if (_requestingAccessibility) return false;
+    if (_usesAccessibility) {
+      _requestingAccessibility = true;
+      try {
+        if (!await FlutterAccessibilityService.isAccessibilityPermissionEnabled()) {
+          await FlutterAccessibilityService.requestAccessibilityPermission();
+          if (active) {
+            notify('Bật Trợ năng cho Tool TikTok, quay lại ứng dụng rồi chạy thao tác lại.');
+          }
+          return false;
+        }
+        if (!active || !appActive) return false;
+        _sendCodeAccessibility ??= SendCodeAccessibility();
+        _sendCodeAccessibility!.start();
+      } catch (_) {
+        if (active) notify('Không thể kết nối dịch vụ Trợ năng để bấm Send code.');
+        return false;
+      } finally {
+        _requestingAccessibility = false;
+      }
+    }
+    return true;
+  }
+
   Future<void> autoSignup() async {
     if (autoSignupBusy) {
       cancelAutoSignup();
@@ -379,6 +524,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       return;
     }
     if (!validateOtpMailbox(signup: true)) return;
+    if (!await ensureAccountAccessibility()) return;
     activeSignupOtp = configuration.signupOtp.trim();
     final attempt = ++autoSignupAttempt;
     mutate(() {
@@ -394,21 +540,24 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     var passwordSubmitted = false;
     int? otpRequestedAt;
     OtpCodeRequest? otpRequest;
-    var fastSteps = false;
     try {
       await stopAutoWatch();
       if (!active || !isActive()) return;
       final birthday =
           configuration.birthday ?? AppConfiguration.randomSignupBirthday();
       message = 'Không thể mở trang đăng ký. Hãy thử tải lại TikTok.';
-      var deadline = DateTime.now().add(const Duration(seconds: 120));
+      var deadline = DateTime.now().add(const Duration(seconds: 240));
       var evaluationFailures = 0;
       String? lastStep;
       message = 'Chưa hoàn tất đăng ký. Hãy kiểm tra biểu mẫu trên TikTok; '
           'bạn có thể chọn ngày sinh hoặc tiếp tục thủ công.';
       while (isActive() && DateTime.now().isBefore(deadline)) {
         await Future<void>.delayed(
-            fastSteps ? otpActionInterval : accountActionInterval);
+          isFastAccountStep(lastStep) ||
+                  (otpRequest?.code != null && activeSignupOtp.isEmpty)
+              ? otpActionInterval
+              : accountActionInterval,
+        );
         if (!isActive()) return;
         if (otpRequest?.error != null) {
           message = otpRequest!.error;
@@ -438,6 +587,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
               allowPasswordSubmit: !passwordSubmitted,
               waitForOtpApi:
                   configuration.otpApi != null && activeSignupOtp.isEmpty,
+              useAccessibilitySendCode: _usesAccessibility,
+              useAccessibilityPasswordSubmit: _usesAccessibility,
+              useAccessibilityUsernameSkip: _usesAccessibility,
             ),
           );
           evaluationFailures = 0;
@@ -455,8 +607,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           showAccountFailure(TikTokAccountFailure.rateLimited);
           return;
         }
-        fastSteps = fastSteps || isFastAccountStep(result);
+        if (result is String && result != lastStep) {
+          debugPrint('Auto signup: $result.');
+          lastStep = result;
+        }
         final status = switch (result) {
+          'waiting-send-code' => 'Đang chờ 5 giây trước khi bấm Send code…',
           'requesting-verification' => 'Đang chờ TikTok xác nhận gửi mã…',
           'verification-requested' => 'TikTok đã tiếp nhận yêu cầu gửi mã…',
           'waiting-otp' => 'Đang chờ ô nhập OTP đăng ký…',
@@ -464,7 +620,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           'waiting-otp-paste' => 'Đang nhập OTP đăng ký…',
           'waiting-password-screen' => 'Đang chờ màn nhập mật khẩu ổn định…',
           'waiting-password-submit' =>
-            'Đã nhập mật khẩu, chờ trước khi đăng ký…',
+            'Đã nhập mật khẩu, chờ 10 giây trước khi bấm Sign up…',
           'otp-submitted' => 'Đang chờ kết quả đăng ký…',
           'password-submitted' => 'Đã gửi mật khẩu, đang chờ kết quả đăng ký…',
           'waiting-username-skip' =>
@@ -485,11 +641,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           deadline = DateTime.now()
               .add(Duration(seconds: configuration.otpApi!.waitSeconds + 45));
           message = 'Đã yêu cầu mã. Đang lấy OTP đăng ký từ API…';
+          // Poll the OTP field immediately even if the prior step was slow.
+          lastStep = 'otp-required';
           continue;
-        }
-        if (result is String && result != lastStep) {
-          debugPrint('Auto signup: $result.');
-          lastStep = result;
         }
         if (result == 'submitted' ||
             result == 'otp-submitted' ||
@@ -520,6 +674,18 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             break;
           }
           message = 'Đã yêu cầu mã. Đang chờ OTP để tự nhập mã đăng ký.';
+        } else if (result == 'username-skip-accessibility-failed') {
+          message = _sendCodeAccessibility?.failureMessageFor('Skip') ??
+              'Chưa chạm được nút Skip trên màn tạo username.';
+          break;
+        } else if (result == 'password-submit-accessibility-failed') {
+          message = _sendCodeAccessibility?.failureMessageFor('Sign up') ??
+              'Chưa chạm được nút Sign up trên màn mật khẩu sau OTP.';
+          break;
+        } else if (result == 'send-code-accessibility-failed') {
+          message = _sendCodeAccessibility?.failureMessage ??
+              'Chưa chạm được nút Send code trên biểu mẫu đăng ký. Hãy kiểm tra nút gửi mã trên TikTok.';
+          break;
         } else if (result == 'verification-request-failed') {
           message = 'TikTok chưa xác nhận gửi mã sau khi bấm Send code. '
               'Đã dừng và chưa gọi API OTP. Hãy kiểm tra thông báo trên biểu mẫu rồi thử lại.';
@@ -592,6 +758,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       return;
     }
     if (!validateOtpMailbox(signup: false)) return;
+    if (!await ensureAccountAccessibility()) return;
     activeLoginOtp = configuration.loginOtp.trim();
     final attempt = ++autoLoginAttempt;
     mutate(() {
@@ -604,19 +771,22 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     var otpSubmitted = false;
     int? otpRequestedAt;
     OtpCodeRequest? otpRequest;
-    var fastSteps = false;
     var message = 'Không thể mở trang đăng nhập. Hãy thử tải lại TikTok.';
     int? emailVerificationRequestedAt;
     try {
       await stopAutoWatch();
       if (!isActive()) return;
-      var deadline = _now().add(const Duration(seconds: 120));
+      var deadline = _now().add(const Duration(seconds: 180));
       String? lastStep;
       message =
           'Không tìm thấy biểu mẫu đăng nhập. Bạn có thể đăng nhập thủ công.';
       while (isActive() && _now().isBefore(deadline)) {
         await Future<void>.delayed(
-            fastSteps ? otpActionInterval : accountActionInterval);
+          isFastAccountStep(lastStep) ||
+                  (otpRequest?.code != null && activeLoginOtp.isEmpty)
+              ? otpActionInterval
+              : accountActionInterval,
+        );
         if (!isActive()) return;
         if (otpRequest?.error != null) {
           message = otpRequest!.error!;
@@ -647,6 +817,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
               allowOtpSubmit: !otpSubmitted,
               waitForOtpApi:
                   configuration.otpApi != null && activeLoginOtp.isEmpty,
+              useAccessibilitySendCode: _usesAccessibility,
+              useAccessibilityContinue: _usesAccessibility,
             ),
           );
         } catch (error) {
@@ -658,7 +830,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           showAccountFailure(TikTokAccountFailure.rateLimited);
           return;
         }
-        fastSteps = fastSteps || isFastAccountStep(result);
         if (result is String && result != lastStep) {
           debugPrint('Auto login: $result.');
           lastStep = result;
@@ -678,6 +849,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           deadline = _now()
               .add(Duration(seconds: configuration.otpApi!.waitSeconds + 45));
           message = 'Đã yêu cầu mã. Đang lấy OTP đăng nhập từ API…';
+          // Poll the OTP field immediately even if the prior step was slow.
+          lastStep = 'otp-required';
           continue;
         }
         if (result == 'submitted' || result == 'otp-submitted') {
@@ -710,6 +883,14 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           message = 'Đã yêu cầu mã. Đang chờ OTP để tự nhập mã đăng nhập.';
         } else if (result == 'otp-required') {
           message = 'Đang lấy OTP đăng nhập từ API…';
+        } else if (result == 'continue-accessibility-failed') {
+          message = _sendCodeAccessibility?.failureMessageFor('Continue') ??
+              'Chưa chạm được nút Continue trên biểu mẫu đăng nhập.';
+          break;
+        } else if (result == 'send-code-accessibility-failed') {
+          message = _sendCodeAccessibility?.failureMessage ??
+              'Chưa chạm được nút Send code. Hãy kiểm tra nút gửi mã trên TikTok.';
+          break;
         } else if (result == 'verification-request-failed') {
           message = 'TikTok chưa xác nhận gửi mã. '
               'Đã dừng và chưa gọi API OTP. Hãy kiểm tra hộp xác minh rồi thử lại.';
@@ -949,8 +1130,32 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       callback: pasteLoginFromClipboard,
     );
     controller.addJavaScriptHandler(
+      handlerName: 'FlutterLoginSendCode',
+      callback: clickLoginSendCode,
+    );
+    controller.addJavaScriptHandler(
+      handlerName: 'FlutterLoginPasswordContinue',
+      callback: clickLoginPasswordContinue,
+    );
+    controller.addJavaScriptHandler(
+      handlerName: 'FlutterLoginOtpContinue',
+      callback: clickLoginOtpContinue,
+    );
+    controller.addJavaScriptHandler(
       handlerName: 'FlutterSignupPaste',
       callback: pasteSignupFromClipboard,
+    );
+    controller.addJavaScriptHandler(
+      handlerName: 'FlutterSignupSendCode',
+      callback: clickSignupSendCode,
+    );
+    controller.addJavaScriptHandler(
+      handlerName: 'FlutterSignupPasswordSubmit',
+      callback: clickSignupPasswordSubmit,
+    );
+    controller.addJavaScriptHandler(
+      handlerName: 'FlutterSignupUsernameSkip',
+      callback: clickSignupUsernameSkip,
     );
     controller.addJavaScriptHandler(
       handlerName: 'FlutterAutoWatch',

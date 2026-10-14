@@ -21,7 +21,7 @@ function setup({ inputs = true, autoPaste = true, pasteResult = true, sendCodeAc
     ),
   };
   const location = { origin: 'https://www.tiktok.com', pathname: '/signup/phone-or-email' };
-  const config = { email: 'test@example.com', password: 'test-password', month: 2, day: 3, year: 2001, attempt: 1 };
+  const config = { email: 'test@example.com', password: 'test-password', month: 2, day: 3, year: 2001, attempt: 1, sendCodeDelayMs: 0, passwordSubmitDelayMs: 350 };
   let time = 0;
   function add(selector, textContent = '', tagName = 'DIV') {
     const element = {
@@ -95,9 +95,255 @@ function setup({ inputs = true, autoPaste = true, pasteResult = true, sendCodeAc
 async function fill(env) {
   assert.equal(env.run(), 'waiting-paste');
   await env.resolvePaste();
-  assert.equal(env.run(), 'waiting-paste');
+  assert.equal(env.run(), 'waiting-next');
   await env.resolvePaste();
 }
+
+test('post-OTP Sign up waits ten seconds and dispatches a separate native gesture once', async () => {
+  const env = setup();
+  env.email.hidden = true;
+  env.config.otpRequestedAt = 0;
+  env.config.allowOtpSubmit = false;
+  env.config.useAccessibilityPasswordSubmit = true;
+  delete env.config.passwordSubmitDelayMs;
+  env.password.value = env.config.password;
+  env.submit.getBoundingClientRect = () => ({left: 150, top: 240, width: 100, height: 40});
+  env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
+  env.document.elementFromPoint = () => env.submit;
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(true);
+  };
+  assert.equal(env.run(false), 'waiting-password-screen');
+  env.advance(350);
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.advance(9999);
+  assert.equal(env.run(false), 'waiting-password-submit');
+  assert.equal(env.requests.length, 0);
+  env.advance(1);
+  assert.equal(env.run(false), 'password-submitted');
+  await flush();
+  assert.deepEqual(env.requests, [['FlutterSignupPasswordSubmit', 1]]);
+  assert.equal(env.submit.clicks, 0);
+  const state = env.window.__flutterAutoSignup;
+  assert.equal(state.canSubmitPasswordWithAccessibility(1), true);
+  assert.equal(state.canSubmitPasswordWithAccessibility(2), false);
+  assert.deepEqual(JSON.parse(JSON.stringify(state.getPasswordSubmitTarget(1))),
+    {x: 100, y: 60, viewportWidth: 400, viewportHeight: 600});
+  env.document.elementFromPoint = () => null;
+  assert.equal(state.getPasswordSubmitTarget(1), null);
+  env.config.allowPasswordSubmit = false;
+  assert.equal(env.run(false), 'waiting-result');
+  assert.equal(env.requests.length, 1);
+});
+
+test('failed Sign up gesture remains visible after Flutter latches final submission', async () => {
+  const env = setup();
+  env.email.hidden = true;
+  env.config.otpRequestedAt = 0;
+  env.config.useAccessibilityPasswordSubmit = true;
+  env.password.value = env.config.password;
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(false);
+  };
+  assert.equal(env.run(false), 'waiting-password-screen');
+  env.advance(350);
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.advance(350);
+  assert.equal(env.run(false), 'password-submitted');
+  await flush();
+  env.config.allowPasswordSubmit = false;
+  assert.equal(env.run(false), 'password-submit-accessibility-failed');
+  assert.equal(env.run(false), 'password-submit-accessibility-failed');
+  assert.equal(env.submit.clicks, 0);
+  assert.equal(env.requests.length, 1);
+});
+
+test('Sign up restarts its ten-second delay after the button is disabled or replaced', () => {
+  const env = setup();
+  env.email.hidden = true;
+  env.config.otpRequestedAt = 0;
+  env.config.useAccessibilityPasswordSubmit = true;
+  delete env.config.passwordSubmitDelayMs;
+  env.password.value = env.config.password;
+  assert.equal(env.run(false), 'waiting-password-screen');
+  env.advance(350);
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.advance(9999);
+  env.submit.disabled = true;
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.submit.disabled = false;
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.advance(9999);
+  env.submit.hidden = true;
+  const replacement = env.add('button', 'Sign up', 'BUTTON');
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.advance(9999);
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.window.__flutterAutoSignup.stop();
+  env.advance(1);
+  assert.equal(env.run(false), 'cancelled');
+  assert.equal(env.requests.length, 0);
+  assert.equal(replacement.clicks, 0);
+});
+
+test('signup waits five seconds before the gesture; acknowledgement timeout starts after tapping', async () => {
+  const env = setup();
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  delete env.config.sendCodeDelayMs; // Use the production default.
+  const send = env.add('button', 'Send code', 'BUTTON');
+  await fill(env);
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(true);
+  };
+  assert.equal(env.run(), 'waiting-send-code');
+  assert.equal(env.window.__flutterAutoSignup.codeRequest, null);
+  env.advance(4999);
+  assert.equal(env.run(), 'waiting-send-code');
+  assert.equal(env.requests.length, 2); // Credential pastes only.
+  assert.equal(send.clicks, 0);
+  env.advance(1);
+  assert.equal(env.run(), 'requesting-verification');
+  await flush();
+  assert.equal(env.window.__flutterAutoSignup.codeRequest.at, 5000);
+  env.advance(14999);
+  assert.equal(env.run(), 'requesting-verification');
+  env.advance(1);
+  assert.equal(env.run(), 'verification-request-failed');
+  assert.equal(env.requests.filter(args => args[0] === 'FlutterSignupSendCode').length, 1);
+});
+
+test('signup restarts the delay if the button becomes disabled or is replaced', async () => {
+  const env = setup();
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  env.config.sendCodeDelayMs = 5000;
+  const send = env.add('button', 'Send code', 'BUTTON');
+  await fill(env);
+  assert.equal(env.run(), 'waiting-send-code');
+  env.advance(4000);
+  send.disabled = true;
+  assert.equal(env.run(), 'waiting-form');
+  send.disabled = false;
+  assert.equal(env.run(), 'waiting-send-code');
+  env.advance(4000);
+  send.hidden = true;
+  env.add('button', 'Send code', 'BUTTON');
+  assert.equal(env.run(), 'waiting-send-code');
+  env.advance(4999);
+  assert.equal(env.run(), 'waiting-send-code');
+  assert.equal(env.requests.length, 2);
+});
+
+test('cancelling signup or encountering CAPTCHA during the delay prevents the gesture', async () => {
+  for (const reason of ['cancel', 'captcha']) {
+    const env = setup();
+    env.config.useAccessibilitySendCode = true;
+    env.config.waitForOtpApi = true;
+    env.config.sendCodeDelayMs = 5000;
+    const send = env.add('button', 'Send code', 'BUTTON');
+    await fill(env);
+    assert.equal(env.run(), 'waiting-send-code');
+    if (reason === 'cancel') env.window.__flutterAutoSignup.stop();
+    else env.add('#captcha-verify-container');
+    env.advance(5000);
+    assert.equal(env.run(), reason === 'cancel' ? 'cancelled' : 'verification-required');
+    assert.equal(env.requests.length, 2);
+    assert.equal(send.clicks, 0);
+  }
+});
+
+test('Android signup sends code via the gesture bridge exactly once after pasting credentials', async () => {
+  const env = setup();
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  const send = env.add('button', 'Send code', 'BUTTON');
+  await fill(env);
+  assert.equal(env.email.value, env.config.email);
+  assert.equal(env.password.value, env.config.password);
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(true);
+  };
+  assert.equal(env.run(), 'requesting-verification');
+  await flush();
+  assert.equal(env.run(), 'requesting-verification');
+  assert.equal(env.window.__flutterAutoSignup.otpRequestedAt, null);
+  assert.equal(env.window.__flutterAutoSignup.canSendCodeWithAccessibility(1), true);
+  assert.equal(env.window.__flutterAutoSignup.canSendCodeWithAccessibility(2), false);
+  assert.equal(send.clicks, 0);
+  assert.deepEqual(env.requests[2], ['FlutterSignupSendCode', 1]);
+  send.textContent = 'Resend code (60s)';
+  send.disabled = true;
+  assert.equal(env.run(), 'verification-requested');
+  assert.equal(env.run(), 'otp-required');
+  assert.equal(env.requests.length, 3);
+});
+
+test('signup gesture failure stops without sending a DOM click or claiming an OTP request', async () => {
+  const env = setup();
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  const send = env.add('button', 'Send code', 'BUTTON');
+  await fill(env);
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(false);
+  };
+  assert.equal(env.run(), 'requesting-verification');
+  await flush();
+  assert.equal(env.run(), 'send-code-accessibility-failed');
+  assert.equal(env.run(), 'send-code-accessibility-failed');
+  assert.equal(env.window.__flutterAutoSignup.otpRequestedAt, null);
+  assert.equal(send.clicks, 0);
+  assert.equal(env.requests.length, 3);
+});
+
+test('signup native target handles viewport offsets and rejects another overlay or stopped attempt', async () => {
+  const env = setup();
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  const send = env.add('button', 'Send code', 'BUTTON');
+  send.getBoundingClientRect = () => ({left: 150, top: 240, width: 100, height: 40});
+  env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
+  env.document.elementFromPoint = () => send;
+  await fill(env);
+  env.window.flutter_inappwebview.callHandler = () => Promise.resolve(true);
+  assert.equal(env.run(), 'requesting-verification');
+  const state = env.window.__flutterAutoSignup;
+  assert.deepEqual(JSON.parse(JSON.stringify(state.getSendCodeTarget(1))),
+    {x: 100, y: 60, viewportWidth: 400, viewportHeight: 600});
+  assert.equal(state.getSendCodeTarget(2), null);
+  env.document.elementFromPoint = () => null;
+  assert.equal(state.getSendCodeTarget(1), null);
+  env.document.elementFromPoint = () => send;
+  state.stop();
+  assert.equal(state.getSendCodeTarget(1), null);
+});
+
+test('signup does not request another gesture when React replaces the button', async () => {
+  const env = setup();
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  const send = env.add('button', 'Send code', 'BUTTON');
+  await fill(env);
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    return Promise.resolve(true);
+  };
+  assert.equal(env.run(), 'requesting-verification');
+  await flush();
+  send.hidden = true;
+  const replacement = env.add('button', 'Send code', 'BUTTON');
+  assert.equal(env.run(), 'requesting-verification');
+  env.advance(15000);
+  assert.equal(env.run(), 'verification-request-failed');
+  assert.equal(env.requests.filter(args => args[0] === 'FlutterSignupSendCode').length, 1);
+  assert.equal(replacement.clicks, 0);
+});
 
 async function reachUsernameScreen() {
   const env = setup();
@@ -123,7 +369,7 @@ async function reachUsernameScreen() {
   env.password.hidden = false;
   assert.equal(env.run(false), 'waiting-password-screen');
   env.advance(2500);
-  assert.equal(env.run(false), 'waiting-paste');
+  assert.equal(env.run(false), 'waiting-next');
   await env.resolvePaste();
   assert.equal(env.run(false), 'waiting-password-submit');
   env.advance(3000);
@@ -139,6 +385,108 @@ async function reachUsernameScreen() {
   const skip = env.add('span', 'Skip');
   return { ...env, modal, title, heading, username, warning, next, skip };
 }
+
+test('Android skips username via a separate gesture once after the two-second delay', async () => {
+  for (const vietnamese of [false, true]) {
+    const env = await reachUsernameScreen();
+    env.config.useAccessibilityUsernameSkip = true;
+    if (vietnamese) {
+      env.title.textContent = 'Đăng ký';
+      env.heading.textContent = 'Tạo tên người dùng';
+      env.skip.textContent = 'Bỏ qua';
+    }
+    env.skip.getBoundingClientRect = () => ({left: 150, top: 240, width: 100, height: 40});
+    env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
+    env.document.elementFromPoint = () => env.skip;
+    env.window.flutter_inappwebview.callHandler = (...args) => {
+      env.requests.push(args);
+      return Promise.resolve(true);
+    };
+    assert.equal(env.run(false), 'waiting-username-skip');
+    env.advance(1999);
+    assert.equal(env.run(false), 'waiting-username-skip');
+    assert.equal(env.requests.length, 3); // Credential pastes only.
+    env.advance(1);
+    assert.equal(env.run(false), 'username-skipped');
+    await flush();
+    assert.deepEqual(env.requests[3], ['FlutterSignupUsernameSkip', 1]);
+    assert.equal(env.skip.clicks, 0);
+    assert.equal(env.next.clicks, 0);
+    assert.equal(env.username.value, 'Huu Nam');
+    const state = env.window.__flutterAutoSignup;
+    assert.equal(state.canSkipUsernameWithAccessibility(1), true);
+    assert.equal(state.canSkipUsernameWithAccessibility(2), false);
+    assert.deepEqual(JSON.parse(JSON.stringify(state.getUsernameSkipTarget(1))),
+      {x: 100, y: 60, viewportWidth: 400, viewportHeight: 600});
+    env.skip.hidden = true;
+    const replacement = env.add('button', 'Skip', 'BUTTON');
+    env.advance(10000);
+    assert.equal(env.run(false), 'waiting-result');
+    assert.equal(replacement.clicks, 0);
+    assert.equal(env.requests.length, 4);
+    env.add('[data-e2e="profile-icon"]');
+    env.modal.hidden = env.title.hidden = env.heading.hidden = true;
+    assert.equal(env.run(false), 'signup-success');
+  }
+});
+
+test('a failed username Skip gesture stops without a DOM fallback or another gesture', async () => {
+  for (const rejected of [false, true]) {
+    const env = await reachUsernameScreen();
+    env.config.useAccessibilityUsernameSkip = true;
+    env.window.flutter_inappwebview.callHandler = (...args) => {
+      env.requests.push(args);
+      return rejected ? Promise.reject(new Error('gesture cancelled')) : Promise.resolve(false);
+    };
+    assert.equal(env.run(false), 'waiting-username-skip');
+    env.advance(2000);
+    assert.equal(env.run(false), 'username-skipped');
+    await flush();
+    assert.equal(env.run(false), 'username-skip-accessibility-failed');
+    assert.equal(env.run(false), 'username-skip-accessibility-failed');
+    assert.equal(env.window.__flutterAutoSignup.getUsernameSkipTarget(1), null);
+    assert.equal(env.skip.clicks, 0);
+    assert.equal(env.requests.length, 4);
+  }
+});
+
+test('the Skip gesture target rejects a stale modal, blocked control or cancelled attempt', async () => {
+  const env = await reachUsernameScreen();
+  env.config.useAccessibilityUsernameSkip = true;
+  env.skip.getBoundingClientRect = () => ({left: 50, top: 100, width: 100, height: 40});
+  env.skip.contains = () => false;
+  env.window.visualViewport = {width: 400, height: 600};
+  env.document.elementFromPoint = () => env.skip;
+  env.window.flutter_inappwebview.callHandler = () => Promise.resolve(true);
+  assert.equal(env.run(false), 'waiting-username-skip');
+  env.advance(2000);
+  assert.equal(env.run(false), 'username-skipped');
+  const state = env.window.__flutterAutoSignup;
+  const target = () => state.getUsernameSkipTarget(1);
+  assert.notEqual(target(), null);
+  env.skip.disabled = true;
+  assert.equal(target(), null);
+  env.skip.disabled = false;
+  env.skip.hidden = true;
+  assert.equal(target(), null);
+  env.skip.hidden = false;
+  env.document.elementFromPoint = () => env.next;
+  assert.equal(target(), null);
+  env.document.elementFromPoint = () => env.skip;
+  env.modal.hidden = true;
+  env.add('[role="dialog"]');
+  assert.equal(target(), null);
+  env.modal.hidden = false;
+  env.heading.hidden = true;
+  assert.equal(target(), null);
+  env.heading.hidden = false;
+  env.password.hidden = false;
+  assert.equal(target(), null);
+  env.password.hidden = true;
+  assert.notEqual(target(), null);
+  state.stop();
+  assert.equal(target(), null);
+});
 
 test('after OTP and password waits two seconds then skips an unavailable username once', async () => {
   const env = await reachUsernameScreen();
@@ -278,7 +626,7 @@ test('detects the screenshot error after submitting the separate password step',
   env.email.hidden = true;
   assert.equal(env.run(false), 'waiting-password-screen');
   env.advance(2500);
-  assert.equal(env.run(false), 'waiting-paste');
+  assert.equal(env.run(false), 'waiting-next');
   await env.resolvePaste();
   assert.equal(env.run(false), 'waiting-password-submit');
   env.advance(3000);
@@ -372,7 +720,7 @@ test('opens Home Account, Login, Sign up, phone/email and Use Email before the e
   assert.equal(env.run(), 'waiting-paste');
   assert.equal(env.window.__flutterAutoSignup.canPasteFromClipboard(1, 'email', env.config.email), true);
   await env.resolvePaste();
-  assert.equal(env.run(), 'waiting-paste');
+  assert.equal(env.run(), 'waiting-next');
   await env.resolvePaste();
   assert.equal(env.run(), 'verification-requested');
   assert.equal(env.run(), 'waiting-otp-paste');
@@ -474,7 +822,7 @@ test('pastes each credential through the bridge and submits once', async () => {
   assert.equal(env.run(), 'waiting-paste');
   assert.equal(env.requests.length, 1);
   await env.resolvePaste();
-  assert.equal(env.run(), 'waiting-paste');
+  assert.equal(env.run(), 'waiting-next');
   await env.resolvePaste();
   assert.deepEqual(env.requests, [
     ['FlutterSignupPaste', 1, 'email'], ['FlutterSignupPaste', 1, 'password'],
@@ -569,12 +917,12 @@ test('continues a password-only step after the email was entered', async () => {
   env.password.hidden = true;
   assert.equal(env.run(), 'waiting-paste');
   await env.resolvePaste();
-  assert.equal(env.run(), 'waiting-form');
+  assert.equal(env.run(), 'waiting-next');
   env.email.hidden = true;
   env.password.hidden = false;
   assert.equal(env.run(), 'waiting-password-screen');
   env.advance(2500);
-  assert.equal(env.run(), 'waiting-paste');
+  assert.equal(env.run(), 'waiting-next');
   await env.resolvePaste();
   assert.equal(env.requests.length, 2);
   assert.equal(env.password.value, env.config.password);
@@ -614,15 +962,15 @@ test('continues from email and OTP to the password-only signup dialog and submit
   env.submit.disabled = true;
   assert.equal(env.run(false), 'waiting-password-screen');
   env.advance(2500);
-  assert.equal(env.run(false), 'waiting-paste');
-  assert.equal(env.run(false), 'waiting-paste');
+  assert.equal(env.run(false), 'waiting-next');
+  assert.equal(env.run(false), 'waiting-next');
   const state = env.window.__flutterAutoSignup;
   assert.equal(state.canPasteFromClipboard(1, 'password', env.config.password), true);
   assert.equal(state.canPasteFromClipboard(1, 'otp', env.config.otp), false);
   await env.resolvePaste();
   assert.equal(env.password.value, env.config.password);
   assert.equal(env.document.activeElement, null);
-  assert.equal(env.run(false), 'waiting-form');
+  assert.equal(env.run(false), 'waiting-password-submit');
   assert.equal(env.submit.clicks, 1); // Only the earlier OTP submit.
   env.submit.disabled = false;
   assert.equal(env.run(false), 'waiting-password-submit');
@@ -652,7 +1000,7 @@ test('restores password paste authorization after navigation from OTP', async ()
   // There is no JavaScript state or remaining OTP value in the new document.
   assert.equal(env.run(false), 'waiting-password-screen');
   env.advance(2500);
-  assert.equal(env.run(false), 'waiting-paste');
+  assert.equal(env.run(false), 'waiting-next');
   const state = env.window.__flutterAutoSignup;
   assert.equal(state.emailEntered, false);
   assert.equal(state.canPasteFromClipboard(1, 'password', env.config.password), true);
@@ -676,18 +1024,18 @@ test('paces the password screen and requires a stable enabled button before subm
   env.config.otpRequestedAt = 0;
   env.config.allowOtpSubmit = false;
   assert.equal(env.run(false), 'waiting-password-screen');
-  env.advance(2499);
+  env.advance(349);
   assert.equal(env.run(false), 'waiting-password-screen');
   assert.equal(env.requests.length, 0);
   env.advance(1);
-  assert.equal(env.run(false), 'waiting-paste');
+  assert.equal(env.run(false), 'waiting-next');
   await env.resolvePaste();
   assert.equal(env.run(false), 'waiting-password-submit');
-  env.advance(2999);
+  env.advance(349);
   assert.equal(env.run(false), 'waiting-password-submit');
   assert.equal(env.submit.clicks, 0);
   env.submit.disabled = true;
-  assert.equal(env.run(false), 'waiting-form');
+  assert.equal(env.run(false), 'waiting-password-submit');
   env.advance(5000);
   env.submit.disabled = false;
   assert.equal(env.run(false), 'waiting-password-submit');
@@ -705,7 +1053,7 @@ test('still checks cancellation, CAPTCHA and errors during password delays', asy
     env.config.otpRequestedAt = 0;
     assert.equal(env.run(false), 'waiting-password-screen');
     env.advance(2500);
-    assert.equal(env.run(false), 'waiting-paste');
+    assert.equal(env.run(false), 'waiting-next');
     await env.resolvePaste();
     assert.equal(env.run(false), 'waiting-password-submit');
     if (issue === 'cancelled') env.window.__flutterAutoSignup.stop();
@@ -812,7 +1160,7 @@ test('waits for submit to be enabled and never repeats a submitted form after na
   const env = setup();
   env.submit.disabled = true;
   await fill(env);
-  assert.equal(env.run(), 'waiting-form');
+  assert.equal(env.run(), 'waiting-next');
   env.submit.disabled = false;
   assert.equal(env.run(), 'submitted');
   delete env.window.__flutterAutoSignup;
@@ -828,7 +1176,9 @@ test('sets birthday using option labels rather than assuming month values are on
   const day = new env.Select([{ textContent: '3', value: '3' }]);
   const year = new env.Select([{ textContent: '2001', value: '2001' }]);
   const next = env.add('button', 'Next', 'BUTTON');
-  for (let i = 0; i < 5; i++) assert.equal(env.run(), 'waiting-form');
+  for (const status of ['waiting-form', 'waiting-form', 'waiting-next', 'next-submitted', 'waiting-next']) {
+    assert.equal(env.run(), status);
+  }
   assert.equal(month.value, '1');
   assert.equal(day.value, '3');
   assert.equal(year.value, '2001');
@@ -848,7 +1198,7 @@ test('completes birthday on a combined email signup form before pasting credenti
   env.add('input[name="code"]', '', 'INPUT');
   const sendCode = env.add('button', 'Send code', 'BUTTON');
   for (let i = 0; i < 3; i++) {
-    assert.equal(env.run(), 'waiting-form');
+    assert.equal(env.run(), i === 2 ? 'waiting-next' : 'waiting-form');
     assert.equal(env.requests.length, 0);
   }
   assert.equal(month.value, '1');
@@ -879,7 +1229,7 @@ test('chooses options inside each actual-style birthday combobox and pastes on t
     option.click = () => { option.clicks++; field.textContent = expected; option.hidden = true; };
   }
   for (let i = 0; i < 6; i++) {
-    assert.equal(env.run(), 'waiting-form');
+    assert.equal(env.run(), i === 5 ? 'waiting-next' : 'waiting-form');
     assert.equal(env.requests.length, 0);
   }
   assert.deepEqual(fields.map(field => field.textContent), ['February', '3', '2001']);
@@ -933,7 +1283,7 @@ test('pastes a ready OTP immediately after requesting a code and submits once', 
   await env.resolvePaste();
   assert.equal(otp.value, '012345');
   env.submit.disabled = true;
-  assert.equal(env.run(), 'waiting-form');
+  assert.equal(env.run(), 'waiting-next');
   env.submit.disabled = false;
   assert.equal(env.run(), 'otp-submitted');
   assert.equal(env.run(), 'submitted');
@@ -1016,8 +1366,8 @@ test('supports a delayed OTP challenge after initial signup submission', async (
   await env.resolvePaste();
   assert.equal(otp.value, env.config.otp);
   env.submit.disabled = true;
-  assert.equal(env.run(false), 'waiting-form');
-  assert.equal(env.run(false), 'waiting-form');
+  assert.equal(env.run(false), 'waiting-next');
+  assert.equal(env.run(false), 'waiting-next');
   env.submit.disabled = false;
   assert.equal(env.run(false), 'otp-submitted');
   assert.equal(env.run(false), 'submitted');
@@ -1118,7 +1468,7 @@ test('signup does not resubmit a password after React replaces the submit button
   env.email.hidden = true;
   assert.equal(env.run(false), 'waiting-password-screen');
   env.advance(2500);
-  assert.equal(env.run(false), 'waiting-paste');
+  assert.equal(env.run(false), 'waiting-next');
   await env.resolvePaste();
   assert.equal(env.run(false), 'waiting-password-submit');
   env.advance(3000);

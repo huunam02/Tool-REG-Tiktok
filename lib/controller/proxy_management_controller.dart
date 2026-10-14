@@ -30,7 +30,7 @@ class ProxyManagementController extends AppController {
       };
       return matchesStatus &&
           (query.isEmpty ||
-              '${entry.name} ${proxyAddress(entry.proxy)} ${entry.proxy.username}'
+              '${entry.name} ${proxyAddress(entry.proxy)} ${entry.proxy.username} ${entry.account?.email ?? ''}'
                   .toLowerCase()
                   .contains(query));
     }).toList();
@@ -59,8 +59,7 @@ class ProxyManagementController extends AppController {
       if (!proxies.any((entry) => entry.id == selectedId)) {
         selectedId = null;
         for (final entry in proxies) {
-          if (sameProxy(entry.proxy, current?.proxy) &&
-              entry.userAgent == current?.userAgent) {
+          if (sameProfile(entry, current)) {
             selectedId = entry.id;
             break;
           }
@@ -80,12 +79,14 @@ class ProxyManagementController extends AppController {
       if (!active) return;
       mutate(() => loadFailed = true);
       notify(
-          error is _SessionResetFailure
-              ? 'Không thể xóa phiên. Proxy đang sử dụng chưa thay đổi. Hãy thử lại.'
-              : 'Không thể đọc hoặc lưu proxy. Hãy thử lại.',
-          actionLabel: 'Thử lại', onAction: () {
-        if (!busy) retry();
-      });
+        error is _SessionResetFailure
+            ? 'Không thể xóa phiên. Cấu hình đang sử dụng chưa thay đổi. Hãy thử lại.'
+            : 'Không thể đọc hoặc lưu cấu hình. Hãy thử lại.',
+        actionLabel: 'Thử lại',
+        onAction: () {
+          if (!busy) retry();
+        },
+      );
     } finally {
       if (active) mutate(() => busy = false);
     }
@@ -95,10 +96,13 @@ class ProxyManagementController extends AppController {
     if (draft == null || !active) return;
     await _perform(() async {
       final savedId = await store.save(
-          id: id,
-          name: draft.name,
-          proxy: draft.proxy,
-          userAgent: draft.userAgent);
+        id: id,
+        name: draft.name,
+        proxy: draft.proxy,
+        userAgent: draft.userAgent,
+        account: draft.account,
+        statusAccount: draft.statusAccount,
+      );
       selectedId = savedId;
       filter = ProxyUsageFilter.all;
       search.clear();
@@ -120,9 +124,7 @@ class ProxyManagementController extends AppController {
       await _perform(() async {
         final current = await store.getCurrentProfile();
         if (!active) return;
-        final changed = entry != null &&
-            (!sameProxy(current?.proxy, entry.proxy) ||
-                current?.userAgent != entry.userAgent);
+        final changed = entry != null && !sameProfile(current, entry);
         if (changed) {
           mutate(() => resettingSession = true);
           try {
@@ -145,14 +147,10 @@ class ProxyManagementController extends AppController {
     return saved;
   }
 
-  bool isActive(SavedProxy entry) =>
-      sameProxy(entry.proxy, current?.proxy) &&
-      entry.userAgent == current?.userAgent;
+  bool isActive(SavedProxy entry) => sameProfile(entry, current);
 
   String displayName(SavedProxy entry) =>
-      entry.name == proxyAddress(entry.proxy)
-          ? entry.proxy.uri.host
-          : entry.name;
+      entry.account?.email ?? entry.proxy.uri.host;
 
   void setFilter(ProxyUsageFilter value) => mutate(() {
         filter = value;

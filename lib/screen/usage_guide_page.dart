@@ -9,23 +9,23 @@ class UsageGuidePage extends StatelessWidget {
     (
       '1',
       'Cấu hình OTP Email API',
-      'Mở Cài đặt → Cấu hình OTP Email API, kiểm tra URL và token rồi lưu.'
+      'Mở Cài đặt → Cấu hình OTP Email API, kiểm tra URL và token rồi lưu.',
     ),
     (
       '2',
-      'Chuẩn bị proxy',
-      'Vào Quản lý Proxy, tạo proxy cùng User-Agent và chọn proxy cần sử dụng.'
+      'Chuẩn bị cấu hình',
+      'Vào Quản lý cấu hình, import hoặc điền proxy, tài khoản và mật khẩu email OTP rồi lưu.',
     ),
     (
       '3',
-      'Nhập thông tin tài khoản',
-      'Điền email, mật khẩu TikTok và mật khẩu hộp thư trong tab Đăng ký hoặc Đăng nhập.'
+      'Chọn và xem trước dữ liệu',
+      'Chọn cấu hình để sử dụng. Tab Đăng ký và Đăng nhập chỉ xem trước proxy và tài khoản đã chọn.',
     ),
     (
       '4',
       'Chạy tác vụ',
       'Bấm nút chạy ở cuối màn hình. App mở TikTok ở chế độ desktop: '
-          'iOS và Android đều dùng đúng User-Agent đã chọn.'
+          'iOS và Android đều dùng đúng User-Agent đã chọn.',
     ),
   ];
 
@@ -45,17 +45,13 @@ class UsageGuidePage extends StatelessWidget {
                       Text(
                         'Bắt đầu nhanh',
                         style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                        ),
+                            fontSize: 20, fontWeight: FontWeight.w800),
                       ),
                       SizedBox(height: 8),
                       Text(
                         'Thực hiện lần lượt các bước bên dưới để chạy đăng ký, đăng nhập hoặc tự động xem TikTok.',
-                        style: TextStyle(
-                          color: SettingsStyle.muted,
-                          height: 1.55,
-                        ),
+                        style:
+                            TextStyle(color: SettingsStyle.muted, height: 1.55),
                       ),
                     ],
                   ),
@@ -63,19 +59,13 @@ class UsageGuidePage extends StatelessWidget {
                 const SizedBox(height: 14),
                 for (final step in _steps) ...[
                   _GuideStep(
-                    number: step.$1,
-                    title: step.$2,
-                    description: step.$3,
-                  ),
+                      number: step.$1, title: step.$2, description: step.$3),
                   const SizedBox(height: 12),
                 ],
                 const SettingsPanel(
                   child: Text(
-                    'Cookie và phiên TikTok được giữ khi mở lại app. App chỉ xóa phiên khi bạn áp dụng một proxy khác.',
-                    style: TextStyle(
-                      color: SettingsStyle.muted,
-                      height: 1.55,
-                    ),
+                    'Cookie và phiên TikTok được giữ khi mở lại app. App chỉ xóa phiên khi bạn áp dụng cấu hình có proxy, User-Agent hoặc tài khoản khác.',
+                    style: TextStyle(color: SettingsStyle.muted, height: 1.55),
                   ),
                 ),
               ],
@@ -122,10 +112,8 @@ class _GuideStep extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 5),
                   Text(
                     description,

@@ -8,19 +8,27 @@ native và các script WebView nằm trong `lib/core/`. Mỗi màn có controlle
 `TabController`, observer và hủy tác vụ OTP/WebView đang chờ. View không dùng
 `setState` và chỉ gọi action hoặc đọc state từ controller.
 
-## Proxy
+## Quản lý cấu hình
 
-Trong **Thiết lập chung**, phần **Proxy** chỉ hiển thị proxy đang sử dụng và
-nút **Quản lý proxy**. Thêm, sửa, xóa và chọn proxy trong màn quản lý; bấm một
-dòng rồi nhấn **Sử dụng proxy này** để dùng cho lần mở TikTok tiếp theo. **Không dùng
-proxy** chuyển sang kết nối trực tiếp nhưng giữ danh sách và phiên trình duyệt.
-App giữ nguyên cookie, dữ liệu phiên, cache và User-Agent khi khởi động lại
-hoặc chọn lại đúng cấu hình proxy đang dùng. Chỉ khi nhấn **Sử dụng proxy này** với
-proxy hoặc User-Agent khác, app mới xóa cookie, dữ liệu phiên và cache WebView
-trước khi lưu cấu hình mới. Nếu xóa phiên thất bại, proxy hiện tại không đổi
-và có thể thử lại.
+Trong **Thiết lập chung**, phần **Cấu hình** hiển thị đầy đủ proxy, thông tin
+xác thực proxy, User-Agent, email TikTok, mật khẩu TikTok, mật khẩu email OTP
+và trạng thái đăng ký. Nút **Quản lý cấu hình** mở danh sách các bộ dữ liệu.
+Mỗi bộ gộp proxy và tài khoản; không có ô tên riêng, danh sách nhận diện bằng
+email và địa chỉ proxy. Chọn một dòng rồi nhấn **Sử dụng cấu hình này**.
+Hai tab **Đăng ký** và **Đăng nhập** chỉ xem trước bộ dữ liệu đang chọn,
+không nhập/sửa hoặc import riêng. Cả hai tác vụ dùng cùng tài khoản này.
 
-Form **Thêm proxy** tự tạo User-Agent mặc định. Nút **Lấy User-Agent Chrome desktop** trên Android hoặc **Tạo User-Agent mới** trên iOS
+Form tạo/sửa có switch **Đã đăng ký**. Bật lưu `statusAccount = registered`,
+tắt lưu `statusAccount = unregistered` (mặc định). Đây là trạng thái do người
+sử dụng đặt; độc lập với nhãn đã dùng proxy. Sửa trạng thái của cấu hình đang
+chọn cũng cập nhật phần xem trước sau khi quay về Home.
+
+App giữ cookie và phiên khi mở lại hoặc chọn lại cùng bộ dữ liệu. Khi áp dụng
+cấu hình có proxy, User-Agent hoặc tài khoản khác, app xóa phiên WebView trước
+khi chuyển. **Bỏ chọn cấu hình** chuyển sang kết nối trực tiếp và bỏ tài khoản
+khỏi phần xem trước, giữ danh sách và phiên trình duyệt.
+
+Form **Tạo cấu hình** tự tạo User-Agent mặc định. Nút **Lấy User-Agent Chrome desktop** trên Android hoặc **Tạo User-Agent mới** trên iOS
 cập nhật chuỗi trong form thêm hoặc sửa. App lưu chuỗi đang hiển thị cùng
 proxy bằng SQLite; chọn lại proxy hoặc mở lại app sẽ khôi phục cấu hình đó.
 Trên Android, chuỗi được chuẩn hóa khi mở WebView theo Chrome bật desktop:
@@ -55,27 +63,24 @@ công. Nhãn **Đang dùng** cho biết kết nối hiện tại, riêng với t
 sử. Có thể tìm theo tên/địa chỉ/tài khoản và lọc theo trạng thái. Khi nâng cấp
 dữ liệu cũ, app đánh dấu proxy đang dùng là đã sử dụng.
 
-Màn chính hiển thị đầy đủ tên, địa chỉ, tài khoản, mật khẩu và
-User-Agent; các giá trị có nút sao chép. Màn quản lý hiển thị chi tiết ngay khi
-chọn một proxy. Tạo proxy và sửa proxy có hai màn riêng. Các nhóm trong form
-gồm thông tin kết nối (tài khoản và mật khẩu không bắt buộc) và User-Agent ở cuối. Nút tạo/lưu
-luôn ở cuối màn hình.
+Màn quản lý hiển thị chi tiết khi chọn một cấu hình. Form tạo/sửa gồm
+thông tin kết nối, User-Agent và tài khoản TikTok. Nút tạo/lưu luôn ở cuối màn hình.
 
 Các ô trong app hiển thị dữ liệu trực tiếp, gồm mật khẩu TikTok, mật khẩu hộp
 thư OTP, mật khẩu proxy, token API và dữ liệu import; không có nút hiện/ẩn.
 
 Proxy HTTP/HTTPS cần có cổng, ví dụ `http://127.0.0.1:8080`; nhập thông tin xác
-thực ở các ô riêng trong màn quản lý. Dữ liệu nằm trong `proxies.db`, với hai
-bảng `proxies` và `current_proxy`. App tự nâng cấp dữ liệu cũ, thêm User-Agent
-và đưa proxy đang cache chưa có trong danh sách vào danh sách quản lý.
+thực ở các ô riêng trong màn quản lý. Dữ liệu nằm trong `proxies.db`,
+chỉ có một bảng ứng dụng `configurations`, gồm cả tài khoản, `statusAccount`
+và cờ chọn cấu hình hiện tại. Migration giữ proxy/User-Agent, tài khoản nếu
+đã có và bộ dữ liệu đang chọn; chuyển dữ liệu rồi xóa hai bảng cũ.
+Các proxy cũ chưa có tài khoản có thể bổ sung ở màn sửa cấu hình.
 
-Màn tạo proxy có khối **Import data** riêng và nút **Import proxy**: dán một dòng
-`host:port:username:password` để điền địa chỉ HTTP, tài khoản và mật khẩu.
-Import tự điền **Tên proxy** theo dạng `Proxy <host>`, không có dấu gạch ngang
-và không kèm port, ví dụ `Proxy 31.57.78.19`; có thể sửa tên trước khi lưu.
-User-Agent được giữ khi import. User-Agent nằm cùng khối **Thông tin kết nối**
-với tên, địa chỉ, tài khoản và mật khẩu proxy. Màn sửa proxy không có import.
-Kiểm tra các ô rồi bấm tạo/lưu để lưu proxy.
+Màn tạo có **Import data** và nút dán từ clipboard, nhận đúng một dòng:
+`host:port:username:password email|mật_khẩu_TikTok|mật_khẩu_email_OTP`.
+Proxy và tài khoản cách nhau một dấu cách. Import điền cả hai phần cùng lúc,
+giữ nguyên các ký tự mật khẩu và User-Agent đang hiển thị. Dữ liệu lỗi không
+thay thế các ô đã điền. Kiểm tra rồi nhấn **Tạo cấu hình** để lưu.
 
 Đăng ký, đăng nhập và xem TikTok đều áp dụng cùng proxy trước khi mở WebView.
 Các thao tác tự động nhập email/mật khẩu/OTP, chọn Email, gửi biểu mẫu và Skip
@@ -110,14 +115,9 @@ hiện không được inject. Dừng app và build/chạy lại hoàn toàn đ�
 
 ## OTP API
 
-Tab **Đăng ký** và **Đăng nhập** có khối **Import data** riêng với ô
-**Dữ liệu import** và nút **Import data**. Mật khẩu email OTP nằm cùng khối
-thông tin tài khoản với email và mật khẩu TikTok.
-Dán một tài khoản theo dạng `email|pass_dangky|passemail_otp`, rồi bấm import
-để điền email, mật khẩu TikTok và mật khẩu hộp thư OTP của tab đang mở.
-Ở tab Đăng nhập, cột thứ hai là mật khẩu đăng nhập TikTok. Mỗi lần import một
-dòng; dữ liệu thiếu cột, sai email hoặc thiếu mật khẩu sẽ báo lỗi và giữ nguyên
-các thông tin đã nhập. Có thể chỉnh sửa các ô sau khi import.
+Tab **Đăng ký** và **Đăng nhập** dùng tài khoản và mật khẩu hộp thư của
+cấu hình đang chọn. Tạo hoặc sửa dữ liệu qua **Quản lý cấu hình** trong tab
+**Thiết lập chung**, rồi chọn cấu hình để chạy tác vụ.
 
 Khi chạy đăng ký, app tự tạo ngày sinh ngẫu nhiên trong khoảng 1960–2004,
 bao gồm ngày hợp lệ theo số ngày của từng tháng và năm nhuận.
@@ -127,7 +127,8 @@ email, mật khẩu và xử lý OTP như trước. Biểu mẫu trong dialog đ
 khi URL vẫn ở trang chủ.
 Sau khi gửi OTP và mật khẩu, nếu xuất hiện màn **Create username**, app chờ
 2 giây khi nút **Skip** sẵn sàng rồi bấm một lần để bỏ qua bước tạo tên người
-dùng, kể cả khi tên gợi ý không khả dụng. App tiếp tục chờ xác nhận đăng ký
+dùng, kể cả khi tên gợi ý không khả dụng. Trên Android, nút Skip dùng
+`dispatchGesture()` tại tọa độ hiện tại trong WebView. App tiếp tục chờ xác nhận đăng ký
 thành công; nút **Dừng** vẫn hủy được thao tác trong thời gian chờ.
 
 Luồng **Tự động đăng nhập** mở trang chủ TikTok → bấm Account → mở dialog Login
@@ -143,8 +144,18 @@ ngay khi sẵn sàng; không chờ cố định 5 giây trước khi nhập OTP.
 Các bước mở Account, chọn phương thức/email, gửi mã, xác nhận OTP, gửi mật khẩu,
 đăng ký và Skip đều có chốt theo bước trong mỗi lần chạy. Trang tạo lại nút DOM
 không khiến app bấm lại bước đã thực hiện; cùng một nút vẫn có thể được dùng
-ở hai bước khác nhau như gửi mật khẩu rồi xác nhận OTP. Mỗi thao tác nút chỉ
-gọi click, không phát thêm chuỗi pointer/mouse. Bước Send code đăng nhập cũng
+ở hai bước khác nhau như gửi mật khẩu rồi xác nhận OTP. Trên Android, Send code
+của cả đăng ký và đăng nhập, Sign up sau OTP, Skip tạo username và Continue
+trong biểu mẫu đăng nhập dùng
+`flutter_accessibility_service 1.2.0` để
+`dispatchGesture()` một cú chạm 80 ms tại tọa độ nút trong WebView, sau khi
+kiểm tra nút đang hiển thị, được bật và không bị che. Không cần node Accessibility
+để bấm tọa độ; các sự kiện System UI không làm mất mục tiêu. Mỗi bước chỉ yêu cầu một gesture
+trong mỗi lượt chạy; cần bật quyền Trợ năng cho Tool TikTok. Các nút còn lại gọi click một lần.
+Continue/Tiếp tục có chốt riêng cho bước gửi mật khẩu và bước xác nhận OTP,
+kể cả khi trang dùng lại cùng một nút. App lấy lại tọa độ khi chạm và dừng nếu
+gesture không hoàn tất.
+Bước Send code đăng nhập cũng
 chờ bộ đếm gửi lại hoặc màn OTP xác nhận gửi mã; hết 15 giây không có xác nhận
 thì dừng, chưa gọi API lấy OTP và không tự gửi lại mã.
 
@@ -160,8 +171,14 @@ App dùng thư viện `http` để gọi `POST /api/code` sau khi TikTok yêu c�
 `X-Reader-Token`, `ngrok-skip-browser-warning: 1`. Khi API trả
 `{"ok":true,"code":"012345"}`, app dán mã bằng clipboard native rồi xác nhận.
 Trong thời gian chờ, app vẫn theo dõi CAPTCHA, lỗi biểu mẫu và nút Dừng.
-Ở luồng đăng ký, app bỏ focus khỏi ô vừa dán và chỉ gọi click một lần cho
-Send code, không phát thêm chuỗi pointer/mouse có thể kích hoạt handler khác.
+Ở luồng đăng ký, app chờ 5 giây sau khi nhập xong thông tin và nút Send code
+được bật. Nếu nút bị thay thế hoặc tắt, thời gian chờ bắt đầu lại.
+Ở luồng đăng ký Android, app bỏ focus khỏi ô vừa dán và chạm Send code qua
+Accessibility; không gọi thêm JavaScript click cho nút này.
+Sau OTP, ở modal nhập mật khẩu, app chờ 10 giây kể từ khi mật khẩu đã nhập đúng
+và nút **Sign up** được bật. Trên Android, nút này cũng được chạm bằng
+`dispatchGesture()` tại tọa độ WebView, với chốt riêng để không gửi đăng ký hai lần.
+Nếu nút bị tắt hoặc thay thế trong lúc chờ, thời gian chờ bắt đầu lại.
 App chờ phản hồi của Send code
 (đếm ngược/gửi lại mã hoặc chuyển sang ô OTP) trước khi gọi API. Nếu TikTok
 chưa phản hồi trong 15 giây, app báo lỗi và dừng; app không tự gửi mã lần nữa.
@@ -182,13 +199,28 @@ mật khẩu hộp thư được che trong log. Bản release không in các log
 Sau khi kiểm tra URL và token trong màn Cài đặt, chạy hoặc build từ terminal:
 
 ```sh
-flutter run
-flutter build apk --debug
+./tool/flutterw run
+./tool/flutterw build apk --debug
 ```
 
 ## Getting Started
 
-Nên dùng Flutter 3.41.8 hoặc mới hơn cho dự án này.
+Dự án dùng Flutter 3.41.8 (Dart 3.11.5), hỗ trợ `collection 1.19.1`
+và `flutter_accessibility_service 1.2.0` mà không cần `dependency_overrides`.
+SDK riêng trên máy hiện tại: `/Users/dion/Documents/development/new/flutter`.
+SDK cũ tại `/Users/dion/Documents/development/old/flutter` được giữ nguyên.
+
+Chạy các lệnh Flutter cho dự án bằng `./tool/flutterw` để chọn SDK riêng;
+PATH mặc định của máy không thay đổi. Trên máy khác, đặt `FLUTTER_SDK_PATH`
+trỏ đến SDK Flutter 3.41.8 hoặc mới hơn. VS Code dùng `dart.flutterSdkPath`
+trong `.vscode/settings.json` (cấu hình riêng của workspace).
+
+```sh
+./tool/flutterw --version
+./tool/flutterw pub get
+./tool/flutterw analyze
+./tool/flutterw test
+```
 
 Flutter 3.27.x has an iOS platform-view hot-restart bug that can throw
 `PlatformException(recreating_view)` ([Flutter fix](https://github.com/flutter/flutter/pull/164456)).

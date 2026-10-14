@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/proxy_store.dart';
 import '../../core/app_configuration.dart';
 import '../../core/webview_user_agent.dart';
+import '../../core/otp_api.dart';
+import '../../core/configuration_data.dart';
 import '../../controller/proxy_form_controller.dart';
 import 'controller_scope.dart';
 import 'proxy_widgets.dart';
@@ -28,23 +30,26 @@ class ProxyForm extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ControllerScope<ProxyFormController>(
         controller: ProxyFormController(
-            entry: entry,
-            randomizeOnOpen: randomizeOnOpen,
-            selectUserAgent: generateUserAgent),
+          entry: entry,
+          randomizeOnOpen: randomizeOnOpen,
+          selectUserAgent: generateUserAgent,
+        ),
         builder: (logic) => _ProxyFormView(
-            logic: logic,
-            title: title,
-            submitLabel: submitLabel,
-            randomizeOnOpen: randomizeOnOpen),
+          logic: logic,
+          title: title,
+          submitLabel: submitLabel,
+          randomizeOnOpen: randomizeOnOpen,
+        ),
       );
 }
 
 class _ProxyFormView extends StatelessWidget {
-  const _ProxyFormView(
-      {required this.logic,
-      required this.title,
-      required this.submitLabel,
-      required this.randomizeOnOpen});
+  const _ProxyFormView({
+    required this.logic,
+    required this.title,
+    required this.submitLabel,
+    required this.randomizeOnOpen,
+  });
   final ProxyFormController logic;
   final String title;
   final String submitLabel;
@@ -56,220 +61,322 @@ class _ProxyFormView extends StatelessWidget {
   }
 
   Widget _section(
-          String title, String helper, IconData icon, List<Widget> children) =>
+    String title,
+    String helper,
+    IconData icon,
+    List<Widget> children,
+  ) =>
       ProxyPanel(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                  color: ProxyColors.cyan.withValues(alpha: 0.09),
-                  borderRadius: BorderRadius.circular(11)),
-              child: Icon(icon, size: 19, color: ProxyColors.cyan)),
-          const SizedBox(width: 12),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(helper,
-                    style: const TextStyle(
-                        fontSize: 12, height: 1.5, color: ProxyColors.muted)),
-              ])),
-        ]),
-        const SizedBox(height: 20),
-        ...children,
-      ]));
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: ProxyColors.cyan.withValues(alpha: 0.09),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(icon, size: 19, color: ProxyColors.cyan),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        helper,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.5,
+                          color: ProxyColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            ...children,
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) => Theme(
-      data: ProxyColors.theme(context),
-      child: Scaffold(
-        appBar: AppBar(
-            title: Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 19, fontWeight: FontWeight.w700))),
-        body: Form(
+        data: ProxyColors.theme(context),
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
+            ),
+          ),
+          body: Form(
             key: logic.form,
             child: SingleChildScrollView(
               key: const Key('proxyEditorScroll'),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               child: Center(
-                  child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: Column(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (logic.entry == null) ...[
                         _section(
-                            'Import data',
-                            'Dán dữ liệu proxy để điền thông tin kết nối.',
-                            Icons.file_download_outlined, [
-                          TextFormField(
-                            key: const Key('proxyImportData'),
-                            controller: logic.importData,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            onChanged: logic.clearImportError,
-                            decoration: InputDecoration(
-                              labelText: 'Dữ liệu import proxy',
-                              helperText: 'host:port:username:password',
-                              helperMaxLines: 3,
-                              errorText: logic.importError,
-                              errorMaxLines: 4,
-                              prefixIcon: const Icon(
+                          'Import data',
+                          'Dán proxy và tài khoản trên một dòng, cách nhau một dấu cách.',
+                          Icons.file_download_outlined,
+                          [
+                            TextFormField(
+                              key: const Key('proxyImportData'),
+                              controller: logic.importData,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              onChanged: logic.clearImportError,
+                              decoration: InputDecoration(
+                                labelText: 'Dữ liệu import cấu hình',
+                                helperText:
+                                    'host:port:user:pass email|mật khẩu TikTok|mật khẩu email OTP',
+                                helperMaxLines: 3,
+                                errorText: logic.importError,
+                                errorMaxLines: 4,
+                                prefixIcon: const Icon(
                                   Icons.file_download_outlined,
-                                  size: 20),
-                              suffixIcon: IconButton(
-                                key: const Key('pasteProxyData'),
-                                tooltip: 'Dán và import',
-                                onPressed: logic.pasteImportData,
-                                icon: const Icon(Icons.content_paste_rounded,
-                                    size: 20),
+                                  size: 20,
+                                ),
+                                suffixIcon: IconButton(
+                                  key: const Key('pasteProxyData'),
+                                  tooltip: 'Dán và import',
+                                  onPressed: logic.pasteImportData,
+                                  icon: const Icon(
+                                    Icons.content_paste_rounded,
+                                    size: 20,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          OutlinedButton.icon(
-                            key: const Key('importProxyData'),
-                            onPressed: logic.importProxy,
-                            icon: const Icon(Icons.file_download_outlined,
-                                size: 19),
-                            label: const Text('Import proxy'),
-                          ),
-                        ]),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              key: const Key('importProxyData'),
+                              onPressed: logic.importProxy,
+                              icon: const Icon(
+                                Icons.file_download_outlined,
+                                size: 19,
+                              ),
+                              label: const Text('Import data'),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 16),
                       ],
-                      _section('Thông tin kết nối',
-                          'Nhập địa chỉ HTTP/HTTPS có cổng.', Icons.public, [
-                        TextFormField(
-                          key: const Key('savedProxyName'),
-                          controller: logic.name,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                              labelText: 'Tên proxy',
-                              hintText: 'Ví dụ: Việt Nam · Residential',
-                              helperText: 'Tự đặt tên để nhận biết proxy.',
-                              prefixIcon: Icon(Icons.label_outline, size: 20)),
-                          validator: (value) =>
-                              value == null || value.trim().isEmpty
-                                  ? 'Nhập tên proxy.'
-                                  : null,
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          key: const Key('savedProxyUrl'),
-                          controller: logic.url,
-                          autocorrect: false,
-                          keyboardType: TextInputType.url,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
+                      _section(
+                        'Thông tin kết nối',
+                        'Nhập địa chỉ HTTP/HTTPS có cổng.',
+                        Icons.public,
+                        [
+                          TextFormField(
+                            key: const Key('savedProxyUrl'),
+                            controller: logic.url,
+                            autocorrect: false,
+                            keyboardType: TextInputType.url,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
                               labelText: 'Địa chỉ proxy',
                               hintText: 'http://host:port',
-                              prefixIcon: Icon(Icons.link, size: 20)),
-                          validator: (value) {
-                            try {
-                              return WebViewProxy.parse(value ?? '') == null
-                                  ? 'Nhập địa chỉ proxy.'
-                                  : null;
-                            } on FormatException catch (error) {
-                              return error.message;
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          key: const Key('savedProxyUsername'),
-                          controller: logic.username,
-                          autocorrect: false,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                              labelText: 'Tên đăng nhập (không bắt buộc)',
-                              prefixIcon: Icon(Icons.person_outline, size: 20)),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          key: const Key('savedProxyPassword'),
-                          controller: logic.password,
-                          autocorrect: false,
-                          enableSuggestions: false,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Mật khẩu (không bắt buộc)',
-                            prefixIcon: Icon(Icons.lock_outline, size: 20),
+                              prefixIcon: Icon(Icons.link, size: 20),
+                            ),
+                            validator: (value) {
+                              try {
+                                return WebViewProxy.parse(value ?? '') == null
+                                    ? 'Nhập địa chỉ proxy.'
+                                    : null;
+                              } on FormatException catch (error) {
+                                return error.message;
+                              }
+                            },
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                          key: const Key('savedProxyUserAgent'),
-                          controller: logic.userAgent,
-                          onChanged: (_) => logic.update(),
-                          enabled: !logic.generating,
-                          autocorrect: false,
-                          enableSuggestions: false,
-                          minLines: 3,
-                          maxLines: 6,
-                          style: const TextStyle(fontSize: 12, height: 1.6),
-                          decoration: InputDecoration(
-                            labelText: 'User-Agent',
-                            helperText: randomizeOnOpen
-                                ? 'Tự random khi tạo mới. Bạn có thể tạo lại hoặc nhập riêng.'
-                                : 'Giữ User-Agent đã lưu. Bạn có thể tạo lại hoặc nhập riêng.',
-                            helperMaxLines: 4,
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            key: const Key('savedProxyUsername'),
+                            controller: logic.username,
+                            autocorrect: false,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'Tên đăng nhập proxy (không bắt buộc)',
+                              prefixIcon: Icon(Icons.person_outline, size: 20),
+                            ),
                           ),
-                          validator: (value) => value == null ||
-                                  value.trim().isEmpty ||
-                                  RegExp(r'[\r\n]').hasMatch(value.trim())
-                              ? 'Nhập User-Agent hợp lệ trên một dòng.'
-                              : null,
-                        ),
-                        const SizedBox(height: 12),
-                        OutlinedButton(
-                          key: const Key('generateProxyUserAgent'),
-                          onPressed:
-                              logic.generating ? null : logic.generateUserAgent,
-                          child: Text(
-                            logic.generating
-                                ? 'Đang tạo User-Agent…'
-                                : needsAndroidDesktopIdentity
-                                    ? 'Lấy User-Agent Chrome desktop'
-                                    : 'Tạo User-Agent mới',
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            key: const Key('savedProxyPassword'),
+                            controller: logic.password,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'Mật khẩu proxy (không bắt buộc)',
+                              prefixIcon: Icon(Icons.lock_outline, size: 20),
+                            ),
                           ),
-                        ),
-                        if (logic.generationFailed)
-                          const Padding(
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            key: const Key('savedProxyUserAgent'),
+                            controller: logic.userAgent,
+                            onChanged: (_) => logic.update(),
+                            enabled: !logic.generating,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            minLines: 3,
+                            maxLines: 6,
+                            style: const TextStyle(fontSize: 12, height: 1.6),
+                            decoration: InputDecoration(
+                              labelText: 'User-Agent',
+                              helperText: randomizeOnOpen
+                                  ? 'Tự random khi tạo mới. Bạn có thể tạo lại hoặc nhập riêng.'
+                                  : 'Giữ User-Agent đã lưu. Bạn có thể tạo lại hoặc nhập riêng.',
+                              helperMaxLines: 4,
+                            ),
+                            validator: (value) => value == null ||
+                                    value.trim().isEmpty ||
+                                    RegExp(r'[\r\n]').hasMatch(value.trim())
+                                ? 'Nhập User-Agent hợp lệ trên một dòng.'
+                                : null,
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton(
+                            key: const Key('generateProxyUserAgent'),
+                            onPressed: logic.generating
+                                ? null
+                                : logic.generateUserAgent,
+                            child: Text(
+                              logic.generating
+                                  ? 'Đang tạo User-Agent…'
+                                  : needsAndroidDesktopIdentity
+                                      ? 'Lấy User-Agent Chrome desktop'
+                                      : 'Tạo User-Agent mới',
+                            ),
+                          ),
+                          if (logic.generationFailed)
+                            const Padding(
                               padding: EdgeInsets.only(top: 10),
                               child: Text(
-                                  'Không thể tạo User-Agent. Nhấn nút để thử lại.',
-                                  style: TextStyle(
-                                      color: ProxyColors.amber, fontSize: 12))),
-                      ]),
-                    ]),
-              )),
-            )),
-        bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
+                                'Không thể tạo User-Agent. Nhấn nút để thử lại.',
+                                style: TextStyle(
+                                  color: ProxyColors.amber,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _section(
+                        'Tài khoản TikTok',
+                        'Dùng chung cho đăng ký, đăng nhập và lấy OTP email.',
+                        Icons.person_outline,
+                        [
+                          SwitchListTile(
+                            key: const Key('savedAccountStatus'),
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Đã đăng ký'),
+                            subtitle: Text(logic.statusAccount.label),
+                            value:
+                                logic.statusAccount == AccountStatus.registered,
+                            onChanged: (value) => logic.mutate(
+                              () => logic.statusAccount = value
+                                  ? AccountStatus.registered
+                                  : AccountStatus.unregistered,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            key: const Key('savedAccountEmail'),
+                            controller: logic.accountEmail,
+                            autocorrect: false,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: const InputDecoration(
+                              labelText: 'Email',
+                              prefixIcon: Icon(Icons.alternate_email, size: 20),
+                            ),
+                            validator: (value) =>
+                                OtpApiConfiguration.isEmail(value?.trim() ?? '')
+                                    ? null
+                                    : 'Nhập email tài khoản hợp lệ.',
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            key: const Key('savedAccountPassword'),
+                            controller: logic.accountPassword,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            decoration: const InputDecoration(
+                              labelText: 'Mật khẩu TikTok',
+                              prefixIcon: Icon(Icons.lock_outline, size: 20),
+                            ),
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                    ? 'Nhập mật khẩu TikTok.'
+                                    : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            key: const Key('savedMailboxPassword'),
+                            controller: logic.mailboxPassword,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            decoration: const InputDecoration(
+                              labelText: 'Mật khẩu email lấy OTP',
+                              prefixIcon: Icon(Icons.mail_outline, size: 20),
+                            ),
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                    ? 'Nhập mật khẩu email lấy OTP.'
+                                    : null,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          bottomNavigationBar: Container(
+            decoration: const BoxDecoration(
               color: ProxyColors.background,
-              border: Border(top: BorderSide(color: ProxyColors.border))),
-          child: SafeArea(
+              border: Border(top: BorderSide(color: ProxyColors.border)),
+            ),
+            child: SafeArea(
               top: false,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: FilledButton(
-                    key: const Key('saveProxyEntry'),
-                    onPressed:
-                        logic.generating || logic.userAgent.text.trim().isEmpty
-                            ? null
-                            : () => _save(context),
-                    child: Text(submitLabel)),
-              )),
+                  key: const Key('saveProxyEntry'),
+                  onPressed:
+                      logic.generating || logic.userAgent.text.trim().isEmpty
+                          ? null
+                          : () => _save(context),
+                  child: Text(submitLabel),
+                ),
+              ),
+            ),
+          ),
         ),
-      ));
+      );
 }

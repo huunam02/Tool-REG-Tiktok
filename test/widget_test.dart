@@ -10,6 +10,7 @@ import 'package:test_tiktok/core/desktop_user_agents.dart';
 import 'package:test_tiktok/screen/home_page.dart';
 import 'package:test_tiktok/screen/tiktok_page.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
+import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/config.dart' as config;
 import 'package:test_tiktok/core/scripts/auto_login_script.dart';
 import 'package:test_tiktok/core/scripts/auto_cookie_script.dart';
@@ -47,325 +48,381 @@ void main() {
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-            const MethodChannel('test_tiktok/webview_identity'),
-            (call) async => 'test-agent');
+      const MethodChannel('test_tiktok/webview_identity'),
+      (call) async => 'test-agent',
+    );
   });
   for (final action in TikTokLaunchAction.values) {
     testWidgets(
-        'Android $action waits for native Client Hints before the first URL',
-        (tester) async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.android;
-      addTearDown(() => debugDefaultTargetPlatformOverride = null);
-      final gate = Completer<String>();
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          const MethodChannel('test_tiktok/webview_identity'), (call) {
-        expect(call.method, 'configure');
-        expect(call.arguments['id'], 0);
-        return gate.future;
-      });
-      final logic = TikTokController(
-          configuration: AppConfiguration.defaults('test-agent'),
-          launchAction: action)
-        ..onInit();
-      addTearDown(logic.onClose);
-      final platform = _TestController(WebUri(tiktokHomeUrl));
-      final created = logic.onWebViewCreated(
-          InAppWebViewController.fromPlatform(platform: platform));
-      await tester.pump();
-      expect(platform.loads, isEmpty);
-      expect(logic.initialActionStarted, isFalse);
-      gate.complete('test-agent');
-      await created;
-      expect(platform.loads.single.url.toString(), action.initialUrl);
-      debugDefaultTargetPlatformOverride = null;
-    });
-
-    testWidgets(
-        'Android $action metadata failure prevents any initial network navigation',
-        (tester) async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.android;
-      addTearDown(() => debugDefaultTargetPlatformOverride = null);
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          const MethodChannel('test_tiktok/webview_identity'), (call) async {
-        throw PlatformException(code: 'identity_unsupported');
-      });
-      final logic = TikTokController(
-          configuration: AppConfiguration.defaults('test-agent'),
-          launchAction: action)
-        ..onInit();
-      addTearDown(logic.onClose);
-      final platform = _TestController(WebUri(tiktokHomeUrl));
-      await logic.onWebViewCreated(
-          InAppWebViewController.fromPlatform(platform: platform));
-      expect(platform.loads, isEmpty);
-      expect(logic.pageFailure?.title, 'Không thể cấu hình Chrome desktop');
-      await logic.runInitialAction();
-      expect(logic.initialActionStarted, isFalse);
-      debugDefaultTargetPlatformOverride = null;
-    });
-  }
-  testWidgets(
-      'Home passes edited configuration to a separate TikTok route and keeps it on return',
+      'Android $action waits for native Client Hints before the first URL',
       (tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    final previousPlatform = InAppWebViewPlatform.instance;
-    InAppWebViewPlatform.instance = _TestWebViewPlatform();
-    final proxyCalls = <MethodCall>[];
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      const MethodChannel('test_tiktok/webview_proxy'),
-      (call) async {
-        proxyCalls.add(call);
-        return null;
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final gate = Completer<String>();
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('test_tiktok/webview_identity'),
+          (call) {
+            expect(call.method, 'configure');
+            expect(call.arguments['id'], 0);
+            return gate.future;
+          },
+        );
+        final logic = TikTokController(
+          configuration: AppConfiguration.defaults('test-agent'),
+          launchAction: action,
+        )..onInit();
+        addTearDown(logic.onClose);
+        final platform = _TestController(WebUri(tiktokHomeUrl));
+        final created = logic.onWebViewCreated(
+          InAppWebViewController.fromPlatform(platform: platform),
+        );
+        await tester.pump();
+        expect(platform.loads, isEmpty);
+        expect(logic.initialActionStarted, isFalse);
+        gate.complete('test-agent');
+        await created;
+        expect(platform.loads.single.url.toString(), action.initialUrl);
+        debugDefaultTargetPlatformOverride = null;
       },
     );
-    addTearDown(() {
-      debugDefaultTargetPlatformOverride = null;
-      if (previousPlatform != null) {
-        InAppWebViewPlatform.instance = previousPlatform;
-      }
+
+    testWidgets(
+      'Android $action metadata failure prevents any initial network navigation',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('test_tiktok/webview_identity'),
+          (call) async {
+            throw PlatformException(code: 'identity_unsupported');
+          },
+        );
+        final logic = TikTokController(
+          configuration: AppConfiguration.defaults('test-agent'),
+          launchAction: action,
+        )..onInit();
+        addTearDown(logic.onClose);
+        final platform = _TestController(WebUri(tiktokHomeUrl));
+        await logic.onWebViewCreated(
+          InAppWebViewController.fromPlatform(platform: platform),
+        );
+        expect(platform.loads, isEmpty);
+        expect(logic.pageFailure?.title, 'Không thể cấu hình Chrome desktop');
+        await logic.runInitialAction();
+        expect(logic.initialActionStarted, isFalse);
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
+  testWidgets(
+    'Home passes the selected combined configuration to a separate TikTok route and keeps it on return',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final previousPlatform = InAppWebViewPlatform.instance;
+      InAppWebViewPlatform.instance = _TestWebViewPlatform();
+      final proxyCalls = <MethodCall>[];
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          const MethodChannel('test_tiktok/webview_proxy'), null);
-    });
-    await tester.binding.setSurfaceSize(const Size(800, 2800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final proxyStore = MemoryProxyStore()
-      ..current = WebViewProxy.parse('127.0.0.1:8888')
-      ..currentUserAgent = desktopUserAgents.first;
-    await tester.pumpWidget(MaterialApp(
-      home:
-          HomePage(userAgent: desktopUserAgents.first, proxyStore: proxyStore),
-    ));
-    expect(find.byType(InAppWebView), findsNothing);
-    expect(find.text('Tool TikTok'), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('comments')),
-        ' First comment \n\n Second comment ');
-    await _selectHomeTab(tester, 'signupTab');
-    await tester.enterText(
-        find.byKey(const Key('signupEmail')), 'signup@example.com');
-    await tester.enterText(
-        find.byKey(const Key('signupPassword')), 'signup-password');
-    await tester.enterText(
-        find.byKey(const Key('signupMailboxPassword')), 'signup-mail-secret');
-    expect(
-        find.byKey(const Key('signupOtp'), skipOffstage: false), findsNothing);
-    expect(find.byKey(const Key('signupBirthday')), findsNothing);
-    expect(find.text('Chạy đăng ký tự động'), findsOneWidget);
-    expect(find.byKey(const Key('runAutoLogin')), findsNothing);
-    await _selectHomeTab(tester, 'loginTab');
-    await tester.enterText(
-        find.byKey(const Key('loginUsername')), 'login@example.com');
-    await tester.enterText(
-        find.byKey(const Key('loginPassword')), 'login-password');
-    await tester.enterText(
-        find.byKey(const Key('loginMailboxPassword')), 'login-mail-secret');
-    expect(
-        find.byKey(const Key('loginOtp'), skipOffstage: false), findsNothing);
-    expect(find.text('Chạy đăng nhập tự động'), findsOneWidget);
-    expect(find.byKey(const Key('runAutoSignup')), findsNothing);
-    await _selectHomeTab(tester, 'generalTab');
-    await tester.tap(find.byKey(const Key('openTikTok')));
-    await tester.pumpAndSettle();
-    final page = tester.widget<TikTokPage>(find.byType(TikTokPage));
-    expect(page.launchAction, TikTokLaunchAction.browse);
-    expect(page.configuration.birthday, isNull);
-    expect(page.configuration.signupEmail, 'signup@example.com');
-    expect(page.configuration.signupPassword, 'signup-password');
-    expect(page.configuration.loginUsername, 'login@example.com');
-    expect(page.configuration.loginPassword, 'login-password');
-    expect(page.configuration.signupOtp, isEmpty);
-    expect(page.configuration.loginOtp, isEmpty);
-    expect(page.configuration.comments, ['First comment', 'Second comment']);
-    expect(page.configuration.userAgent, desktopUserAgents.first);
-    expect(proxyCalls.single.arguments['host'], '127.0.0.1');
-    expect(proxyCalls.single.arguments['port'], 8888);
-    expect(find.byType(InAppWebView), findsOneWidget);
-    expect(
+        const MethodChannel('test_tiktok/webview_proxy'),
+        (call) async {
+          proxyCalls.add(call);
+          return null;
+        },
+      );
+      addTearDown(() {
+        debugDefaultTargetPlatformOverride = null;
+        if (previousPlatform != null) {
+          InAppWebViewPlatform.instance = previousPlatform;
+        }
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('test_tiktok/webview_proxy'),
+          null,
+        );
+      });
+      await tester.binding.setSurfaceSize(const Size(800, 2800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final proxyStore = MemoryProxyStore()
+        ..current = WebViewProxy.parse('127.0.0.1:8888')
+        ..currentUserAgent = desktopUserAgents.first
+        ..currentAccount = const AccountCredentials(
+          email: 'person@example.com',
+          password: 'tiktok-password',
+          mailboxPassword: 'mail-password',
+        );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            userAgent: desktopUserAgents.first,
+            proxyStore: proxyStore,
+          ),
+        ),
+      );
+      expect(find.byType(InAppWebView), findsNothing);
+      expect(find.text('Tool TikTok'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('comments')),
+        ' First comment \n\n Second comment ',
+      );
+      await _selectHomeTab(tester, 'signupTab');
+      expect(
+        find.byKey(const Key('signupOtp'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('signupBirthday')), findsNothing);
+      expect(find.text('Chạy đăng ký tự động'), findsOneWidget);
+      expect(find.byKey(const Key('runAutoLogin')), findsNothing);
+      await _selectHomeTab(tester, 'loginTab');
+      expect(
+        find.byKey(const Key('loginOtp'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(find.text('Chạy đăng nhập tự động'), findsOneWidget);
+      expect(find.byKey(const Key('runAutoSignup')), findsNothing);
+      await _selectHomeTab(tester, 'generalTab');
+      await tester.tap(find.byKey(const Key('openTikTok')));
+      await tester.pumpAndSettle();
+      final page = tester.widget<TikTokPage>(find.byType(TikTokPage));
+      expect(page.launchAction, TikTokLaunchAction.browse);
+      expect(page.configuration.birthday, isNull);
+      expect(page.configuration.signupEmail, 'person@example.com');
+      expect(page.configuration.signupPassword, 'tiktok-password');
+      expect(page.configuration.loginUsername, 'person@example.com');
+      expect(page.configuration.loginPassword, 'tiktok-password');
+      expect(page.configuration.signupOtp, isEmpty);
+      expect(page.configuration.loginOtp, isEmpty);
+      expect(page.configuration.comments, ['First comment', 'Second comment']);
+      expect(page.configuration.userAgent, desktopUserAgents.first);
+      expect(proxyCalls.single.arguments['host'], '127.0.0.1');
+      expect(proxyCalls.single.arguments['port'], 8888);
+      expect(find.byType(InAppWebView), findsOneWidget);
+      expect(
         tester
             .widget<InAppWebView>(find.byType(InAppWebView))
             .platform
             .params
             .initialSettings!
             .userAgent,
-        desktopUserAgents.first);
-    await tester.tap(find.byTooltip('Back'));
-    await tester.pumpAndSettle();
-    expect(find.byType(TikTokPage), findsNothing);
-    await _selectHomeTab(tester, 'signupTab');
-    expect(
-        tester
-            .widget<TextFormField>(find.byKey(const Key('signupEmail')))
-            .controller!
-            .text,
-        'signup@example.com');
-    for (final entry in {
-      'runAutoLogin': TikTokLaunchAction.login,
-      'runAutoSignup': TikTokLaunchAction.signup,
-    }.entries) {
-      await _selectHomeTab(tester,
-          entry.value == TikTokLaunchAction.login ? 'loginTab' : 'signupTab');
-      await tester.tap(find.byKey(Key(entry.key)));
+        desktopUserAgents.first,
+      );
+      await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
-      final automaticPage = tester.widget<TikTokPage>(find.byType(TikTokPage));
-      expect(automaticPage.launchAction, entry.value);
-      expect(automaticPage.configuration.proxy?.uri.host, '127.0.0.1');
-      expect(automaticPage.configuration.proxy?.uri.port, 8888);
+      expect(find.byType(TikTokPage), findsNothing);
+      await _selectHomeTab(tester, 'signupTab');
       expect(
-          automaticPage.configuration.userAgent, page.configuration.userAgent);
-      expect(proxyCalls.last.arguments['host'], '127.0.0.1');
-      expect(proxyCalls.last.arguments['port'], 8888);
-      expect(
-          proxyCalls.length, entry.value == TikTokLaunchAction.login ? 2 : 3);
-      expect(
+        tester
+            .widget<SelectableText>(
+              find.byKey(const Key('signupPreviewAccountEmail')),
+            )
+            .data,
+        'person@example.com',
+      );
+      for (final entry in {
+        'runAutoLogin': TikTokLaunchAction.login,
+        'runAutoSignup': TikTokLaunchAction.signup,
+      }.entries) {
+        await _selectHomeTab(
+          tester,
+          entry.value == TikTokLaunchAction.login ? 'loginTab' : 'signupTab',
+        );
+        await tester.tap(find.byKey(Key(entry.key)));
+        await tester.pumpAndSettle();
+        final automaticPage = tester.widget<TikTokPage>(
+          find.byType(TikTokPage),
+        );
+        expect(automaticPage.launchAction, entry.value);
+        expect(automaticPage.configuration.proxy?.uri.host, '127.0.0.1');
+        expect(automaticPage.configuration.proxy?.uri.port, 8888);
+        expect(
+          automaticPage.configuration.userAgent,
+          page.configuration.userAgent,
+        );
+        expect(proxyCalls.last.arguments['host'], '127.0.0.1');
+        expect(proxyCalls.last.arguments['port'], 8888);
+        expect(
+          proxyCalls.length,
+          entry.value == TikTokLaunchAction.login ? 2 : 3,
+        );
+        expect(
           tester
               .widget<InAppWebView>(find.byType(InAppWebView))
               .platform
               .params
               .initialSettings!
               .userAgent,
-          page.configuration.userAgent);
-      expect(find.byType(DatePickerDialog), findsNothing);
-      if (entry.value == TikTokLaunchAction.signup) {
-        expect(automaticPage.configuration.birthday!.year,
-            inInclusiveRange(1960, 2004));
+          page.configuration.userAgent,
+        );
+        expect(find.byType(DatePickerDialog), findsNothing);
+        if (entry.value == TikTokLaunchAction.signup) {
+          expect(
+            automaticPage.configuration.birthday!.year,
+            inInclusiveRange(1960, 2004),
+          );
+        }
+        expect(automaticPage.configuration.signupEmail, 'person@example.com');
+        expect(automaticPage.configuration.loginUsername, 'person@example.com');
+        expect(automaticPage.configuration.signupOtp, isEmpty);
+        expect(automaticPage.configuration.loginOtp, isEmpty);
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
       }
-      expect(automaticPage.configuration.signupEmail, 'signup@example.com');
-      expect(automaticPage.configuration.loginUsername, 'login@example.com');
-      expect(automaticPage.configuration.signupOtp, isEmpty);
-      expect(automaticPage.configuration.loginOtp, isEmpty);
-      await tester.tap(find.byTooltip('Back'));
-      await tester.pumpAndSettle();
-    }
-    debugDefaultTargetPlatformOverride = null;
-    expect(tester.takeException(), isNull);
-  });
+      debugDefaultTargetPlatformOverride = null;
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
-      'Home waits for proxy application, reports failure and allows retry',
-      (tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    final previousPlatform = InAppWebViewPlatform.instance;
-    InAppWebViewPlatform.instance = _TestWebViewPlatform();
-    final gate = Completer<void>();
-    var attempts = 0;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      const MethodChannel('test_tiktok/webview_proxy'),
-      (call) async {
-        expect(call.arguments['host'],
-            isNull); // Empty proxy clears old overrides.
-        if (++attempts == 1) {
-          await gate.future;
-          throw PlatformException(
-              code: 'proxy_unsupported', message: 'Unsupported proxy');
-        }
-        return null;
-      },
-    );
-    addTearDown(() {
-      debugDefaultTargetPlatformOverride = null;
-      if (previousPlatform != null) {
-        InAppWebViewPlatform.instance = previousPlatform;
-      }
+    'Home waits for proxy application, reports failure and allows retry',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final previousPlatform = InAppWebViewPlatform.instance;
+      InAppWebViewPlatform.instance = _TestWebViewPlatform();
+      final gate = Completer<void>();
+      var attempts = 0;
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          const MethodChannel('test_tiktok/webview_proxy'), null);
-    });
-    await tester.pumpWidget(MaterialApp(
-        home: HomePage(
+        const MethodChannel('test_tiktok/webview_proxy'),
+        (call) async {
+          expect(
+            call.arguments['host'],
+            isNull,
+          ); // Empty proxy clears old overrides.
+          if (++attempts == 1) {
+            await gate.future;
+            throw PlatformException(
+              code: 'proxy_unsupported',
+              message: 'Unsupported proxy',
+            );
+          }
+          return null;
+        },
+      );
+      addTearDown(() {
+        debugDefaultTargetPlatformOverride = null;
+        if (previousPlatform != null) {
+          InAppWebViewPlatform.instance = previousPlatform;
+        }
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('test_tiktok/webview_proxy'),
+          null,
+        );
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
             userAgent: desktopUserAgents.first,
-            proxyStore: MemoryProxyStore())));
-    await tester.tap(find.byKey(const Key('openTikTok')));
-    await tester.pump();
-    expect(find.byType(TikTokPage), findsNothing);
-    expect(
+            proxyStore: MemoryProxyStore(),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('openTikTok')));
+      await tester.pump();
+      expect(find.byType(TikTokPage), findsNothing);
+      expect(
         tester
             .widget<OutlinedButton>(find.byKey(const Key('openTikTok')))
             .onPressed,
-        isNull);
-    gate.complete();
-    await tester.pumpAndSettle();
-    expect(find.text('Unsupported proxy'), findsOneWidget);
-    expect(find.byType(TikTokPage), findsNothing);
-    await tester.tap(find.byKey(const Key('openTikTok')));
-    await tester.pumpAndSettle();
-    expect(find.byType(TikTokPage), findsOneWidget);
-    expect(attempts, 2);
-    debugDefaultTargetPlatformOverride = null;
-  });
+        isNull,
+      );
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Unsupported proxy'), findsOneWidget);
+      expect(find.byType(TikTokPage), findsNothing);
+      await tester.tap(find.byKey(const Key('openTikTok')));
+      await tester.pumpAndSettle();
+      expect(find.byType(TikTokPage), findsOneWidget);
+      expect(attempts, 2);
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
 
   testWidgets(
-      'Home validates only the selected account action, including offscreen fields',
-      (tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    final previousPlatform = InAppWebViewPlatform.instance;
-    InAppWebViewPlatform.instance = _TestWebViewPlatform();
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        const MethodChannel('test_tiktok/webview_proxy'), (call) async => null);
-    addTearDown(() {
-      debugDefaultTargetPlatformOverride = null;
-      if (previousPlatform != null) {
-        InAppWebViewPlatform.instance = previousPlatform;
-      }
+    'Home requires a selected account configuration for automatic actions',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final previousPlatform = InAppWebViewPlatform.instance;
+      InAppWebViewPlatform.instance = _TestWebViewPlatform();
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          const MethodChannel('test_tiktok/webview_proxy'), null);
-    });
-    await tester.pumpWidget(MaterialApp(
-        home: HomePage(
+        const MethodChannel('test_tiktok/webview_proxy'),
+        (call) async => null,
+      );
+      addTearDown(() {
+        debugDefaultTargetPlatformOverride = null;
+        if (previousPlatform != null) {
+          InAppWebViewPlatform.instance = previousPlatform;
+        }
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('test_tiktok/webview_proxy'),
+          null,
+        );
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
             userAgent: desktopUserAgents.first,
-            proxyStore: MemoryProxyStore())));
-    // Controller updates model fields below the viewport; validation must still see them.
-    for (final key in [
-      'signupEmail',
-      'signupPassword',
-      'loginUsername',
-      'loginPassword'
-    ]) {
-      tester
-          .widget<TextFormField>(find.byKey(Key(key), skipOffstage: false))
-          .controller!
-          .clear();
-    }
-    await _selectHomeTab(tester, 'loginTab');
-    await tester.tap(find.byKey(const Key('runAutoLogin')));
-    await tester.pumpAndSettle();
-    expect(find.text('Nhập tài khoản đăng nhập.'), findsOneWidget);
-    expect(find.text('Nhập email đăng ký hợp lệ.'), findsNothing);
-    expect(find.byType(TikTokPage), findsNothing);
-    await _selectHomeTab(tester, 'signupTab');
-    await tester.tap(find.byKey(const Key('runAutoSignup')));
-    await tester.pumpAndSettle();
-    expect(find.text('Nhập email đăng ký hợp lệ.'), findsOneWidget);
-    expect(find.text('Nhập tài khoản đăng nhập.'), findsNothing);
-    expect(find.byType(TikTokPage), findsNothing);
-    await _selectHomeTab(tester, 'generalTab');
-    await tester.tap(find.byKey(const Key('openTikTok')));
-    await tester.pumpAndSettle();
-    expect(tester.widget<TikTokPage>(find.byType(TikTokPage)).launchAction,
-        TikTokLaunchAction.browse);
-    debugDefaultTargetPlatformOverride = null;
-    expect(tester.takeException(), isNull);
-  });
+            proxyStore: MemoryProxyStore(),
+          ),
+        ),
+      );
+      await _selectHomeTab(tester, 'loginTab');
+      await tester.tap(find.byKey(const Key('runAutoLogin')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Chọn cấu hình có tài khoản trong Quản lý cấu hình trước khi chạy.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Nhập email đăng ký hợp lệ.'), findsNothing);
+      expect(find.byType(TikTokPage), findsNothing);
+      await _selectHomeTab(tester, 'signupTab');
+      await tester.tap(find.byKey(const Key('runAutoSignup')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Chọn cấu hình có tài khoản trong Quản lý cấu hình trước khi chạy.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Nhập tài khoản đăng nhập.'), findsNothing);
+      expect(find.byType(TikTokPage), findsNothing);
+      await _selectHomeTab(tester, 'generalTab');
+      await tester.tap(find.byKey(const Key('openTikTok')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TikTokPage>(find.byType(TikTokPage)).launchAction,
+        TikTokLaunchAction.browse,
+      );
+      debugDefaultTargetPlatformOverride = null;
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('Home tabs fit a narrow screen with enlarged text',
-      (tester) async {
+  testWidgets('Home tabs fit a narrow screen with enlarged text', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(320, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(MaterialApp(
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context)
-            .copyWith(textScaler: const TextScaler.linear(1.5)),
-        child: child!,
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.5)),
+          child: child!,
+        ),
+        home: HomePage(
+          userAgent: desktopUserAgents.first,
+          proxyStore: MemoryProxyStore(),
+        ),
       ),
-      home: HomePage(
-          userAgent: desktopUserAgents.first, proxyStore: MemoryProxyStore()),
-    ));
+    );
     for (final tab in ['signupTab', 'loginTab', 'generalTab']) {
       await _selectHomeTab(tester, tab);
       expect(tester.takeException(), isNull);
     }
   });
 
-  testWidgets(
-      'Home uses default API settings and keeps separate mailbox passwords',
-      (tester) async {
+  testWidgets('Home uses the shared account and default OTP API settings', (
+    tester,
+  ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     final previousPlatform = InAppWebViewPlatform.instance;
     InAppWebViewPlatform.instance = _TestWebViewPlatform();
@@ -373,107 +430,57 @@ void main() {
       const MethodChannel('test_tiktok/webview_proxy'),
       (call) async => null,
     );
-    await tester.binding.setSurfaceSize(const Size(800, 2800));
     addTearDown(() {
       debugDefaultTargetPlatformOverride = null;
-      if (previousPlatform != null) {
+      if (previousPlatform != null)
         InAppWebViewPlatform.instance = previousPlatform;
-      }
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          const MethodChannel('test_tiktok/webview_proxy'), null);
-      return tester.binding.setSurfaceSize(null);
+        const MethodChannel('test_tiktok/webview_proxy'),
+        null,
+      );
     });
-    await tester.pumpWidget(MaterialApp(
-        home: HomePage(
-            userAgent: desktopUserAgents.first,
-            proxyStore: MemoryProxyStore())));
-    expect(find.byKey(const Key('signupMailboxPassword')), findsNothing);
-    expect(find.byKey(const Key('loginMailboxPassword')), findsNothing);
-    for (final prefix in ['signup', 'login']) {
-      await _selectHomeTab(tester, '${prefix}Tab');
-      expect(find.byType(SwitchListTile), findsNothing);
-      expect(find.byKey(Key('${prefix}OtpApiUrl')), findsNothing);
-      expect(find.byKey(Key('${prefix}OtpApiToken')), findsNothing);
-      expect(find.text('URL API lấy OTP'), findsNothing);
-      expect(find.text('Token API lấy OTP'), findsNothing);
-      expect(find.byKey(Key('${prefix}MailboxPassword')), findsOneWidget);
-      await tester.enterText(
-          find.byKey(Key(prefix == 'signup' ? 'signupEmail' : 'loginUsername')),
-          '$prefix@example.com');
-      await tester.enterText(
-          find.byKey(Key('${prefix}Password')), '$prefix-tiktok-secret');
-      await tester.enterText(
-          find.byKey(Key('${prefix}MailboxPassword')), '$prefix-mail-secret');
-    }
+    final store = MemoryProxyStore()
+      ..current = WebViewProxy.parse('192.0.2.7:8080')
+      ..currentAccount = const AccountCredentials(
+        email: 'person@example.com',
+        password: 'tiktok-secret',
+        mailboxPassword: 'mail-secret',
+      );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(userAgent: desktopUserAgents.first, proxyStore: store),
+      ),
+    );
+    await tester.pumpAndSettle();
     for (final prefix in ['login', 'signup']) {
       await _selectHomeTab(tester, '${prefix}Tab');
-      expect(
-          tester
-              .widget<TextFormField>(
-                  find.byKey(Key('${prefix}MailboxPassword')))
-              .controller!
-              .text,
-          '$prefix-mail-secret');
-      await tester.tap(find
-          .byKey(Key(prefix == 'signup' ? 'runAutoSignup' : 'runAutoLogin')));
+      expect(find.byType(TextFormField), findsNothing);
+      expect(find.text('URL API lấy OTP'), findsNothing);
+      await tester.tap(
+        find.byKey(Key(prefix == 'signup' ? 'runAutoSignup' : 'runAutoLogin')),
+      );
       await tester.pumpAndSettle();
       final configuration =
           tester.widget<TikTokPage>(find.byType(TikTokPage)).configuration;
       expect(configuration.otpApi!.url.toString(), config.otpApiUrl);
-      expect(configuration.otpApi!.readerToken == config.otpApiToken.trim(),
-          isTrue);
+      expect(configuration.otpApi!.readerToken, config.otpApiToken.trim());
       expect(configuration.otpApi!.waitSeconds, 180);
-      expect(configuration.signupMailboxPassword, 'signup-mail-secret');
-      expect(configuration.loginMailboxPassword, 'login-mail-secret');
-      expect(configuration.signupOtp, isEmpty);
-      expect(configuration.loginOtp, isEmpty);
+      expect(configuration.signupMailboxPassword, 'mail-secret');
+      expect(configuration.loginMailboxPassword, 'mail-secret');
+      expect(configuration.signupEmail, 'person@example.com');
+      expect(configuration.loginUsername, 'person@example.com');
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
     }
-    await _selectHomeTab(tester, 'generalTab');
-    expect(find.byKey(const Key('signupMailboxPassword')), findsNothing);
-    expect(find.byKey(const Key('loginMailboxPassword')), findsNothing);
-    await tester.tap(find.byKey(const Key('openTikTok')));
-    await tester.pumpAndSettle();
-    expect(
-        tester.widget<TikTokPage>(find.byType(TikTokPage)).configuration.otpApi,
-        isNull);
     expect(tester.takeException(), isNull);
     debugDefaultTargetPlatformOverride = null;
   });
 
-  for (final prefix in ['signup', 'login']) {
-    testWidgets('Home requires the mailbox password for $prefix',
-        (tester) async {
-      await tester.binding.setSurfaceSize(const Size(800, 1800));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(MaterialApp(
-          home: HomePage(
-              userAgent: desktopUserAgents.first,
-              proxyStore: MemoryProxyStore())));
-      await _selectHomeTab(tester, '${prefix}Tab');
-      await tester.enterText(
-          find.byKey(Key(prefix == 'signup' ? 'signupEmail' : 'loginUsername')),
-          '$prefix@example.com');
-      await tester.enterText(
-          find.byKey(Key('${prefix}Password')), 'tiktok-secret');
-      await tester.tap(find
-          .byKey(Key(prefix == 'signup' ? 'runAutoSignup' : 'runAutoLogin')));
-      await tester.pumpAndSettle();
-      expect(
-          tester
-              .state<FormFieldState<String>>(
-                  find.byKey(Key('${prefix}MailboxPassword')))
-              .errorText,
-          isNotEmpty);
-      expect(find.byType(TikTokPage), findsNothing);
-      expect(tester.takeException(), isNull);
-    });
-  }
-
   for (final action in TikTokLaunchAction.values) {
     testWidgets('$action opens its page and runs only the selected action once',
-        (tester) async {
+        (
+      tester,
+    ) async {
       final previousPlatform = InAppWebViewPlatform.instance;
       InAppWebViewPlatform.instance = _TestWebViewPlatform();
       addTearDown(() {
@@ -489,8 +496,10 @@ void main() {
         loginPassword: 'login-secret',
         comments: ['First comment'],
       );
-      final page =
-          TikTokPage(configuration: configuration, launchAction: action);
+      final page = TikTokPage(
+        configuration: configuration,
+        launchAction: action,
+      );
       await tester.pumpWidget(MaterialApp(home: page));
       final params = tester
           .widget<InAppWebView>(find.byType(InAppWebView))
@@ -510,27 +519,39 @@ void main() {
         expect(params.initialUrlRequest!.headers?['Accept-Language'], isNull);
       }
       expect(params.initialSettings!.userAgent, configuration.userAgent);
-      expect(params.initialSettings!.preferredContentMode,
-          UserPreferredContentMode.DESKTOP);
       expect(
-          params.initialUserScripts!
-              .where((script) => script.source == englishWebViewLocaleScript),
-          isEmpty);
+        params.initialSettings!.preferredContentMode,
+        UserPreferredContentMode.DESKTOP,
+      );
+      expect(
+        params.initialUserScripts!.where(
+          (script) => script.source == englishWebViewLocaleScript,
+        ),
+        isEmpty,
+      );
       final controller = _TestController(WebUri(page.initialUrl));
-      final cookieScript = params.initialUserScripts!
-          .singleWhere((script) => script.source == autoAcceptCookieScript);
+      final cookieScript = params.initialUserScripts!.singleWhere(
+        (script) => script.source == autoAcceptCookieScript,
+      );
       expect(
-          cookieScript.injectionTime, UserScriptInjectionTime.AT_DOCUMENT_END);
+        cookieScript.injectionTime,
+        UserScriptInjectionTime.AT_DOCUMENT_END,
+      );
       expect(cookieScript.forMainFrameOnly, isTrue);
-      final interestScript = params.initialUserScripts!
-          .singleWhere((script) => script.source == autoSelectInterestScript);
-      expect(interestScript.injectionTime,
-          UserScriptInjectionTime.AT_DOCUMENT_END);
+      final interestScript = params.initialUserScripts!.singleWhere(
+        (script) => script.source == autoSelectInterestScript,
+      );
+      expect(
+        interestScript.injectionTime,
+        UserScriptInjectionTime.AT_DOCUMENT_END,
+      );
       expect(interestScript.forMainFrameOnly, isTrue);
       final wrapped = InAppWebViewController.fromPlatform(platform: controller);
       params.onWebViewCreated!.call(wrapped);
       expect(
-          controller.sources, isEmpty); // Never run before the first page load.
+        controller.sources,
+        isEmpty,
+      ); // Never run before the first page load.
       params.onLoadStop!.call(wrapped, controller.url);
       params.onLoadStop!.call(wrapped, controller.url);
       await tester.pump();
@@ -540,30 +561,34 @@ void main() {
       expect(controller.sources, contains(autoAcceptCookieScript));
       expect(controller.sources, contains(autoSelectInterestScript));
       expect(
-          controller.sources
-              .where((source) => source.contains(autoLoginStepScript))
-              .length,
-          action == TikTokLaunchAction.login ? 1 : 0);
+        controller.sources
+            .where((source) => source.contains(autoLoginStepScript))
+            .length,
+        action == TikTokLaunchAction.login ? 1 : 0,
+      );
       expect(
-          controller.sources
-              .where((source) => source.contains(autoSignupStepScript))
-              .length,
-          action == TikTokLaunchAction.signup ? 1 : 0);
+        controller.sources
+            .where((source) => source.contains(autoSignupStepScript))
+            .length,
+        action == TikTokLaunchAction.signup ? 1 : 0,
+      );
       // Another load, such as a reload/redirect, cannot replay account submission.
       params.onLoadStop!.call(wrapped, controller.url);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 2600));
       await tester.pump();
       expect(
-          controller.sources
-              .where((source) => source.contains(autoLoginStepScript))
-              .length,
-          action == TikTokLaunchAction.login ? 1 : 0);
+        controller.sources
+            .where((source) => source.contains(autoLoginStepScript))
+            .length,
+        action == TikTokLaunchAction.login ? 1 : 0,
+      );
       expect(
-          controller.sources
-              .where((source) => source.contains(autoSignupStepScript))
-              .length,
-          action == TikTokLaunchAction.signup ? 1 : 0);
+        controller.sources
+            .where((source) => source.contains(autoSignupStepScript))
+            .length,
+        action == TikTokLaunchAction.signup ? 1 : 0,
+      );
       expect(find.text('Bật auto xem và bình luận'), findsOneWidget);
       await tester.tap(find.byKey(const Key('autoWatch')));
       await tester.pumpAndSettle();
@@ -577,267 +602,313 @@ void main() {
 
   for (final action in [TikTokLaunchAction.signup, TikTokLaunchAction.login]) {
     testWidgets(
-        '$action spaces normal steps by 2.5 seconds and keeps OTP steps at 300ms',
-        (tester) async {
-      final reader = _TestOtpReader();
-      final controller = await _mountApiPage(tester, action, reader, [
-        'waiting-form',
-        'waiting-paste',
-        'verification-requested',
-        'waiting-otp-paste',
-        'otp-submitted',
-        action == TikTokLaunchAction.signup
-            ? 'signup-success'
-            : 'login-success',
-      ]);
-      final script = action == TikTokLaunchAction.signup
-          ? autoSignupStepScript
-          : autoLoginStepScript;
-      int evaluations() =>
-          controller.sources.where((s) => s.contains(script)).length;
-      for (var i = 0; i < 3; i++) {
-        await tester.pump(const Duration(milliseconds: 2499));
-        expect(evaluations(), i);
-        await tester.pump(const Duration(milliseconds: 1));
+      '$action spaces normal steps by 2.5 seconds and keeps OTP steps at 300ms',
+      (tester) async {
+        final reader = _TestOtpReader();
+        final controller = await _mountApiPage(tester, action, reader, [
+          'waiting-form',
+          'waiting-paste',
+          'verification-requested',
+          'waiting-otp-paste',
+          'otp-submitted',
+          action == TikTokLaunchAction.signup
+              ? 'signup-success'
+              : 'login-success',
+        ]);
+        final script = action == TikTokLaunchAction.signup
+            ? autoSignupStepScript
+            : autoLoginStepScript;
+        int evaluations() =>
+            controller.sources.where((s) => s.contains(script)).length;
+        for (var i = 0; i < 3; i++) {
+          await tester.pump(const Duration(milliseconds: 2499));
+          expect(evaluations(), i);
+          await tester.pump(const Duration(milliseconds: 1));
+          await tester.pump();
+          expect(evaluations(), i + 1);
+        }
+        expect(reader.requests, hasLength(1));
+        reader.response.complete('012345');
         await tester.pump();
-        expect(evaluations(), i + 1);
-      }
-      expect(reader.requests, hasLength(1));
-      reader.response.complete('012345');
-      await tester.pump();
-      for (var i = 3; i < 6; i++) {
-        await tester.pump(const Duration(milliseconds: 299));
-        expect(evaluations(), i);
-        await tester.pump(const Duration(milliseconds: 1));
-        await tester.pump();
-        expect(evaluations(), i + 1);
-      }
-      expect(controller.sources.lastWhere((s) => s.contains(script)),
-          contains('"otp":"012345"'));
-      expect(find.text('Dừng'), findsNothing);
-      expect(reader.requests, hasLength(1));
-    });
+        for (var i = 3; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 299));
+          expect(evaluations(), i);
+          await tester.pump(const Duration(milliseconds: 1));
+          await tester.pump();
+          expect(evaluations(), i + 1);
+        }
+        expect(
+          controller.sources.lastWhere((s) => s.contains(script)),
+          contains('"otp":"012345"'),
+        );
+        expect(find.text('Dừng'), findsNothing);
+        expect(reader.requests, hasLength(1));
+      },
+    );
   }
 
   testWidgets(
-      'signup continues after OTP and remembers final password submission',
-      (tester) async {
-    final reader = _TestOtpReader();
-    final controller =
-        await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
-      'verification-requested',
-      'otp-submitted',
-      'waiting-password-screen',
-      'waiting-paste',
-      'waiting-password-submit',
-      'password-submitted',
-      'waiting-result',
-      'signup-success',
-    ]);
-    await tester.pump(const Duration(milliseconds: 2500));
-    await tester.pump();
-    reader.response.complete('012345');
-    await tester.pump();
-    for (var i = 0; i < 7; i++) {
-      await tester.pump(const Duration(milliseconds: 300));
+    'signup continues after OTP and remembers final password submission',
+    (tester) async {
+      final reader = _TestOtpReader();
+      final controller =
+          await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
+        'verification-requested',
+        'otp-submitted',
+        'waiting-password-screen',
+        'waiting-paste',
+        'waiting-password-submit',
+        'password-submitted',
+        'waiting-result',
+        'signup-success',
+      ]);
+      await tester.pump(const Duration(milliseconds: 2500));
       await tester.pump();
-      if (i == 1) {
-        expect(
-            find.text('Đang chờ màn nhập mật khẩu ổn định…'), findsOneWidget);
+      reader.response.complete('012345');
+      await tester.pump();
+      for (var i = 0; i < 7; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+        if (i == 1) {
+          expect(
+            find.text('Đang chờ màn nhập mật khẩu ổn định…'),
+            findsOneWidget,
+          );
+        }
+        if (i == 3) {
+          expect(
+            find.text('Đã nhập mật khẩu, chờ trước khi đăng ký…'),
+            findsOneWidget,
+          );
+        }
       }
-      if (i == 3) {
-        expect(find.text('Đã nhập mật khẩu, chờ trước khi đăng ký…'),
-            findsOneWidget);
-      }
-    }
-    final sources = controller.sources
-        .where((source) => source.contains(autoSignupStepScript))
-        .toList();
-    expect(sources, hasLength(8));
-    expect(sources[2], contains('"allowOtpSubmit":false'));
-    expect(sources[2], contains('"allowPasswordSubmit":true'));
-    expect(sources[2], endsWith(', false);\n'));
-    expect(sources[6], contains('"allowPasswordSubmit":false'));
-    expect(sources[6], isNot(contains('"otpRequestedAt":null')));
-    expect(reader.requests, hasLength(1));
-    expect(find.text('Đăng ký TikTok thành công.'), findsOneWidget);
-    expect(find.text('Dừng'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      final sources = controller.sources
+          .where((source) => source.contains(autoSignupStepScript))
+          .toList();
+      expect(sources, hasLength(8));
+      expect(sources[2], contains('"allowOtpSubmit":false'));
+      expect(sources[2], contains('"allowPasswordSubmit":true'));
+      expect(sources[2], endsWith(', false);\n'));
+      expect(sources[6], contains('"allowPasswordSubmit":false'));
+      expect(sources[6], isNot(contains('"otpRequestedAt":null')));
+      expect(reader.requests, hasLength(1));
+      expect(find.text('Đăng ký TikTok thành công.'), findsOneWidget);
+      expect(find.text('Dừng'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
-      'login selects Email then requests API OTP only after TikTok feedback',
-      (tester) async {
-    final reader = _TestOtpReader();
-    final controller =
-        await _mountApiPage(tester, TikTokLaunchAction.login, reader, [
-      'submitted',
-      'email-verification-selected',
-      'requesting-verification',
-      'verification-requested',
-      'waiting-otp-paste',
-      'otp-submitted',
-      'login-success',
-    ]);
-    await tester.pump(const Duration(milliseconds: 2500));
-    await tester.pump();
-    for (var i = 0; i < 2; i++) {
+    'login selects Email then requests API OTP only after TikTok feedback',
+    (tester) async {
+      final reader = _TestOtpReader();
+      final controller =
+          await _mountApiPage(tester, TikTokLaunchAction.login, reader, [
+        'submitted',
+        'email-verification-selected',
+        'requesting-verification',
+        'verification-requested',
+        'waiting-otp-paste',
+        'otp-submitted',
+        'login-success',
+      ]);
+      await tester.pump(const Duration(milliseconds: 2500));
+      await tester.pump();
+      for (var i = 0; i < 2; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+        expect(reader.requests, isEmpty);
+      }
+      final waitingSource = controller.sources.lastWhere(
+        (s) => s.contains(autoLoginStepScript),
+      );
+      expect(
+        waitingSource,
+        isNot(contains('"emailVerificationRequestedAt":null')),
+      );
+      expect(waitingSource, contains('"otpRequestedAt":null'));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
+      expect(reader.requests, [('login@example.com', 'mail-secret')]);
+      reader.response.complete('012345');
+      await tester.pump();
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+      }
+      final source = controller.sources.lastWhere(
+        (s) => s.contains(autoLoginStepScript),
+      );
+      expect(source, contains('"otp":"012345"'));
+      expect(source, contains('"allowOtpSubmit":false'));
+      expect(reader.requests, hasLength(1));
+      expect(reader.closed, isTrue);
+      expect(find.text('Đăng nhập TikTok thành công.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'login waits for the result after OTP Next before reporting success',
+    (tester) async {
+      final reader = _TestOtpReader();
+      final controller = await _mountApiPage(
+        tester,
+        TikTokLaunchAction.login,
+        reader,
+        ['otp-submitted', 'waiting-result', 'login-success'],
+      );
+      await tester.pump(const Duration(milliseconds: 2500));
+      await tester.pump();
+      final params = tester
+          .widget<InAppWebView>(find.byType(InAppWebView))
+          .platform
+          .params;
+      final wrapped = InAppWebViewController.fromPlatform(platform: controller);
+      params.onLoadStart!.call(wrapped, controller.url);
+      params.onLoadStop!.call(wrapped, controller.url);
+      await tester.pump();
+      // Next can replace the document. Keep waiting for login confirmation,
+      // preserving the OTP submission guard across that navigation.
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(find.text('Dừng'), findsOneWidget);
+      expect(find.text('Đăng nhập TikTok thành công.'), findsNothing);
       expect(reader.requests, isEmpty);
-    }
-    final waitingSource =
-        controller.sources.lastWhere((s) => s.contains(autoLoginStepScript));
-    expect(
-        waitingSource, isNot(contains('"emailVerificationRequestedAt":null')));
-    expect(waitingSource, contains('"otpRequestedAt":null'));
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump();
-    expect(reader.requests, [('login@example.com', 'mail-secret')]);
-    reader.response.complete('012345');
-    await tester.pump();
-    for (var i = 0; i < 3; i++) {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
-    }
-    final source =
-        controller.sources.lastWhere((s) => s.contains(autoLoginStepScript));
-    expect(source, contains('"otp":"012345"'));
-    expect(source, contains('"allowOtpSubmit":false'));
-    expect(reader.requests, hasLength(1));
-    expect(reader.closed, isTrue);
-    expect(find.text('Đăng nhập TikTok thành công.'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      final sources = controller.sources
+          .where((source) => source.contains(autoLoginStepScript))
+          .toList();
+      expect(sources, hasLength(3));
+      expect(sources[1], contains('"allowOtpSubmit":false'));
+      expect(find.text('Đăng nhập TikTok thành công.'), findsOneWidget);
+      expect(find.text('Dừng'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
-      'login waits for the result after OTP Next before reporting success',
-      (tester) async {
-    final reader = _TestOtpReader();
-    final controller =
-        await _mountApiPage(tester, TikTokLaunchAction.login, reader, [
-      'otp-submitted',
-      'waiting-result',
-      'login-success',
-    ]);
-    await tester.pump(const Duration(milliseconds: 2500));
-    await tester.pump();
-    final params =
-        tester.widget<InAppWebView>(find.byType(InAppWebView)).platform.params;
-    final wrapped = InAppWebViewController.fromPlatform(platform: controller);
-    params.onLoadStart!.call(wrapped, controller.url);
-    params.onLoadStop!.call(wrapped, controller.url);
-    await tester.pump();
-    // Next can replace the document. Keep waiting for login confirmation,
-    // preserving the OTP submission guard across that navigation.
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump();
-    expect(find.text('Dừng'), findsOneWidget);
-    expect(find.text('Đăng nhập TikTok thành công.'), findsNothing);
-    expect(reader.requests, isEmpty);
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump();
-    final sources = controller.sources
-        .where((source) => source.contains(autoLoginStepScript))
-        .toList();
-    expect(sources, hasLength(3));
-    expect(sources[1], contains('"allowOtpSubmit":false'));
-    expect(find.text('Đăng nhập TikTok thành công.'), findsOneWidget);
-    expect(find.text('Dừng'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets(
-      'login stops without calling API when Email selection has no feedback',
-      (tester) async {
-    final reader = _TestOtpReader();
-    await _mountApiPage(tester, TikTokLaunchAction.login, reader, [
-      'submitted',
-      'email-verification-selected',
-      'verification-request-failed',
-    ]);
-    await tester.pump(const Duration(milliseconds: 2500));
-    await tester.pump();
-    for (var i = 0; i < 2; i++) {
-      await tester.pump(const Duration(milliseconds: 300));
+    'login stops without calling API when Email selection has no feedback',
+    (tester) async {
+      final reader = _TestOtpReader();
+      await _mountApiPage(tester, TikTokLaunchAction.login, reader, [
+        'submitted',
+        'email-verification-selected',
+        'verification-request-failed',
+      ]);
+      await tester.pump(const Duration(milliseconds: 2500));
       await tester.pump();
-    }
-    expect(reader.requests, isEmpty);
-    expect(
+      for (var i = 0; i < 2; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+      }
+      expect(reader.requests, isEmpty);
+      expect(
         find.textContaining('TikTok chưa xác nhận gửi mã sau khi chọn Email.'),
-        findsOneWidget);
-    expect(find.text('Dừng'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+        findsOneWidget,
+      );
+      expect(find.text('Dừng'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
-      'shows backend account errors on a manual tap and preserves the rate limit',
-      (tester) async {
-    final reader = _TestOtpReader();
-    final controller = await _mountApiPage(tester, TikTokLaunchAction.signup,
-        reader, List.generate(10, (_) => 'requesting-verification'));
-    await tester.pump(const Duration(milliseconds: 2600));
-    final params =
-        tester.widget<InAppWebView>(find.byType(InAppWebView)).platform.params;
-    final wrapped = InAppWebViewController.fromPlatform(platform: controller);
-    params.onConsoleMessage!(wrapped,
-        ConsoleMessage(message: 'Login: account-api error: [7] unknown.'));
-    await tester.pump();
-    expect(find.byKey(const Key('accountFailureBanner')), findsOneWidget);
-    expect(find.textContaining('mã 7'), findsOneWidget);
-    expect(find.text('Dừng'), findsNothing);
-    expect(reader.requests, isEmpty);
-    params.onConsoleMessage!(
+    'shows backend account errors on a manual tap and preserves the rate limit',
+    (tester) async {
+      final reader = _TestOtpReader();
+      final controller = await _mountApiPage(
+        tester,
+        TikTokLaunchAction.signup,
+        reader,
+        List.generate(10, (_) => 'requesting-verification'),
+      );
+      await tester.pump(const Duration(milliseconds: 2600));
+      final params = tester
+          .widget<InAppWebView>(find.byType(InAppWebView))
+          .platform
+          .params;
+      final wrapped = InAppWebViewController.fromPlatform(platform: controller);
+      params.onConsoleMessage!(
+        wrapped,
+        ConsoleMessage(message: 'Login: account-api error: [7] unknown.'),
+      );
+      await tester.pump();
+      expect(find.byKey(const Key('accountFailureBanner')), findsOneWidget);
+      expect(find.textContaining('mã 7'), findsOneWidget);
+      expect(find.text('Dừng'), findsNothing);
+      expect(reader.requests, isEmpty);
+      params.onConsoleMessage!(
         wrapped,
         ConsoleMessage(
-            message:
-                'Error: Maximum number of attempts reached. Try again later. get region err'));
-    await tester.pump();
-    expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
-    params.onConsoleMessage!(
-        wrapped, ConsoleMessage(message: 'Login: email bind failed: 7 ().'));
-    await tester.pump();
-    expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 2));
-    expect(reader.requests, isEmpty);
-    expect(find.textContaining('Chưa hoàn tất đăng ký'), findsNothing);
-  });
+          message:
+              'Error: Maximum number of attempts reached. Try again later. get region err',
+        ),
+      );
+      await tester.pump();
+      expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+      params.onConsoleMessage!(
+        wrapped,
+        ConsoleMessage(message: 'Login: email bind failed: 7 ().'),
+      );
+      await tester.pump();
+      expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      expect(reader.requests, isEmpty);
+      expect(find.textContaining('Chưa hoàn tất đăng ký'), findsNothing);
+    },
+  );
 
   testWidgets(
-      'backend account failure cancels pending OTP and ignores its late result',
-      (tester) async {
-    final reader = _TestOtpReader();
-    final controller = await _mountApiPage(tester, TikTokLaunchAction.signup,
-        reader, List.generate(10, (_) => 'otp-required'));
-    await tester.pump(const Duration(milliseconds: 2600));
-    expect(reader.requests, hasLength(1));
-    final params =
-        tester.widget<InAppWebView>(find.byType(InAppWebView)).platform.params;
-    params.onConsoleMessage!(
+    'backend account failure cancels pending OTP and ignores its late result',
+    (tester) async {
+      final reader = _TestOtpReader();
+      final controller = await _mountApiPage(
+        tester,
+        TikTokLaunchAction.signup,
+        reader,
+        List.generate(10, (_) => 'otp-required'),
+      );
+      await tester.pump(const Duration(milliseconds: 2600));
+      expect(reader.requests, hasLength(1));
+      final params = tester
+          .widget<InAppWebView>(find.byType(InAppWebView))
+          .platform
+          .params;
+      params.onConsoleMessage!(
         InAppWebViewController.fromPlatform(platform: controller),
         ConsoleMessage(
-            message:
-                'Error: Maximum number of attempts reached. Try again later. get region err'));
-    await tester.pump();
-    expect(reader.closed, isTrue);
-    final calls = controller.sources
-        .where((s) => s.contains(autoSignupStepScript))
-        .length;
-    reader.response.complete('012345');
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
-    expect(controller.sources.where((s) => s.contains(autoSignupStepScript)),
-        hasLength(calls));
-    expect(find.text('Dừng'), findsNothing);
-    expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
-  });
+          message:
+              'Error: Maximum number of attempts reached. Try again later. get region err',
+        ),
+      );
+      await tester.pump();
+      expect(reader.closed, isTrue);
+      final calls = controller.sources
+          .where((s) => s.contains(autoSignupStepScript))
+          .length;
+      reader.response.complete('012345');
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      expect(
+        controller.sources.where((s) => s.contains(autoSignupStepScript)),
+        hasLength(calls),
+      );
+      expect(find.text('Dừng'), findsNothing);
+      expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
+    },
+  );
 
   for (final action in [TikTokLaunchAction.signup, TikTokLaunchAction.login]) {
-    testWidgets('inline rate limit stops $action and cancels pending OTP',
-        (tester) async {
+    testWidgets('inline rate limit stops $action and cancels pending OTP', (
+      tester,
+    ) async {
       final reader = _TestOtpReader();
-      final controller = await _mountApiPage(tester, action, reader,
-          ['otp-required', 'account-rate-limited', 'submitted']);
+      final controller = await _mountApiPage(tester, action, reader, [
+        'otp-required',
+        'account-rate-limited',
+        'submitted',
+      ]);
       await tester.pump(const Duration(milliseconds: 2600));
       await tester.pump();
       expect(reader.requests, hasLength(1));
@@ -846,7 +917,9 @@ void main() {
       expect(reader.closed, isTrue);
       expect(find.text('TikTok đang giới hạn số lần thử'), findsOneWidget);
       expect(
-          find.byKey(const Key('returnAccountConfiguration')), findsOneWidget);
+        find.byKey(const Key('returnAccountConfiguration')),
+        findsOneWidget,
+      );
       expect(find.text('Dừng'), findsNothing);
       reader.response.complete('012345');
       await tester.pump(const Duration(seconds: 5));
@@ -859,10 +932,16 @@ void main() {
     });
   }
 
-  testWidgets('account failure offers a return to the configuration route',
-      (tester) async {
-    await _mountApiPage(tester, TikTokLaunchAction.signup, _TestOtpReader(),
-        ['account-rate-limited'],
+  testWidgets('account failure offers a return to the configuration route', (
+    tester,
+  ) async {
+    await _mountApiPage(
+        tester,
+        TikTokLaunchAction.signup,
+        _TestOtpReader(),
+        [
+          'account-rate-limited',
+        ],
         routed: true);
     await tester.pump(const Duration(milliseconds: 2600));
     await tester.pump();
@@ -874,8 +953,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('signup waits for Send code feedback before requesting API OTP',
-      (tester) async {
+  testWidgets('signup waits for Send code feedback before requesting API OTP', (
+    tester,
+  ) async {
     final reader = _TestOtpReader();
     final controller =
         await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
@@ -896,9 +976,11 @@ void main() {
     expect(reader.requests, [('signup@example.com', 'mail-secret')]);
     expect(find.textContaining('Đang chờ API lấy OTP'), findsOneWidget);
     expect(
-        controller.sources
-            .where((source) => source.contains(autoSignupStepScript)),
-        hasLength(3));
+      controller.sources.where(
+        (source) => source.contains(autoSignupStepScript),
+      ),
+      hasLength(3),
+    );
     await tester.tap(find.text('Dừng'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 2600));
@@ -906,61 +988,73 @@ void main() {
   });
 
   testWidgets(
-      'signup stops with a Send code error without starting the OTP API',
-      (tester) async {
-    final reader = _TestOtpReader();
-    await _mountApiPage(tester, TikTokLaunchAction.signup, reader,
-        ['requesting-verification', 'verification-request-failed']);
-    await tester.pump(const Duration(milliseconds: 2600));
-    await tester.pump();
-    expect(find.text('Đang chờ TikTok xác nhận gửi mã…'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 2600));
-    await tester.pump();
-    expect(reader.requests, isEmpty);
-    expect(find.textContaining('TikTok chưa xác nhận gửi mã'), findsOneWidget);
-    expect(find.text('Dừng'), findsNothing);
-  });
+    'signup stops with a Send code error without starting the OTP API',
+    (tester) async {
+      final reader = _TestOtpReader();
+      await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
+        'requesting-verification',
+        'verification-request-failed',
+      ]);
+      await tester.pump(const Duration(milliseconds: 2600));
+      await tester.pump();
+      expect(find.text('Đang chờ TikTok xác nhận gửi mã…'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 2600));
+      await tester.pump();
+      expect(reader.requests, isEmpty);
+      expect(
+        find.textContaining('TikTok chưa xác nhận gửi mã'),
+        findsOneWidget,
+      );
+      expect(find.text('Dừng'), findsNothing);
+    },
+  );
 
   testWidgets(
-      'signup continues through delayed username Skip before reporting success',
-      (tester) async {
-    final reader = _TestOtpReader();
-    final controller =
-        await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
-      'otp-submitted',
-      'password-submitted',
-      'waiting-username-skip',
-      'username-skipped',
-      'signup-success',
-    ]);
-    await tester.pump(const Duration(milliseconds: 2600));
-    await tester.pump();
-    for (var i = 0; i < 2; i++) {
+    'signup continues through delayed username Skip before reporting success',
+    (tester) async {
+      final reader = _TestOtpReader();
+      final controller =
+          await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
+        'otp-submitted',
+        'password-submitted',
+        'waiting-username-skip',
+        'username-skipped',
+        'signup-success',
+      ]);
+      await tester.pump(const Duration(milliseconds: 2600));
+      await tester.pump();
+      for (var i = 0; i < 2; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+      }
+      expect(
+        find.text('Đang chờ trước khi bỏ qua tạo tên người dùng…'),
+        findsOneWidget,
+      );
+      expect(find.text('Dừng'), findsOneWidget);
+      expect(find.text('Đăng ký TikTok thành công.'), findsNothing);
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
-    }
-    expect(find.text('Đang chờ trước khi bỏ qua tạo tên người dùng…'),
-        findsOneWidget);
-    expect(find.text('Dừng'), findsOneWidget);
-    expect(find.text('Đăng ký TikTok thành công.'), findsNothing);
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump();
-    expect(
-        find.text('Đã bấm Skip, đang chờ hoàn tất đăng ký…'), findsOneWidget);
-    expect(find.text('Dừng'), findsOneWidget);
-    expect(find.text('Đăng ký TikTok thành công.'), findsNothing);
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump();
-    expect(find.text('Đăng ký TikTok thành công.'), findsOneWidget);
-    expect(find.text('Dừng'), findsNothing);
-    final sources = controller.sources
-        .where((source) => source.contains(autoSignupStepScript));
-    expect(sources, hasLength(5));
-    expect(sources.last, contains('"allowPasswordSubmit":false'));
-    expect(sources.last, contains('"allowOtpSubmit":false'));
-    expect(reader.requests, isEmpty);
-    expect(tester.takeException(), isNull);
-  });
+      expect(
+        find.text('Đã bấm Skip, đang chờ hoàn tất đăng ký…'),
+        findsOneWidget,
+      );
+      expect(find.text('Dừng'), findsOneWidget);
+      expect(find.text('Đăng ký TikTok thành công.'), findsNothing);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(find.text('Đăng ký TikTok thành công.'), findsOneWidget);
+      expect(find.text('Dừng'), findsNothing);
+      final sources = controller.sources.where(
+        (source) => source.contains(autoSignupStepScript),
+      );
+      expect(sources, hasLength(5));
+      expect(sources.last, contains('"allowPasswordSubmit":false'));
+      expect(sources.last, contains('"allowOtpSubmit":false'));
+      expect(reader.requests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final action in [TikTokLaunchAction.login, TikTokLaunchAction.signup]) {
     testWidgets('$action keeps polling after requesting OTP', (tester) async {
@@ -990,12 +1084,17 @@ void main() {
           .widget<InAppWebView>(find.byType(InAppWebView))
           .platform
           .params;
-      final controller = _TestController(WebUri(page.initialUrl), steps: [
-        'verification-requested',
-        'waiting-otp',
-        'otp-submitted',
-        action == TikTokLaunchAction.login ? 'login-success' : 'signup-success',
-      ]);
+      final controller = _TestController(
+        WebUri(page.initialUrl),
+        steps: [
+          'verification-requested',
+          'waiting-otp',
+          'otp-submitted',
+          action == TikTokLaunchAction.login
+              ? 'login-success'
+              : 'signup-success',
+        ],
+      );
       final wrapped = InAppWebViewController.fromPlatform(platform: controller);
       params.onWebViewCreated!.call(wrapped);
       params.onLoadStop!.call(wrapped, controller.url);
@@ -1007,110 +1106,131 @@ void main() {
       final step = action == TikTokLaunchAction.login
           ? autoLoginStepScript
           : autoSignupStepScript;
-      final sources =
-          controller.sources.where((source) => source.contains(step));
+      final sources = controller.sources.where(
+        (source) => source.contains(step),
+      );
       expect(sources, hasLength(4));
       expect(
-          sources.first,
-          contains(
-              '"otp":"${action == TikTokLaunchAction.login ? '654321' : '012345'}"'));
+        sources.first,
+        contains(
+          '"otp":"${action == TikTokLaunchAction.login ? '654321' : '012345'}"',
+        ),
+      );
       expect(sources.first, contains('"otpRequestedAt":null'));
       expect(sources.elementAt(1), isNot(contains('"otpRequestedAt":null')));
       expect(sources.last, contains('"allowOtpSubmit":false'));
       expect(
-          find.text(action == TikTokLaunchAction.login
+        find.text(
+          action == TikTokLaunchAction.login
               ? 'Đăng nhập TikTok thành công.'
-              : 'Đăng ký TikTok thành công.'),
-          findsOneWidget);
+              : 'Đăng ký TikTok thành công.',
+        ),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }
 
   for (final action in [TikTokLaunchAction.login, TikTokLaunchAction.signup]) {
     testWidgets(
-        '$action fetches OTP once after request and pastes the API code',
-        (tester) async {
-      final reader = _TestOtpReader();
-      final clipboard = <String>[];
-      tester.binding.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-        if (call.method == 'Clipboard.setData') {
-          clipboard.add(call.arguments['text'] as String);
-        }
-        return null;
-      });
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        const MethodChannel('test_tiktok/comment_input'),
-        (call) async => true,
-      );
-      addTearDown(() {
-        tester.binding.defaultBinaryMessenger
-            .setMockMethodCallHandler(SystemChannels.platform, null);
+      '$action fetches OTP once after request and pastes the API code',
+      (tester) async {
+        final reader = _TestOtpReader();
+        final clipboard = <String>[];
         tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-            const MethodChannel('test_tiktok/comment_input'), null);
-      });
-      final controller = await _mountApiPage(tester, action, reader, [
-        'waiting-form',
-        'verification-requested',
-        ...List.generate(400, (_) => 'otp-required'),
-      ]);
-      await tester.pump(const Duration(milliseconds: 2600));
-      expect(reader.requests, isEmpty);
-      await tester.pump(const Duration(milliseconds: 2600));
-      expect(reader.requests, [
-        (
-          action == TikTokLaunchAction.login
-              ? 'login@example.com'
-              : 'signup@example.com',
-          'mail-secret'
-        )
-      ]);
-      await tester.pump(const Duration(seconds: 60));
-      await tester.pump(const Duration(seconds: 60));
-      expect(reader.requests, hasLength(1));
-      expect(find.text('Dừng'), findsOneWidget);
-      reader.response.complete('012345');
-      controller.steps!
-        ..clear()
-        ..addAll([
-          'waiting-otp-paste',
-          'otp-submitted',
-          action == TikTokLaunchAction.login
-              ? 'login-success'
-              : 'signup-success'
+          SystemChannels.platform,
+          (call) async {
+            if (call.method == 'Clipboard.setData') {
+              clipboard.add(call.arguments['text'] as String);
+            }
+            return null;
+          },
+        );
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('test_tiktok/comment_input'),
+          (call) async => true,
+        );
+        addTearDown(() {
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          );
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            const MethodChannel('test_tiktok/comment_input'),
+            null,
+          );
+        });
+        final controller = await _mountApiPage(tester, action, reader, [
+          'waiting-form',
+          'verification-requested',
+          ...List.generate(400, (_) => 'otp-required'),
         ]);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      final step = action == TikTokLaunchAction.login
-          ? autoLoginStepScript
-          : autoSignupStepScript;
-      final source =
-          controller.sources.lastWhere((source) => source.contains(step));
-      expect(source, contains('"otp":"012345"'));
-      expect(source, isNot(contains('mail-secret')));
-      expect(source, isNot(contains('test-reader-token')));
-      final handler = controller.handlers[action == TikTokLaunchAction.login
-          ? 'FlutterLoginPaste'
-          : 'FlutterSignupPaste']!;
-      expect(await handler([1, 'otp']), true);
-      expect(clipboard, ['012345']);
-      for (var i = 0; i < 2; i++) {
-        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 2600));
+        expect(reader.requests, isEmpty);
+        await tester.pump(const Duration(milliseconds: 2600));
+        expect(reader.requests, [
+          (
+            action == TikTokLaunchAction.login
+                ? 'login@example.com'
+                : 'signup@example.com',
+            'mail-secret',
+          ),
+        ]);
+        await tester.pump(const Duration(seconds: 60));
+        await tester.pump(const Duration(seconds: 60));
+        expect(reader.requests, hasLength(1));
+        expect(find.text('Dừng'), findsOneWidget);
+        reader.response.complete('012345');
+        controller.steps!
+          ..clear()
+          ..addAll([
+            'waiting-otp-paste',
+            'otp-submitted',
+            action == TikTokLaunchAction.login
+                ? 'login-success'
+                : 'signup-success',
+          ]);
         await tester.pump();
-      }
-      expect(reader.requests, hasLength(1));
-      expect(reader.closed, isTrue);
-      expect(
-          find.text(action == TikTokLaunchAction.login
-              ? 'Đăng nhập TikTok thành công.'
-              : 'Đăng ký TikTok thành công.'),
-          findsOneWidget);
-    });
+        await tester.pump(const Duration(milliseconds: 300));
+        final step = action == TikTokLaunchAction.login
+            ? autoLoginStepScript
+            : autoSignupStepScript;
+        final source = controller.sources.lastWhere(
+          (source) => source.contains(step),
+        );
+        expect(source, contains('"otp":"012345"'));
+        expect(source, isNot(contains('mail-secret')));
+        expect(source, isNot(contains('test-reader-token')));
+        final handler = controller.handlers[action == TikTokLaunchAction.login
+            ? 'FlutterLoginPaste'
+            : 'FlutterSignupPaste']!;
+        expect(await handler([1, 'otp']), true);
+        expect(clipboard, ['012345']);
+        for (var i = 0; i < 2; i++) {
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.pump();
+        }
+        expect(reader.requests, hasLength(1));
+        expect(reader.closed, isTrue);
+        expect(
+          find.text(
+            action == TikTokLaunchAction.login
+                ? 'Đăng nhập TikTok thành công.'
+                : 'Đăng ký TikTok thành công.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('$action ignores an API response after Stop', (tester) async {
       final reader = _TestOtpReader();
       final controller = await _mountApiPage(
-          tester, action, reader, List.generate(10, (_) => 'otp-required'));
+        tester,
+        action,
+        reader,
+        List.generate(10, (_) => 'otp-required'),
+      );
       await tester.pump(const Duration(milliseconds: 2600));
       expect(reader.requests, hasLength(1));
       await tester.tap(find.text('Dừng'));
@@ -1124,22 +1244,28 @@ void main() {
       reader.response.complete('012345');
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
-      expect(controller.sources.where((source) => source.contains(step)),
-          hasLength(evaluated));
+      expect(
+        controller.sources.where((source) => source.contains(step)),
+        hasLength(evaluated),
+      );
       final handler = controller.handlers[action == TikTokLaunchAction.login
           ? 'FlutterLoginPaste'
           : 'FlutterSignupPaste']!;
       expect(await handler([1, 'otp']), false);
     });
 
-    testWidgets('$action reports an API error without entering an OTP',
-        (tester) async {
+    testWidgets('$action reports an API error without entering an OTP', (
+      tester,
+    ) async {
       final reader = _TestOtpReader();
-      final controller = await _mountApiPage(
-          tester, action, reader, ['verification-requested', 'otp-required']);
+      final controller = await _mountApiPage(tester, action, reader, [
+        'verification-requested',
+        'otp-required',
+      ]);
       await tester.pump(const Duration(milliseconds: 2600));
-      reader.response
-          .completeError(const OtpApiException('API chưa tìm thấy mã.'));
+      reader.response.completeError(
+        const OtpApiException('API chưa tìm thấy mã.'),
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 2600));
       await tester.pump();
@@ -1148,24 +1274,32 @@ void main() {
       final step = action == TikTokLaunchAction.login
           ? autoLoginStepScript
           : autoSignupStepScript;
-      expect(controller.sources.where((source) => source.contains(step)),
-          hasLength(1));
+      expect(
+        controller.sources.where((source) => source.contains(step)),
+        hasLength(1),
+      );
     });
 
-    testWidgets('$action still detects CAPTCHA while API is pending',
-        (tester) async {
+    testWidgets('$action still detects CAPTCHA while API is pending', (
+      tester,
+    ) async {
       final reader = _TestOtpReader();
-      await _mountApiPage(tester, action, reader,
-          ['verification-requested', 'verification-required']);
+      await _mountApiPage(tester, action, reader, [
+        'verification-requested',
+        'verification-required',
+      ]);
       await tester.pump(const Duration(milliseconds: 2600));
       await tester.pump(const Duration(milliseconds: 2600));
       await tester.pump();
       expect(reader.closed, isTrue);
       expect(
-          find.text(action == TikTokLaunchAction.login
+        find.text(
+          action == TikTokLaunchAction.login
               ? 'TikTok yêu cầu CAPTCHA hoặc mã xác minh. Hãy hoàn tất trên trang đăng nhập.'
-              : 'TikTok yêu cầu CAPTCHA hoặc mã xác minh. Hãy hoàn tất trên trang đăng ký.'),
-          findsOneWidget);
+              : 'TikTok yêu cầu CAPTCHA hoặc mã xác minh. Hãy hoàn tất trên trang đăng ký.',
+        ),
+        findsOneWidget,
+      );
       reader.response.complete('012345');
       await tester.pump();
     });
@@ -1174,36 +1308,45 @@ void main() {
   for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
     for (final action in [
       TikTokLaunchAction.login,
-      TikTokLaunchAction.signup
+      TikTokLaunchAction.signup,
     ]) {
-      testWidgets('$platform $action pastes credentials and OTP natively',
-          (tester) async {
+      testWidgets('$platform $action pastes credentials and OTP natively', (
+        tester,
+      ) async {
         debugDefaultTargetPlatformOverride = platform;
         final previousPlatform = InAppWebViewPlatform.instance;
         InAppWebViewPlatform.instance = _TestWebViewPlatform();
         final clipboard = <String>[];
         final nativePastes = <MethodCall>[];
-        tester.binding.defaultBinaryMessenger
-            .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-          if (call.method == 'Clipboard.setData') {
-            clipboard.add(call.arguments['text'] as String);
-          }
-          return null;
-        });
         tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-            const MethodChannel('test_tiktok/comment_input'), (call) async {
-          nativePastes.add(call);
-          return true;
-        });
+          SystemChannels.platform,
+          (call) async {
+            if (call.method == 'Clipboard.setData') {
+              clipboard.add(call.arguments['text'] as String);
+            }
+            return null;
+          },
+        );
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('test_tiktok/comment_input'),
+          (call) async {
+            nativePastes.add(call);
+            return true;
+          },
+        );
         addTearDown(() {
           debugDefaultTargetPlatformOverride = null;
           if (previousPlatform != null) {
             InAppWebViewPlatform.instance = previousPlatform;
           }
-          tester.binding.defaultBinaryMessenger
-              .setMockMethodCallHandler(SystemChannels.platform, null);
           tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-              const MethodChannel('test_tiktok/comment_input'), null);
+            SystemChannels.platform,
+            null,
+          );
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            const MethodChannel('test_tiktok/comment_input'),
+            null,
+          );
         });
         final signup = action == TikTokLaunchAction.signup;
         final page = TikTokPage(
@@ -1225,10 +1368,13 @@ void main() {
             .widget<InAppWebView>(find.byType(InAppWebView))
             .platform
             .params;
-        final controller = _TestController(WebUri(page.initialUrl),
-            steps: List.generate(10, (_) => 'waiting-paste'));
-        final wrapped =
-            InAppWebViewController.fromPlatform(platform: controller);
+        final controller = _TestController(
+          WebUri(page.initialUrl),
+          steps: List.generate(10, (_) => 'waiting-paste'),
+        );
+        final wrapped = InAppWebViewController.fromPlatform(
+          platform: controller,
+        );
         params.onWebViewCreated!.call(wrapped);
         params.onLoadStop!.call(wrapped, controller.url);
         await tester.pump();
@@ -1247,15 +1393,18 @@ void main() {
           expect(await paste([1, field]), true);
         }
         expect(
-            clipboard,
-            signup
-                ? ['signup@example.com', 'signup-secret', '012345']
-                : ['login-user', 'login-secret', '654321']);
+          clipboard,
+          signup
+              ? ['signup@example.com', 'signup-secret', '012345']
+              : ['login-user', 'login-secret', '654321'],
+        );
         expect(nativePastes, hasLength(3));
         for (final call in nativePastes) {
           expect(call.method, 'paste');
-          expect(call.arguments,
-              {'context': signup ? 'signup' : 'login', 'attempt': 1});
+          expect(call.arguments, {
+            'context': signup ? 'signup' : 'login',
+            'attempt': 1,
+          });
         }
         await tester.pumpWidget(const SizedBox());
         await tester.pump(const Duration(milliseconds: 2600));
@@ -1275,9 +1424,13 @@ Future<void> _selectHomeTab(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
-Future<_TestController> _mountApiPage(WidgetTester tester,
-    TikTokLaunchAction action, _TestOtpReader reader, List<String> steps,
-    {bool routed = false}) async {
+Future<_TestController> _mountApiPage(
+  WidgetTester tester,
+  TikTokLaunchAction action,
+  _TestOtpReader reader,
+  List<String> steps, {
+  bool routed = false,
+}) async {
   final previousPlatform = InAppWebViewPlatform.instance;
   InAppWebViewPlatform.instance = _TestWebViewPlatform();
   addTearDown(() {
@@ -1299,18 +1452,24 @@ Future<_TestController> _mountApiPage(WidgetTester tester,
       birthday: DateTime(2000, 2, 29),
       comments: [],
       otpApi: OtpApiConfiguration(
-          url: Uri.parse('https://example.com/api/code'),
-          readerToken: 'test-reader-token'),
+        url: Uri.parse('https://example.com/api/code'),
+        readerToken: 'test-reader-token',
+      ),
     ),
   );
   if (routed) {
     final navigator = GlobalKey<NavigatorState>();
-    await tester.pumpWidget(MaterialApp(
-      navigatorKey: navigator,
-      home: const Scaffold(body: Text('Thông tin cấu hình')),
-    ));
-    unawaited(navigator.currentState!
-        .push(MaterialPageRoute<void>(builder: (_) => page)));
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        home: const Scaffold(body: Text('Thông tin cấu hình')),
+      ),
+    );
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(builder: (_) => page),
+      ),
+    );
     await tester.pumpAndSettle();
   } else {
     await tester.pumpWidget(MaterialApp(home: page));
@@ -1343,7 +1502,8 @@ class _TestOtpReader implements OtpCodeReader {
 class _TestController extends PlatformInAppWebViewController {
   _TestController(this.url, {this.steps})
       : super.implementation(
-            const PlatformInAppWebViewControllerCreationParams(id: 0));
+          const PlatformInAppWebViewControllerCreationParams(id: 0),
+        );
 
   final WebUri url;
   final List<String>? steps;
@@ -1353,10 +1513,11 @@ class _TestController extends PlatformInAppWebViewController {
   final loads = <URLRequest>[];
 
   @override
-  Future<void> loadUrl(
-      {required URLRequest urlRequest,
-      Uri? iosAllowingReadAccessTo,
-      WebUri? allowingReadAccessTo}) async {
+  Future<void> loadUrl({
+    required URLRequest urlRequest,
+    Uri? iosAllowingReadAccessTo,
+    WebUri? allowingReadAccessTo,
+  }) async {
     loads.add(urlRequest);
   }
 
@@ -1364,15 +1525,18 @@ class _TestController extends PlatformInAppWebViewController {
   Future<WebUri?> getUrl() async => url;
 
   @override
-  void addJavaScriptHandler(
-      {required String handlerName,
-      required JavaScriptHandlerCallback callback}) {
+  void addJavaScriptHandler({
+    required String handlerName,
+    required JavaScriptHandlerCallback callback,
+  }) {
     handlers[handlerName] = callback;
   }
 
   @override
-  Future<dynamic> evaluateJavascript(
-      {required String source, ContentWorld? contentWorld}) async {
+  Future<dynamic> evaluateJavascript({
+    required String source,
+    ContentWorld? contentWorld,
+  }) async {
     sources.add(source);
     if (source.contains('?.canPasteFromClipboard(')) return allowAccountPaste;
     if ((source.contains(autoLoginStepScript) ||

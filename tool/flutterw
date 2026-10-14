@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Select this project's SDK without changing the machine's PATH or older SDK.
+# Set FLUTTER_SDK_PATH on machines with a different SDK installation directory.
+project_flutter_sdk="${FLUTTER_SDK_PATH:-$HOME/Documents/development/new/flutter}"
+if [[ ! -x "$project_flutter_sdk/bin/flutter" ]]; then
+  printf '%s\n' 'Flutter SDK not found. Set FLUTTER_SDK_PATH to Flutter 3.41.8 or newer.' >&2
+  exit 1
+fi
+exec "$project_flutter_sdk/bin/flutter" "$@"

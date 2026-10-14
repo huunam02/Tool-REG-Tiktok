@@ -29,18 +29,18 @@ void main() {
       final login = logic.autoLogin();
       await tester.pump();
 
-      Future<void> step(String result, int seconds, {bool fast = true}) async {
+      Future<void> step(String result, int seconds) async {
         webView.nextStep = result;
         now = started.add(Duration(seconds: seconds));
-        await tester.pump(fast
-            ? const Duration(milliseconds: 300)
-            : const Duration(milliseconds: 2500));
+        // Advance through the full randomized 2-10s polling interval. The
+        // controller's deadline clock remains the explicit `now` above.
+        await tester.pump(const Duration(seconds: 10));
         await tester.pump();
       }
 
-      await step('waiting-paste', submittedAt - 3, fast: false);
+      await step('waiting-paste', submittedAt - 3);
       expect(logic.autoLoginBusy, isTrue);
-      await step('submitted', submittedAt, fast: false);
+      await step('submitted', submittedAt);
       await step('waiting-result', submittedAt + 4);
       expect(logic.autoLoginBusy, isTrue);
       expect(reader.requests, isEmpty);
@@ -81,14 +81,14 @@ void main() {
     final login = logic.autoLogin();
     await tester.pump();
     now = started.add(const Duration(seconds: 40));
-    await tester.pump(const Duration(milliseconds: 2500));
+    await tester.pump(const Duration(seconds: 10));
     await tester.pump();
     now = started.add(const Duration(seconds: 80));
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(seconds: 10));
     await tester.pump();
     expect(logic.autoLoginBusy, isTrue);
     now = started.add(const Duration(seconds: 86));
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(seconds: 10));
     await tester.pump();
     expect(logic.autoLoginBusy, isFalse);
     expect(reader.requests, isEmpty);

@@ -16,7 +16,7 @@ class EditProxyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ProxyForm(
         entry: entry,
-        title: 'Sửa proxy',
+        title: 'Sửa cấu hình',
         submitLabel: 'Lưu thay đổi',
         randomizeOnOpen: false,
         generateUserAgent: generateUserAgent,

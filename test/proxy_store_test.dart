@@ -5,6 +5,7 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
+import 'package:test_tiktok/core/configuration_data.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -14,9 +15,10 @@ void main() {
   var nextAgent = 0;
 
   ProxyStore openStore() => ProxyStore(
-      factory: databaseFactoryFfi,
-      databasePath: filename,
-      selectUserAgent: () async => 'test-user-agent-${nextAgent++}');
+        factory: databaseFactoryFfi,
+        databasePath: filename,
+        selectUserAgent: () async => 'test-user-agent-${nextAgent++}',
+      );
 
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('proxy_store_test_');
@@ -30,229 +32,494 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  test('current proxy, credentials and named list survive reopening SQLite',
+  test(
+    'one table stores camelCase account status and metadata edits update the active row',
+    () async {
+      const account = AccountCredentials(
+        email: 'person@example.com',
+        password: 'tiktok',
+        mailboxPassword: 'mailbox',
+      );
+      final proxy = WebViewProxy.parse('192.0.2.7:8080')!;
+      final id = await store.save(
+        name: account.email,
+        proxy: proxy,
+        account: account,
+      );
+      await store.useSaved(id);
+      expect(
+        (await store.getCurrentProfile())!.statusAccount,
+        AccountStatus.unregistered,
+      );
+      await store.save(
+        id: id,
+        name: account.email,
+        proxy: proxy,
+        account: account,
+        statusAccount: AccountStatus.registered,
+      );
+      expect(
+        (await store.getCurrentProfile())!.statusAccount,
+        AccountStatus.registered,
+      );
+      await store.close();
+      final db = await databaseFactoryFfi.openDatabase(filename);
+      final tables = await db.query(
+        'sqlite_master',
+        columns: ['name'],
+        where:
+            "type = 'table' AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata'",
+      );
+      expect(tables.map((e) => e['name']), ['configurations']);
+      final columns = await db.rawQuery('PRAGMA table_info(configurations)');
+      expect(columns.map((e) => e['name']), contains('statusAccount'));
+      expect(columns.map((e) => e['name']), isNot(contains('statusaccount')));
+      expect(await db.query('configurations'), hasLength(1));
+      await db.close();
+      store = openStore();
+      expect(
+        (await store.getCurrentProfile())!.statusAccount,
+        AccountStatus.registered,
+      );
+      await store.save(
+        id: id,
+        name: account.email,
+        proxy: proxy,
+        statusAccount: AccountStatus.unregistered,
+      );
+      expect(
+        (await store.getCurrentProfile())!.statusAccount,
+        AccountStatus.unregistered,
+      );
+    },
+  );
+
+  test(
+    'migrates the earlier single-table status spelling without losing the selected account',
+    () async {
+      final db = await databaseFactoryFfi.openDatabase(
+        filename,
+        options: OpenDatabaseOptions(
+          version: 5,
+          onCreate: (db, _) async {
+            await db.execute(
+              "CREATE TABLE configurations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
+              'url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, user_agent TEXT NOT NULL, '
+              "account_email TEXT NOT NULL DEFAULT '', account_password TEXT NOT NULL DEFAULT '', "
+              "mailbox_password TEXT NOT NULL DEFAULT '', statusaccount TEXT NOT NULL DEFAULT 'unregistered', "
+              'has_been_used INTEGER NOT NULL DEFAULT 0, listed INTEGER NOT NULL DEFAULT 1, is_current INTEGER NOT NULL DEFAULT 0)',
+            );
+          },
+        ),
+      );
+      await db.insert('configurations', {
+        'name': 'Existing',
+        'url': 'http://192.0.2.7:8080',
+        'username': 'user',
+        'password': 'pass',
+        'user_agent': 'agent',
+        'account_email': 'person@example.com',
+        'account_password': 'tiktok',
+        'mailbox_password': 'mailbox',
+        'statusaccount': 'registered',
+        'is_current': 1,
+        'has_been_used': 1,
+      });
+      await db.close();
+      final current = (await store.getCurrentProfile())!;
+      expect(current.account!.email, 'person@example.com');
+      expect(current.account!.password, 'tiktok');
+      expect(current.account!.mailboxPassword, 'mailbox');
+      expect(current.statusAccount, AccountStatus.registered);
+      expect(
+        (await store.list()).single.statusAccount,
+        AccountStatus.registered,
+      );
+    },
+  );
+
+  test(
+    'two accounts on one proxy remain independent and survive reopening',
+    () async {
+      final proxy = WebViewProxy.parse(
+        '192.0.2.7:6149',
+        username: 'proxy-user',
+        password: 'proxy-pass',
+      )!;
+      const first = AccountCredentials(
+        email: 'first@example.com',
+        password: 'first-password',
+        mailboxPassword: 'first-mail',
+      );
+      const second = AccountCredentials(
+        email: 'second@example.com',
+        password: 'second-password',
+        mailboxPassword: 'second-mail',
+      );
+      final firstId = await store.save(
+        name: 'First',
+        proxy: proxy,
+        userAgent: 'same-agent',
+        account: first,
+      );
+      final secondId = await store.save(
+        name: 'Second',
+        proxy: proxy,
+        userAgent: 'same-agent',
+        account: second,
+      );
+      expect(secondId, isNot(firstId));
+      await store.useSaved(secondId);
+      await store.close();
+      store = openStore();
+      expect(await store.list(), hasLength(2));
+      expect(
+        sameAccount((await store.getCurrentProfile())!.account, second),
+        isTrue,
+      );
+      final entries = await store.list();
+      expect(entries.singleWhere((e) => e.id == firstId).hasBeenUsed, isFalse);
+      expect(entries.singleWhere((e) => e.id == secondId).hasBeenUsed, isTrue);
+      await store.useSaved(firstId);
+      expect(
+        sameAccount((await store.getCurrentProfile())!.account, first),
+        isTrue,
+      );
+      await store.delete(firstId);
+      expect(
+        sameAccount((await store.getCurrentProfile())!.account, first),
+        isTrue,
+      );
+      await store.setCurrent(null);
+      expect(await store.getCurrentProfile(), isNull);
+    },
+  );
+
+  test('v3 migration preserves the active proxy and adds account storage',
       () async {
-    final proxy = WebViewProxy.parse('https://proxy.example.com:443',
-        username: ' user ', password: "p'ass\nword")!;
-    final id = await store.save(name: 'Office', proxy: proxy);
-    await store.setCurrent(proxy);
-    final userAgent = (await store.getCurrentProfile())!.userAgent;
+    final db = await databaseFactoryFfi.openDatabase(
+      filename,
+      options: OpenDatabaseOptions(
+        version: 3,
+        onCreate: (db, _) async {
+          await db.execute(
+            'CREATE TABLE proxies (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, '
+            'url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, user_agent TEXT NOT NULL, has_been_used INTEGER NOT NULL DEFAULT 0)',
+          );
+          await db.execute(
+            "CREATE TABLE current_proxy (id INTEGER PRIMARY KEY CHECK (id = 1), name TEXT NOT NULL DEFAULT '', "
+            'url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, user_agent TEXT NOT NULL)',
+          );
+        },
+      ),
+    );
+    final values = {
+      'name': 'Legacy',
+      'url': 'http://192.0.2.7:8080',
+      'username': 'user',
+      'password': 'pass',
+      'user_agent': 'legacy-agent',
+    };
+    final id = await db.insert('proxies', values);
+    await db.insert('current_proxy', {'id': 1, ...values});
+    await db.close();
+    final current = (await store.getCurrentProfile())!;
+    expect(current.proxy.password, 'pass');
+    expect(current.userAgent, 'legacy-agent');
+    expect(current.account, isNull);
+    const account = AccountCredentials(
+      email: 'person@example.com',
+      password: 'tiktok',
+      mailboxPassword: 'mailbox',
+    );
+    await store.save(
+      id: id,
+      name: 'Combined',
+      proxy: current.proxy,
+      account: account,
+    );
+    await store.useSaved(id);
     await store.close();
     store = openStore();
-
-    expect(sameProxy(await store.getCurrent(), proxy), isTrue);
-    final entries = await store.list();
-    expect(entries.single.id, id);
-    expect(entries.single.name, 'Office');
-    expect(entries.single.userAgent, userAgent);
-    expect(entries.single.hasBeenUsed, isTrue);
-    expect((await store.getCurrentProfile())!.name, 'Office');
-    expect((await store.getCurrentProfile())!.userAgent, userAgent);
-    expect(entries.single.proxy.username, 'user');
-    expect(entries.single.proxy.password, "p'ass\nword");
-    expect(sameProxy(entries.single.proxy, proxy), isTrue);
-  });
-
-  test('editing and deleting saved entries preserve the current configuration',
-      () async {
-    final first = WebViewProxy.parse('127.0.0.1:80')!;
-    final second = WebViewProxy.parse('http://[::1]:8080')!;
-    final id = await store.save(name: 'First', proxy: first);
-    await store.setCurrent(first);
-    await store.save(id: id, name: 'Updated', proxy: second);
-    expect((await store.list()).single.name, 'Updated');
-    expect(sameProxy(await store.getCurrent(), first), isTrue);
-    await store.delete(id);
-    expect(await store.list(), isEmpty);
-    expect(sameProxy(await store.getCurrent(), first), isTrue);
+    expect(
+      sameAccount((await store.getCurrentProfile())!.account, account),
+      isTrue,
+    );
+    expect((await store.list()).single.userAgent, 'legacy-agent');
   });
 
   test(
-      'switching replaces the singleton and disabling persists without deleting the list',
-      () async {
-    final first = WebViewProxy.parse('127.0.0.1:8080')!;
-    final second = WebViewProxy.parse('proxy.example.com:8888')!;
-    await store.save(name: 'Saved', proxy: first);
-    await store.setCurrent(first);
-    await store.setCurrent(second);
-    expect(sameProxy(await store.getCurrent(), second), isTrue);
-    await store.setCurrent(null);
-    await store.close();
-    store = openStore();
-    expect(await store.getCurrent(), isNull);
-    expect(await store.list(), hasLength(1));
-  });
+    'current proxy, credentials and named list survive reopening SQLite',
+    () async {
+      final proxy = WebViewProxy.parse(
+        'https://proxy.example.com:443',
+        username: ' user ',
+        password: "p'ass\nword",
+      )!;
+      final id = await store.save(name: 'Office', proxy: proxy);
+      await store.setCurrent(proxy);
+      final userAgent = (await store.getCurrentProfile())!.userAgent;
+      await store.close();
+      store = openStore();
 
-  test('switching between proxies restores their distinct User-Agents',
-      () async {
-    final first = WebViewProxy.parse('first.example.com:8080')!;
-    final second = WebViewProxy.parse('second.example.com:8080')!;
-    final firstId = await store.save(name: 'First', proxy: first);
-    await store.save(name: 'Second', proxy: second);
-    await store.setCurrent(first);
-    final firstAgent = (await store.getCurrentProfile())!.userAgent;
-    await store.setCurrent(second);
-    final secondAgent = (await store.getCurrentProfile())!.userAgent;
-    expect(secondAgent, isNot(firstAgent));
-    await store.setCurrent(first);
-    expect((await store.getCurrentProfile())!.userAgent, firstAgent);
-    await store.save(id: firstId, name: 'Renamed', proxy: first);
-    expect(
+      expect(sameProxy(await store.getCurrent(), proxy), isTrue);
+      final entries = await store.list();
+      expect(entries.single.id, id);
+      expect(entries.single.name, 'Office');
+      expect(entries.single.userAgent, userAgent);
+      expect(entries.single.hasBeenUsed, isTrue);
+      expect((await store.getCurrentProfile())!.name, 'Office');
+      expect((await store.getCurrentProfile())!.userAgent, userAgent);
+      expect(entries.single.proxy.username, 'user');
+      expect(entries.single.proxy.password, "p'ass\nword");
+      expect(sameProxy(entries.single.proxy, proxy), isTrue);
+    },
+  );
+
+  test(
+    'editing and deleting saved entries preserve the current configuration',
+    () async {
+      final first = WebViewProxy.parse('127.0.0.1:80')!;
+      final second = WebViewProxy.parse('http://[::1]:8080')!;
+      final id = await store.save(name: 'First', proxy: first);
+      await store.setCurrent(first);
+      await store.save(id: id, name: 'Updated', proxy: second);
+      expect((await store.list()).single.name, 'Updated');
+      expect(sameProxy(await store.getCurrent(), first), isTrue);
+      await store.delete(id);
+      expect(await store.list(), isEmpty);
+      expect(sameProxy(await store.getCurrent(), first), isTrue);
+    },
+  );
+
+  test(
+    'switching replaces the singleton and disabling persists without deleting the list',
+    () async {
+      final first = WebViewProxy.parse('127.0.0.1:8080')!;
+      final second = WebViewProxy.parse('proxy.example.com:8888')!;
+      await store.save(name: 'Saved', proxy: first);
+      await store.setCurrent(first);
+      await store.setCurrent(second);
+      expect(sameProxy(await store.getCurrent(), second), isTrue);
+      await store.setCurrent(null);
+      await store.close();
+      store = openStore();
+      expect(await store.getCurrent(), isNull);
+      expect(await store.list(), hasLength(1));
+    },
+  );
+
+  test(
+    'switching between proxies restores their distinct User-Agents',
+    () async {
+      final first = WebViewProxy.parse('first.example.com:8080')!;
+      final second = WebViewProxy.parse('second.example.com:8080')!;
+      final firstId = await store.save(name: 'First', proxy: first);
+      await store.save(name: 'Second', proxy: second);
+      await store.setCurrent(first);
+      final firstAgent = (await store.getCurrentProfile())!.userAgent;
+      await store.setCurrent(second);
+      final secondAgent = (await store.getCurrentProfile())!.userAgent;
+      expect(secondAgent, isNot(firstAgent));
+      await store.setCurrent(first);
+      expect((await store.getCurrentProfile())!.userAgent, firstAgent);
+      await store.save(id: firstId, name: 'Renamed', proxy: first);
+      expect(
         (await store.list())
             .firstWhere((entry) => entry.id == firstId)
             .userAgent,
-        firstAgent);
-    expect(await store.save(name: 'Duplicate', proxy: first), firstId);
-    expect(await store.list(), hasLength(2));
-    expect(nextAgent, 2);
-  });
+        firstAgent,
+      );
+      expect(await store.save(name: 'Duplicate', proxy: first), firstId);
+      expect(await store.list(), hasLength(2));
+      expect(nextAgent, 2);
+    },
+  );
 
   test(
-      'persists the preview User-Agent without rerandomizing on save and activates edits explicitly',
-      () async {
-    final proxy = WebViewProxy.parse('localhost:8080')!;
-    final preview = await store.generateUserAgent();
-    final id =
-        await store.save(name: 'Preview', proxy: proxy, userAgent: preview);
-    expect((await store.list()).single.userAgent, preview);
-    expect(nextAgent, 1);
-    await store.useSaved(id);
-    final replacement = await store.generateUserAgent();
-    await store.save(
-        id: id, name: 'Edited', proxy: proxy, userAgent: replacement);
-    expect((await store.getCurrentProfile())!.userAgent, preview);
-    await store.useSaved(id);
-    await store.close();
-    store = openStore();
-    expect((await store.getCurrentProfile())!.userAgent, replacement);
-    expect((await store.list()).single.userAgent, replacement);
-    expect(nextAgent, 2);
-  });
+    'persists the preview User-Agent without rerandomizing on save and activates edits explicitly',
+    () async {
+      final proxy = WebViewProxy.parse('localhost:8080')!;
+      final preview = await store.generateUserAgent();
+      final id = await store.save(
+        name: 'Preview',
+        proxy: proxy,
+        userAgent: preview,
+      );
+      expect((await store.list()).single.userAgent, preview);
+      expect(nextAgent, 1);
+      await store.useSaved(id);
+      final replacement = await store.generateUserAgent();
+      await store.save(
+        id: id,
+        name: 'Edited',
+        proxy: proxy,
+        userAgent: replacement,
+      );
+      expect((await store.getCurrentProfile())!.userAgent, preview);
+      await store.useSaved(id);
+      await store.close();
+      store = openStore();
+      expect((await store.getCurrentProfile())!.userAgent, replacement);
+      expect((await store.list()).single.userAgent, replacement);
+      expect(nextAgent, 2);
+    },
+  );
 
   test(
-      'selecting by saved id uses that profile User-Agent after editing its endpoint',
-      () async {
-    final first = WebViewProxy.parse('first.example.com:8080')!;
-    final second = WebViewProxy.parse('second.example.com:8080')!;
-    await store.save(name: 'First', proxy: first);
-    final secondId = await store.save(name: 'Second', proxy: second);
-    final secondAgent = (await store.list()).first.userAgent;
-    await store.save(id: secondId, name: 'Edited', proxy: first);
-    await store.useSaved(secondId);
-    final current = (await store.getCurrentProfile())!;
-    expect(sameProxy(current.proxy, first), isTrue);
-    expect(current.userAgent, secondAgent);
-  });
+    'selecting by saved id uses that profile User-Agent after editing its endpoint',
+    () async {
+      final first = WebViewProxy.parse('first.example.com:8080')!;
+      final second = WebViewProxy.parse('second.example.com:8080')!;
+      await store.save(name: 'First', proxy: first);
+      final secondId = await store.save(name: 'Second', proxy: second);
+      final secondAgent = (await store.list()).first.userAgent;
+      await store.save(id: secondId, name: 'Edited', proxy: first);
+      await store.useSaved(secondId);
+      final current = (await store.getCurrentProfile())!;
+      expect(sameProxy(current.proxy, first), isTrue);
+      expect(current.userAgent, secondAgent);
+    },
+  );
 
   for (final alreadyListed in [false, true]) {
     test(
-        'migrates v1 cached proxy and binds its User-Agent (listed: $alreadyListed)',
-        () async {
-      final db = await databaseFactoryFfi.openDatabase(filename,
+      'migrates v1 cached proxy and binds its User-Agent (listed: $alreadyListed)',
+      () async {
+        final db = await databaseFactoryFfi.openDatabase(
+          filename,
           options: OpenDatabaseOptions(
-              version: 1,
-              onCreate: (db, _) async {
-                await db.execute(
-                    'CREATE TABLE proxies (id INTEGER PRIMARY KEY AUTOINCREMENT, '
-                    'name TEXT NOT NULL, url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL)');
-                await db.execute(
-                    'CREATE TABLE current_proxy (id INTEGER PRIMARY KEY CHECK (id = 1), '
-                    'url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL)');
-              }));
-      final values = {
-        'url': 'http://legacy.example.com:8080',
-        'username': 'user',
-        'password': 'secret'
-      };
-      await db.insert('current_proxy', {'id': 1, ...values});
-      if (alreadyListed) {
-        await db.insert('proxies', {'name': 'Legacy', ...values});
-      }
-      await db.close();
+            version: 1,
+            onCreate: (db, _) async {
+              await db.execute(
+                'CREATE TABLE proxies (id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                'name TEXT NOT NULL, url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL)',
+              );
+              await db.execute(
+                'CREATE TABLE current_proxy (id INTEGER PRIMARY KEY CHECK (id = 1), '
+                'url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL)',
+              );
+            },
+          ),
+        );
+        final values = {
+          'url': 'http://legacy.example.com:8080',
+          'username': 'user',
+          'password': 'secret',
+        };
+        await db.insert('current_proxy', {'id': 1, ...values});
+        if (alreadyListed) {
+          await db.insert('proxies', {'name': 'Legacy', ...values});
+        }
+        await db.close();
 
-      final current = (await store.getCurrentProfile())!;
-      final entries = await store.list();
-      expect(entries, hasLength(1));
-      expect(sameProxy(entries.single.proxy, current.proxy), isTrue);
-      expect(entries.single.proxy.password, 'secret');
-      expect(entries.single.userAgent, current.userAgent);
-      expect(entries.single.hasBeenUsed, isTrue);
-      expect(current.userAgent, isNotEmpty);
-      expect(nextAgent, 1);
-      await store.close();
-      store = openStore();
-      expect((await store.getCurrentProfile())!.userAgent, current.userAgent);
-      expect(nextAgent, 1);
-    });
+        final current = (await store.getCurrentProfile())!;
+        final entries = await store.list();
+        expect(entries, hasLength(1));
+        expect(sameProxy(entries.single.proxy, current.proxy), isTrue);
+        expect(entries.single.proxy.password, 'secret');
+        expect(entries.single.userAgent, current.userAgent);
+        expect(entries.single.hasBeenUsed, isTrue);
+        expect(current.userAgent, isNotEmpty);
+        expect(nextAgent, 1);
+        await store.close();
+        store = openStore();
+        expect((await store.getCurrentProfile())!.userAgent, current.userAgent);
+        expect(nextAgent, 1);
+      },
+    );
   }
 
   test(
-      'usage starts unused, changes on successful apply and survives editing and reopening',
-      () async {
-    final first = WebViewProxy.parse('first.example.com:8080')!;
-    final second = WebViewProxy.parse('second.example.com:8080')!;
-    final firstId = await store.save(name: 'First', proxy: first);
-    final secondId = await store.save(name: 'Second', proxy: second);
-    expect((await store.list()).every((entry) => !entry.hasBeenUsed), isTrue);
-    await store.useSaved(firstId);
-    await store.save(id: firstId, name: 'Renamed', proxy: first);
-    expect(
+    'usage starts unused, changes on successful apply and survives editing and reopening',
+    () async {
+      final first = WebViewProxy.parse('first.example.com:8080')!;
+      final second = WebViewProxy.parse('second.example.com:8080')!;
+      final firstId = await store.save(name: 'First', proxy: first);
+      final secondId = await store.save(name: 'Second', proxy: second);
+      expect((await store.list()).every((entry) => !entry.hasBeenUsed), isTrue);
+      await store.useSaved(firstId);
+      await store.save(id: firstId, name: 'Renamed', proxy: first);
+      expect(
         (await store.list())
             .singleWhere((entry) => entry.id == firstId)
             .hasBeenUsed,
-        isTrue);
-    await expectLater(store.useSaved(9999), throwsStateError);
-    expect(
+        isTrue,
+      );
+      await expectLater(store.useSaved(9999), throwsStateError);
+      expect(
         (await store.list())
             .singleWhere((entry) => entry.id == secondId)
             .hasBeenUsed,
-        isFalse);
-    await store.useSaved(secondId);
-    await store.setUsed(firstId, false);
-    await store.close();
-    store = openStore();
-    final entries = await store.list();
-    expect(entries.singleWhere((entry) => entry.id == firstId).hasBeenUsed,
-        isFalse);
-    expect(entries.singleWhere((entry) => entry.id == secondId).hasBeenUsed,
-        isTrue);
-    expect((await store.getCurrentProfile())!.name, 'Second');
-  });
+        isFalse,
+      );
+      await store.useSaved(secondId);
+      await store.setUsed(firstId, false);
+      await store.close();
+      store = openStore();
+      final entries = await store.list();
+      expect(
+        entries.singleWhere((entry) => entry.id == firstId).hasBeenUsed,
+        isFalse,
+      );
+      expect(
+        entries.singleWhere((entry) => entry.id == secondId).hasBeenUsed,
+        isTrue,
+      );
+      expect((await store.getCurrentProfile())!.name, 'Second');
+    },
+  );
 
   test(
-      'v2 migration preserves credentials and marks only the known current proxy as used',
-      () async {
-    final db = await databaseFactoryFfi.openDatabase(filename,
+    'v2 migration preserves credentials and marks only the known current proxy as used',
+    () async {
+      final db = await databaseFactoryFfi.openDatabase(
+        filename,
         options: OpenDatabaseOptions(
-            version: 2,
-            onCreate: (db, _) async {
-              await db.execute(
-                  'CREATE TABLE proxies (id INTEGER PRIMARY KEY AUTOINCREMENT, '
-                  'name TEXT NOT NULL, url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, user_agent TEXT NOT NULL)');
-              await db.execute(
-                  'CREATE TABLE current_proxy (id INTEGER PRIMARY KEY CHECK (id = 1), '
-                  'url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, user_agent TEXT NOT NULL)');
-            }));
-    final values = {
-      'url': 'http://active.example.com:8080',
-      'username': 'user',
-      'password': 'secret',
-      'user_agent': 'legacy-agent'
-    };
-    final activeId = await db.insert('proxies', {'name': 'Active', ...values});
-    await db.insert('proxies',
-        {'name': 'Other', ...values, 'url': 'http://other.example.com:8080'});
-    await db.insert('current_proxy', {'id': 1, ...values});
-    await db.close();
-    final entries = await store.list();
-    expect(entries.singleWhere((entry) => entry.id == activeId).hasBeenUsed,
-        isTrue);
-    expect(entries.singleWhere((entry) => entry.id != activeId).hasBeenUsed,
-        isFalse);
-    final current = (await store.getCurrentProfile())!;
-    expect(current.name, 'Active');
-    expect(current.proxy.password, 'secret');
-    expect(current.userAgent, 'legacy-agent');
-    expect(nextAgent, 0);
-  });
+          version: 2,
+          onCreate: (db, _) async {
+            await db.execute(
+              'CREATE TABLE proxies (id INTEGER PRIMARY KEY AUTOINCREMENT, '
+              'name TEXT NOT NULL, url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, user_agent TEXT NOT NULL)',
+            );
+            await db.execute(
+              'CREATE TABLE current_proxy (id INTEGER PRIMARY KEY CHECK (id = 1), '
+              'url TEXT NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, user_agent TEXT NOT NULL)',
+            );
+          },
+        ),
+      );
+      final values = {
+        'url': 'http://active.example.com:8080',
+        'username': 'user',
+        'password': 'secret',
+        'user_agent': 'legacy-agent',
+      };
+      final activeId = await db.insert('proxies', {
+        'name': 'Active',
+        ...values,
+      });
+      await db.insert('proxies', {
+        'name': 'Other',
+        ...values,
+        'url': 'http://other.example.com:8080',
+      });
+      await db.insert('current_proxy', {'id': 1, ...values});
+      await db.close();
+      final entries = await store.list();
+      expect(
+        entries.singleWhere((entry) => entry.id == activeId).hasBeenUsed,
+        isTrue,
+      );
+      expect(
+        entries.singleWhere((entry) => entry.id != activeId).hasBeenUsed,
+        isFalse,
+      );
+      final current = (await store.getCurrentProfile())!;
+      expect(current.name, 'Active');
+      expect(current.proxy.password, 'secret');
+      expect(current.userAgent, 'legacy-agent');
+      expect(nextAgent, 0);
+    },
+  );
 }

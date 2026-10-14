@@ -30,8 +30,6 @@ class HomeController extends AppController
   final OtpSettingsStore otpSettingsStore;
 
   final formKey = GlobalKey<FormState>();
-  final signupFormKey = GlobalKey<FormState>();
-  final loginFormKey = GlobalKey<FormState>();
   late final TabController tabs;
   int selectedTab = 0;
   late String userAgent;
@@ -39,23 +37,12 @@ class HomeController extends AppController
   late OtpApiSettings otpSettings;
   ProxyProfile? currentProxy;
   late final TextEditingController comments;
-  late final TextEditingController signupEmail;
-  late final TextEditingController signupPassword;
-  late final TextEditingController loginUsername;
-  late final TextEditingController loginPassword;
-  late final signupMailboxPassword = TextEditingController();
-  late final loginMailboxPassword = TextEditingController();
-  late final signupImportData = TextEditingController();
-  late final loginImportData = TextEditingController();
-  String? signupImportError;
-  String? loginImportError;
   bool opening = false;
   bool loadingProxy = true;
   bool proxyLoadFailed = false;
   bool managingProxies = false;
   late final ProxyStore proxyStore;
   bool get busy => opening || loadingProxy || managingProxies;
-  TikTokLaunchAction requestedAction = TikTokLaunchAction.browse;
 
   @override
   void onInit() {
@@ -66,10 +53,6 @@ class HomeController extends AppController
     otpSettings = initialOtpSettings;
     final defaults = AppConfiguration.defaults(userAgent);
     comments = TextEditingController(text: defaults.comments.join('\n'));
-    signupEmail = TextEditingController(text: defaults.signupEmail);
-    signupPassword = TextEditingController(text: defaults.signupPassword);
-    loginUsername = TextEditingController(text: defaults.loginUsername);
-    loginPassword = TextEditingController(text: defaults.loginPassword);
     proxyStore = store;
     unawaited(restoreProxy());
   }
@@ -110,19 +93,7 @@ class HomeController extends AppController
   void onClose() {
     tabs.removeListener(tabChanged);
     tabs.dispose();
-    for (final controller in [
-      comments,
-      signupEmail,
-      signupPassword,
-      loginUsername,
-      loginPassword,
-      signupMailboxPassword,
-      loginMailboxPassword,
-      signupImportData,
-      loginImportData,
-    ]) {
-      controller.dispose();
-    }
+    comments.dispose();
     super.onClose();
   }
 
@@ -135,97 +106,30 @@ class HomeController extends AppController
   void updateOtpSettings(OtpApiSettings settings) =>
       mutate(() => otpSettings = settings);
 
-  void clearImportError({required bool signup}) => mutate(() {
-        if (signup) {
-          signupImportError = null;
-        } else {
-          loginImportError = null;
-        }
-      });
-
-  Future<void> pasteImportData({required bool signup}) async {
-    if (!active || busy) return;
-    try {
-      final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
-      if (!active || busy) return;
-      final text = clipboard?.text;
-      if (text == null || text.isEmpty) {
-        notify('Clipboard không có dữ liệu để dán.');
+  Future<void> openTikTok(
+    TikTokLaunchAction action,
+    Future<void> Function(
+      AppConfiguration configuration,
+      TikTokLaunchAction action,
+    ) navigate,
+  ) async {
+    if (busy || proxyLoadFailed) return;
+    final account = currentProxy?.account;
+    if (action != TikTokLaunchAction.browse) {
+      if (account == null) {
+        notify(
+          'Chọn cấu hình có tài khoản trong Quản lý cấu hình trước khi chạy.',
+        );
         return;
       }
-      final input = signup ? signupImportData : loginImportData;
-      mutate(() {
-        input.value = TextEditingValue(
-          text: text,
-          selection: TextSelection.collapsed(offset: text.length),
+      try {
+        account.validate();
+      } on FormatException {
+        notify(
+          'Bổ sung email, mật khẩu TikTok và mật khẩu email OTP trong Quản lý cấu hình.',
         );
-        if (signup) {
-          signupImportError = null;
-        } else {
-          loginImportError = null;
-        }
-      });
-      importAccountData(signup: signup);
-    } catch (_) {
-      if (active) notify('Không thể đọc dữ liệu từ clipboard.');
-    }
-  }
-
-  void importAccountData({required bool signup}) {
-    if (!active || busy) return;
-    final input = signup ? signupImportData : loginImportData;
-    // Strip copied line endings, while preserving password characters exactly.
-    final line = input.text.replaceAll(RegExp(r'^[\r\n]+|[\r\n]+$'), '');
-    final parts = line.split('|');
-    String? error;
-    if (line.contains('\n') || line.contains('\r') || parts.length != 3) {
-      error = 'Nhập một dòng: email|mật khẩu TikTok|mật khẩu email OTP.';
-    } else if (!OtpApiConfiguration.isEmail(parts[0].trim())) {
-      error = 'Email trong dữ liệu import không hợp lệ.';
-    } else if (parts[1].trim().isEmpty || parts[2].trim().isEmpty) {
-      error = 'Nhập đủ mật khẩu TikTok và mật khẩu email OTP.';
-    }
-    mutate(() {
-      if (signup) {
-        signupImportError = error;
-      } else {
-        loginImportError = error;
+        return;
       }
-      if (error != null) return;
-      (signup ? signupEmail : loginUsername).text = parts[0].trim();
-      (signup ? signupPassword : loginPassword).text = parts[1];
-      (signup ? signupMailboxPassword : loginMailboxPassword).text = parts[2];
-      input.clear();
-    });
-    if (error == null) {
-      FocusManager.instance.primaryFocus?.unfocus();
-      notify('Đã import thông tin ${signup ? 'đăng ký' : 'đăng nhập'}.');
-    }
-  }
-
-  Future<void> openTikTok(
-      TikTokLaunchAction action,
-      Future<void> Function(
-              AppConfiguration configuration, TikTokLaunchAction action)
-          navigate) async {
-    if (busy || proxyLoadFailed) return;
-    mutate(() => requestedAction = action);
-    final forms = [
-      (0, formKey),
-      if (action == TikTokLaunchAction.signup) (1, signupFormKey),
-      if (action == TikTokLaunchAction.login) (2, loginFormKey),
-    ];
-    for (final (tab, form) in forms) {
-      final invalidFields = form.currentState!.validateGranularly();
-      if (invalidFields.isEmpty) continue;
-      tabs.index = tab;
-      // The invalid setting may live in another tab. Lay it out before scrolling.
-      final fieldContext = invalidFields.first.context;
-      await WidgetsBinding.instance.endOfFrame;
-      if (!active || !fieldContext.mounted) return;
-      await Scrollable.ensureVisible(fieldContext,
-          duration: const Duration(milliseconds: 250), alignment: 0.2);
-      return;
     }
     FocusManager.instance.primaryFocus?.unfocus();
     mutate(() => opening = true);
@@ -242,6 +146,9 @@ class HomeController extends AppController
               userAgent: browserUserAgent,
               name: profile.name,
               hasBeenUsed: profile.hasBeenUsed,
+              account: profile.account,
+              statusAccount: profile.statusAccount,
+              configurationId: profile.configurationId,
             );
           }
         });
@@ -250,12 +157,12 @@ class HomeController extends AppController
         userAgent: browserUserAgent,
         proxy: currentProxy?.proxy,
         comments: AppConfiguration.parseComments(comments.text),
-        signupEmail: signupEmail.text.trim(),
-        signupPassword: signupPassword.text,
-        loginUsername: loginUsername.text.trim(),
-        loginPassword: loginPassword.text,
-        signupMailboxPassword: signupMailboxPassword.text,
-        loginMailboxPassword: loginMailboxPassword.text,
+        signupEmail: account?.email ?? '',
+        signupPassword: account?.password ?? '',
+        loginUsername: account?.email ?? '',
+        loginPassword: account?.password ?? '',
+        signupMailboxPassword: account?.mailboxPassword ?? '',
+        loginMailboxPassword: account?.mailboxPassword ?? '',
         otpApi: otpApiFor(action),
         birthday: action == TikTokLaunchAction.signup
             ? AppConfiguration.randomSignupBirthday()
@@ -269,9 +176,11 @@ class HomeController extends AppController
       notify(error.message);
     } on PlatformException catch (error) {
       if (!active) return;
-      notify(error.code == 'proxy_unsupported'
-          ? error.message ?? 'Thiết bị không hỗ trợ proxy.'
-          : 'Không thể áp dụng proxy. Hãy kiểm tra cấu hình rồi thử lại.');
+      notify(
+        error.code == 'proxy_unsupported'
+            ? error.message ?? 'Thiết bị không hỗ trợ proxy.'
+            : 'Không thể áp dụng proxy. Hãy kiểm tra cấu hình rồi thử lại.',
+      );
     } catch (_) {
       if (!active) return;
       notify('Không thể mở TikTok. Hãy thử lại.');
@@ -289,7 +198,8 @@ class HomeController extends AppController
       return otpSettings.toConfiguration();
     } on FormatException {
       throw const FormatException(
-          'Hãy cấu hình URL OTP API HTTPS hợp lệ trong Cài đặt.');
+        'Hãy cấu hình URL OTP API HTTPS hợp lệ trong Cài đặt.',
+      );
     }
   }
 }

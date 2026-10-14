@@ -294,8 +294,9 @@ class ProxyStore {
         where: 'is_current = 1',
         limit: 1,
       );
-      if (current.isNotEmpty && sameProxy(_readProxy(current.single), proxy))
+      if (current.isNotEmpty && sameProxy(_readProxy(current.single), proxy)) {
         return;
+      }
       final id = await txn.insert('configurations', {
         ..._values(proxy),
         'name': '',

@@ -432,8 +432,9 @@ void main() {
     );
     addTearDown(() {
       debugDefaultTargetPlatformOverride = null;
-      if (previousPlatform != null)
+      if (previousPlatform != null) {
         InAppWebViewPlatform.instance = previousPlatform;
+      }
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         const MethodChannel('test_tiktok/webview_proxy'),
         null,

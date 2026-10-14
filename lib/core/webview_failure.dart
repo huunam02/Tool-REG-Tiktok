@@ -14,7 +14,7 @@ class WebViewFailure {
       code: 'HTTP 407', isConnectionFailure: true);
 
   static const missingProxyAuth = WebViewFailure('Proxy yêu cầu xác thực',
-      'Bổ sung tài khoản và mật khẩu trong màn quản lý proxy rồi mở lại TikTok.',
+      'Bổ sung tài khoản và mật khẩu proxy trong Quản lý cấu hình rồi mở lại TikTok.',
       code: 'HTTP 407', isConnectionFailure: true);
 
   static const ipUnverified = WebViewFailure('Chưa xác minh được IP qua proxy',

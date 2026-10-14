@@ -181,16 +181,6 @@ class _ProxyManagementView extends StatelessWidget {
                               color: ProxyColors.muted,
                             ),
                           ),
-                          if (entry.account != null) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              entry.account!.email,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: ProxyColors.muted,
-                              ),
-                            ),
-                          ],
                           const SizedBox(height: 10),
                           Wrap(
                             spacing: 6,

@@ -30,20 +30,27 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   TikTokController({
     required this.configuration,
     this.launchAction = TikTokLaunchAction.browse,
+    this.startWithBrowserCheck = false,
     this.otpReaderFactory,
     this.onReturnToConfiguration,
     bool? useAccessibility,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now,
-       _accessibilityOverride = useAccessibility;
+       _accessibilityOverride = useAccessibility,
+       browserCheckOpen = startWithBrowserCheck;
 
   final AppConfiguration configuration;
   final TikTokLaunchAction launchAction;
+  final bool startWithBrowserCheck;
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
   final VoidCallback? onReturnToConfiguration;
   final DateTime Function() _now;
   final bool? _accessibilityOverride;
-  String get initialUrl => launchAction.initialUrl;
+  String get initialUrl =>
+      startWithBrowserCheck ? browserCheckUrl : launchAction.initialUrl;
+  static const browserCheckUrl = 'https://www.whatismybrowser.com/';
+  bool browserCheckOpen;
+  bool browserIdentityReady = false;
 
   static const commentInputChannel = MethodChannel('test_tiktok/comment_input');
   bool get _usesKeyboardInput =>
@@ -163,7 +170,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> startAutoWatch() async {
-    if (!active || !autoWatchEnabled || !appActive || pageFailure != null) {
+    if (!active ||
+        browserCheckOpen ||
+        !autoWatchEnabled ||
+        !appActive ||
+        pageFailure != null) {
       return;
     }
     try {
@@ -251,7 +262,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> toggleAutoWatch() async {
-    if (autoWatchBusy ||
+    if (browserCheckOpen ||
+        autoWatchBusy ||
         autoLoginBusy ||
         autoSignupBusy ||
         webViewController == null) {
@@ -1119,6 +1131,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   Future<void> runInitialAction() async {
     if (!active ||
+        browserCheckOpen ||
         !appActive ||
         !initialPageLoaded ||
         pageFailure != null ||
@@ -1152,7 +1165,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         url?.scheme == 'https' &&
         url?.host == 'www.tiktok.com';
     await updateNavigationState();
-    if (pageFailure != null) return;
+    if (pageFailure != null || browserCheckOpen) return;
     try {
       await webViewController?.evaluateJavascript(
         source: autoAcceptCookieScript,
@@ -1346,6 +1359,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           userAgent: configuration.userAgent,
         );
         if (!active) return;
+        mutate(() => browserIdentityReady = true);
         await controller.loadUrl(
           urlRequest: URLRequest(
             url: WebUri(initialUrl),
@@ -1362,6 +1376,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           );
         }
       }
+    } else if (active) {
+      mutate(() => browserIdentityReady = true);
     }
   }
 
@@ -1402,6 +1418,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     _ipChecker?.cancel();
     initialPageLoaded = false;
     mutate(() {
+      final host = url?.host ?? '';
+      browserCheckOpen =
+          host == 'whatismybrowser.com' ||
+          host.endsWith('.whatismybrowser.com');
       navigationId++;
       loadingProgress = 0;
       pageFailure = null;
@@ -1515,6 +1535,28 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           url: WebUri(tiktokHomeUrl),
           headers: englishWebViewHeaders,
         ),
+      ),
+    );
+  }
+
+  Future<void> openBrowserCheck() async {
+    final controller = webViewController;
+    if (!active || controller == null || !browserIdentityReady) return;
+    cancelAutoActions();
+    _ipChecker?.cancel();
+    mutate(() {
+      browserCheckOpen = true;
+      initialPageLoaded = false;
+      autoWatchEnabled = false;
+    });
+    await stopAutoWatch();
+    if (!active) return;
+    // Navigate the existing WebView: its native proxy, UA, Client Hints and
+    // cookie store are the same ones used by TikTok.
+    await controller.loadUrl(
+      urlRequest: URLRequest(
+        url: WebUri(browserCheckUrl),
+        headers: englishWebViewHeaders,
       ),
     );
   }

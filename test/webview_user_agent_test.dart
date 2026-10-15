@@ -106,7 +106,7 @@ void main() {
   );
 
   test(
-    'Android keeps each selected UA instead of replacing it with native Linux',
+    'Android normalizes saved identities to the installed Chrome desktop profile',
     () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       var nativeReads = 0;
@@ -116,6 +116,8 @@ void main() {
           'Windows NT 10.0; Win64; x64',
           'Macintosh; Intel Mac OS X 10_15_7',
         ),
+        'Mozilla/5.0 (Linux; Android 10; K; wv) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Version/4.0 Chrome/120.0.0.0 Mobile Safari/537.36',
       ]) {
         expect(
           await resolveWebViewUserAgent(
@@ -125,12 +127,30 @@ void main() {
               return 'Chrome/154.0.8037.107';
             },
           ),
-          agent,
+          androidChromeDesktopUserAgent('Chrome/154.0.8037.107'),
         );
       }
-      expect(nativeReads, 0);
+      expect(nativeReads, 3);
     },
   );
+
+  test('Android normalizes a saved UA when native discovery fails', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    expect(
+      await resolveWebViewUserAgent(
+        configured,
+        nativeAgentLoader: () async => throw StateError('Unavailable'),
+      ),
+      androidChromeDesktopUserAgent(configured),
+    );
+    expect(
+      await resolveWebViewUserAgent(
+        configured,
+        nativeAgentLoader: () async => 'unknown',
+      ),
+      androidChromeDesktopUserAgent(configured),
+    );
+  });
 
   test('iOS preserves a custom Safari UA as well as a Chromium UA', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;

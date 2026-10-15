@@ -53,6 +53,48 @@ void main() {
           (call) async => 'test-agent',
         );
   });
+  testWidgets(
+    'Browser check uses the existing WebView and stops TikTok automation',
+    (tester) async {
+      final logic = TikTokController(
+        configuration: AppConfiguration.defaults('test-agent'),
+        launchAction: TikTokLaunchAction.login,
+      )..onInit();
+      addTearDown(logic.onClose);
+      final platform = _TestController(WebUri(tiktokHomeUrl));
+      final controller = InAppWebViewController.fromPlatform(
+        platform: platform,
+      );
+      logic.webViewController = controller;
+      await logic.openBrowserCheck();
+      expect(platform.loads, isEmpty);
+      logic.browserIdentityReady = true;
+      logic.autoWatchEnabled = true;
+      await logic.openBrowserCheck();
+      expect(logic.browserCheckOpen, isTrue);
+      expect(logic.autoWatchEnabled, isFalse);
+      expect(logic.initialPageLoaded, isFalse);
+      expect(
+        platform.loads.single.url.toString(),
+        TikTokController.browserCheckUrl,
+      );
+      expect(platform.loads.single.headers, englishWebViewHeaders);
+      platform.sources.clear();
+      logic.onLoadStart(controller, WebUri(TikTokController.browserCheckUrl));
+      await logic.onLoadStop(
+        controller,
+        WebUri(TikTokController.browserCheckUrl),
+      );
+      await logic.runInitialAction();
+      await logic.startAutoWatch();
+      expect(platform.sources, isEmpty);
+      expect(logic.loadingProgress, 100);
+      logic.goHome();
+      expect(platform.loads.last.url.toString(), tiktokHomeUrl);
+      logic.onLoadStart(controller, WebUri(tiktokHomeUrl));
+      expect(logic.browserCheckOpen, isFalse);
+    },
+  );
   for (final action in TikTokLaunchAction.values) {
     testWidgets(
       'Android $action waits for native Client Hints before the first URL',
@@ -80,9 +122,11 @@ void main() {
         );
         await tester.pump();
         expect(platform.loads, isEmpty);
+        expect(logic.browserIdentityReady, isFalse);
         expect(logic.initialActionStarted, isFalse);
         gate.complete('test-agent');
         await created;
+        expect(logic.browserIdentityReady, isTrue);
         expect(platform.loads.single.url.toString(), action.initialUrl);
         expect(platform.loads.single.headers, englishWebViewHeaders);
         debugDefaultTargetPlatformOverride = null;
@@ -111,6 +155,7 @@ void main() {
         );
         expect(platform.loads, isEmpty);
         expect(logic.pageFailure?.title, 'Không thể cấu hình Chrome desktop');
+        expect(logic.browserIdentityReady, isFalse);
         await logic.runInitialAction();
         expect(logic.initialActionStarted, isFalse);
         debugDefaultTargetPlatformOverride = null;

@@ -23,13 +23,17 @@ class TikTokPage extends StatelessWidget {
     super.key,
     required this.configuration,
     this.launchAction = TikTokLaunchAction.browse,
+    this.startWithBrowserCheck = false,
     this.otpReaderFactory,
   });
 
   final AppConfiguration configuration;
   final TikTokLaunchAction launchAction;
+  final bool startWithBrowserCheck;
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
-  String get initialUrl => launchAction.initialUrl;
+  String get initialUrl => startWithBrowserCheck
+      ? TikTokController.browserCheckUrl
+      : launchAction.initialUrl;
 
   @override
   Widget build(BuildContext context) => ControllerScope<TikTokController>(
@@ -37,6 +41,7 @@ class TikTokPage extends StatelessWidget {
     controller: TikTokController(
       configuration: configuration,
       launchAction: launchAction,
+      startWithBrowserCheck: startWithBrowserCheck,
       otpReaderFactory: otpReaderFactory,
       onReturnToConfiguration: () {
         if (context.mounted) Navigator.of(context).maybePop();
@@ -170,11 +175,11 @@ class _TikTokView extends StatelessWidget {
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'TikTok',
+              Text(
+                logic.browserCheckOpen ? 'Kiểm tra trình duyệt' : 'TikTok',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
+                style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   color: Colors.black,
                 ),
@@ -194,9 +199,26 @@ class _TikTokView extends StatelessWidget {
           ),
           actionsPadding: const EdgeInsets.only(right: 8),
           actions: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _autoWatchButton(),
+            if (!logic.browserCheckOpen)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: _autoWatchButton(),
+              ),
+            IconButton(
+              key: const Key('browserCheck'),
+              tooltip: logic.browserCheckOpen
+                  ? 'Quay lại TikTok'
+                  : 'Kiểm tra IP / User-Agent',
+              onPressed: !logic.browserIdentityReady
+                  ? null
+                  : logic.browserCheckOpen
+                  ? logic.goHome
+                  : logic.openBrowserCheck,
+              icon: Icon(
+                logic.browserCheckOpen
+                    ? Icons.home_outlined
+                    : Icons.fact_check_outlined,
+              ),
             ),
             IconButton(
               tooltip: 'Tải lại',
@@ -235,6 +257,13 @@ class _TikTokView extends StatelessWidget {
               initialSettings: InAppWebViewSettings(
                 userAgent: logic.configuration.userAgent,
                 preferredContentMode: UserPreferredContentMode.DESKTOP,
+                useWideViewPort: true,
+                loadWithOverviewMode: true,
+                initialScale: 0,
+                supportZoom: true,
+                builtInZoomControls: true,
+                displayZoomControls: false,
+                textZoom: 100,
                 javaScriptEnabled: true,
                 mediaPlaybackRequiresUserGesture: false,
                 allowsInlineMediaPlayback: true,

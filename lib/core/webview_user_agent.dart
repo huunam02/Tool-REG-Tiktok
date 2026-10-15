@@ -50,13 +50,16 @@ Future<String> resolveWebViewUserAgent(
   Future<String> Function()? nativeAgentLoader,
 }) async {
   if (needsAndroidDesktopIdentity) {
-    if (configuredAgent.trim().isNotEmpty) return configuredAgent;
+    // Match Chrome Android's desktop profile to the installed engine instead
+    // of announcing a random Windows/macOS identity or an unrelated version.
     try {
       final nativeAgent =
           await (nativeAgentLoader ??
                   InAppWebViewController.getDefaultUserAgent)()
               .timeout(const Duration(seconds: 2));
-      return androidChromeDesktopUserAgent(nativeAgent) ?? configuredAgent;
+      return androidChromeDesktopUserAgent(nativeAgent) ??
+          androidChromeDesktopUserAgent(configuredAgent) ??
+          configuredAgent;
     } catch (_) {
       // The native configure step must still succeed before any URL loads.
       return androidChromeDesktopUserAgent(configuredAgent) ?? configuredAgent;

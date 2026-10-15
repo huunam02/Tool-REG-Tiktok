@@ -4,11 +4,46 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.webkit.UserAgentMetadata
 import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 
-/** Apply the selected desktop UA and matching Client Hints before navigation. */
+/** Match Chrome Android's desktop profile using the installed Chromium engine. */
 object DesktopChromeIdentity {
-    fun configure(webView: WebView, configuredAgent: String?): String {
+    // Chrome's "Desktop site" ignores mobile viewport directives. WebView's
+    // desktop UA alone does not, so keep the default 980 CSS-pixel phone layout
+    // even when the site inserts/replaces its viewport after navigation.
+    private val desktopViewportScript = """
+        (() => {
+            if (window.top !== window) return;
+            const normalize = (element) => {
+                if (element.tagName === 'META' &&
+                    (element.getAttribute('name') || '').toLowerCase() === 'viewport' &&
+                    element.getAttribute('content') !== 'width=980') {
+                    element.setAttribute('content', 'width=980');
+                }
+            };
+            const scan = (node) => {
+                if (node.nodeType !== 1) return;
+                normalize(node);
+                node.querySelectorAll('meta').forEach(normalize);
+            };
+            new MutationObserver((records) => {
+                for (const record of records) {
+                    if (record.type === 'attributes') normalize(record.target);
+                    else record.addedNodes.forEach(scan);
+                }
+            }).observe(document, {
+                subtree: true, childList: true, attributes: true,
+                attributeFilter: ['name', 'content']
+            });
+            document.querySelectorAll('meta').forEach(normalize);
+        })();
+    """.trimIndent()
+
+    fun configure(webView: WebView): String {
+        check(WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            "WebView cần hỗ trợ cấu hình viewport trước khi tải trang. Hãy cập nhật Android System WebView."
+        }
         check(WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
             "WebView cần hỗ trợ User-Agent Client Hints. Hãy cập nhật Android System WebView."
         }
@@ -18,25 +53,10 @@ object DesktopChromeIdentity {
         val nativeAgent = WebSettings.getDefaultUserAgent(webView.context)
         val nativeVersion = Regex("Chrome/(\\d+(?:\\.\\d+){3})").find(nativeAgent)?.groupValues?.get(1)
             ?: error("Không đọc được phiên bản Chromium của WebView.")
-        val userAgent = configuredAgent?.takeIf { it.isNotBlank() }
-            ?: ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/${nativeVersion.substringBefore('.')}.0.0.0 Safari/537.36")
-        val selectedVersion = Regex("Chrome/(\\d+(?:\\.\\d+){3})").find(userAgent)?.groupValues?.get(1)
-        val version = if (selectedVersion == null ||
-            selectedVersion.substringBefore('.') == nativeVersion.substringBefore('.')) {
-            nativeVersion
-        } else selectedVersion
+        val userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/${nativeVersion.substringBefore('.')}.0.0.0 Safari/537.36"
+        val version = nativeVersion
         val major = version.substringBefore('.')
-        val platform = when {
-            userAgent.contains("Windows NT") -> "Windows"
-            userAgent.contains("Macintosh") -> "macOS"
-            else -> "Linux"
-        }
-        val platformVersion = when (platform) {
-            "Windows" -> "10.0.0"
-            "macOS" -> "10.15.7"
-            else -> ""
-        }
         val settings = webView.settings
         val defaults = WebSettingsCompat.getUserAgentMetadata(settings)
         val brands = defaults.brandVersionList.map {
@@ -52,12 +72,17 @@ object DesktopChromeIdentity {
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
         settings.setSupportZoom(true)
+        settings.builtInZoomControls = true
+        settings.displayZoomControls = false
+        settings.textZoom = 100
+        webView.setInitialScale(0)
+        WebViewCompat.addDocumentStartJavaScript(webView, desktopViewportScript, setOf("*"))
         WebSettingsCompat.setUserAgentMetadata(settings,
             UserAgentMetadata.Builder(defaults)
                 .setBrandVersionList(brands)
                 .setFullVersion(version)
-                .setPlatform(platform)
-                .setPlatformVersion(platformVersion)
+                .setPlatform("Linux")
+                .setPlatformVersion("")
                 .setArchitecture("x86")
                 .setBitness(64)
                 .setModel("")

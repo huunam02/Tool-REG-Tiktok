@@ -15,12 +15,14 @@ class SettingsPage extends StatelessWidget {
     required this.otpSettingsStore,
     required this.onOtpSettingsChanged,
     this.accessibilityPermission,
+    this.onOpenBrowserCheck,
   });
 
   final OtpApiSettings initialOtpSettings;
   final OtpSettingsStore otpSettingsStore;
   final ValueChanged<OtpApiSettings> onOtpSettingsChanged;
   final AccessibilityPermissionService? accessibilityPermission;
+  final VoidCallback? onOpenBrowserCheck;
 
   @override
   Widget build(BuildContext context) => ControllerScope<SettingsController>(
@@ -30,14 +32,15 @@ class SettingsPage extends StatelessWidget {
           onSettingsChanged: onOtpSettingsChanged,
           accessibilityPermission: accessibilityPermission,
         ),
-        builder: (controller) => _SettingsView(controller),
+        builder: (controller) => _SettingsView(controller, onOpenBrowserCheck),
       );
 }
 
 class _SettingsView extends StatelessWidget {
-  const _SettingsView(this.controller);
+  const _SettingsView(this.controller, this.onOpenBrowserCheck);
 
   final SettingsController controller;
+  final VoidCallback? onOpenBrowserCheck;
 
   Future<void> _openOtpSettings(BuildContext context) async {
     final settings =
@@ -76,6 +79,34 @@ class _SettingsView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
+                SettingsPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Kiểm tra IP / User-Agent',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Mở WhatIsMyBrowser bằng WebView với cấu hình proxy đang chọn để xem IP và trình duyệt website nhận được.',
+                        style: TextStyle(
+                          color: SettingsStyle.muted,
+                          fontSize: 12,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      FilledButton.icon(
+                        key: const Key('openBrowserCheckSettings'),
+                        onPressed: onOpenBrowserCheck,
+                        icon: const Icon(Icons.fact_check_outlined),
+                        label: const Text('Kiểm tra IP / User-Agent'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
                 if (controller.accessibilityPermission.supported) ...[
                   SettingsPanel(
                     child: SwitchListTile(

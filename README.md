@@ -40,15 +40,30 @@ proxy bằng SQLite; chọn lại proxy hoặc mở lại app sẽ khôi phục 
 Trên Android, nút đổi random UA Chrome desktop Linux hoặc Windows cùng phiên bản
 Chrome 120–140. Bộ có 42 UA; dùng hết bộ trước khi lặp, không lặp ngay UA cuối.
 Lịch sử được giữ qua các lần mở app. Không tạo mẫu macOS trên Android.
-WebView giữ nguyên chuỗi đã lưu, kể cả UA nhập tay. Client Hints dùng
-`Google Chrome`/`Chromium`, phiên bản và platform tương ứng với UA đã chọn,
+Khi mở TikTok trên Android, app chuẩn hóa UA thành mẫu Chrome Android bật
+**Trang web cho máy tính**: `X11; Linux x86_64`, `Chrome/<major>.0.0.0`.
+Phiên bản major lấy từ Chromium của Android System WebView đang chạy,
+không dùng phiên bản/Windows/macOS ngẫu nhiên trong cấu hình đã lưu.
+Client Hints dùng `Google Chrome`/`Chromium`, phiên bản đầy đủ của engine,
+platform Linux,
 `mobile=false`, `formFactors=["Desktop"]`, model trống và kiến trúc x86/64 bit.
 Điện thoại vẫn giữ khả năng cảm ứng. Metadata được cấu hình native trước
 request đầu tiên, cho cả WebView TikTok và WebView kiểm tra IP. Nếu Android
-System WebView không hỗ trợ `USER_AGENT_METADATA` và `USER_AGENT_METADATA_FORM_FACTORS`, app báo lỗi thay vì tải
+System WebView không hỗ trợ `USER_AGENT_METADATA`, `USER_AGENT_METADATA_FORM_FACTORS`
+và `DOCUMENT_START_SCRIPT`, app báo lỗi thay vì tải
 trang với nhận diện không đồng nhất. Cần build và chạy lại ứng dụng khi thay
 phần native; hot reload không cập nhật MethodChannel Android.
 Android dùng AndroidX WebKit 1.16.0 và yêu cầu Android 7.0 (API 24) trở lên.
+Viewport rộng 980 CSS px được giữ cả khi trang thay meta viewport, thu vừa
+màn hình và cho phép pinch zoom, với text zoom 100%.
+Trong màn TikTok, nhấn biểu tượng **Kiểm tra IP / User-Agent** để mở
+[WhatIsMyBrowser](https://www.whatismybrowser.com/) ngay trong WebView đang dùng.
+Bạn cũng có thể vào **Cài đặt → Kiểm tra IP / User-Agent** để mở trực tiếp
+trang kiểm tra bằng cấu hình proxy hiện đang chọn, không cần mở TikTok trước.
+Đối chiếu **IP Address** với IP đầu ra proxy và **Your web browser's user agent**
+với UA Chrome desktop. Không so IP đầu ra với hostname proxy vì chúng có thể khác nhau.
+Trang kiểm tra dùng cùng proxy/UA/Client Hints; các thao tác tự động TikTok dừng
+khi mở trang kiểm tra. Nhấn biểu tượng ngôi nhà để quay lại TikTok.
 Đây vẫn là WebView; đồng bộ User-Agent/Client Hints không biến engine thành Chrome thật.
 Trên iOS, User-Agent vẫn được random, dùng hết bộ trước khi lặp và giữ lịch sử
 qua các lần mở app. WebView dùng đúng chuỗi đã chọn và đặt chế độ `DESKTOP`.

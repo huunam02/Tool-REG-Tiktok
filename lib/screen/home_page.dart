@@ -69,6 +69,17 @@ class _HomeView extends StatelessWidget {
             initialOtpSettings: logic.otpSettings,
             otpSettingsStore: logic.otpSettingsStore,
             onOtpSettingsChanged: logic.updateOtpSettings,
+            onOpenBrowserCheck: () => logic.openTikTok(
+              TikTokLaunchAction.browse,
+              (configuration, _) => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => TikTokPage(
+                    configuration: configuration,
+                    startWithBrowserCheck: true,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       );

@@ -50,7 +50,19 @@ public class DesktopChromeIdentityTest {
             "(KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
     }
 
+    @Test public void configuredChrome155ControlsTheFirstRequestAndClientHints() throws Exception {
+        assertDesktopIdentity(null, "155.0.8059.79");
+    }
+
+    @Test public void selectedRecentChrome151IsNotForcedToChrome155() throws Exception {
+        assertDesktopIdentity(null, "151.0.7922.173");
+    }
+
     private void assertDesktopIdentity(String configuredAgent) throws Exception {
+        assertDesktopIdentity(configuredAgent, null);
+    }
+
+    private void assertDesktopIdentity(String configuredAgent, String requestedFullVersion) throws Exception {
         assumeTrue(WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA));
         assertTrue("Updated WebView supports desktop form factors", WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA_FORM_FACTORS));
         Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
@@ -75,6 +87,7 @@ public class DesktopChromeIdentityTest {
                 }
                 headers.set(received);
                 byte[] body = ("<!doctype html><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>" +
+                    "<script>window.firstDesktopMetrics={width:innerWidth,dpr:devicePixelRatio,screenWidth:screen.width,touch:navigator.maxTouchPoints};</script>" +
                     "<title>Desktop identity test</title><p>Local fixture</p>" +
                     "<script>document.querySelector('meta').content='width=device-width,initial-scale=1';" +
                     "const replacement=document.createElement('meta');replacement.name='viewport';" +
@@ -105,7 +118,14 @@ public class DesktopChromeIdentityTest {
                     @Override public void onPageFinished(WebView webView, String url) { loaded.countDown(); }
                 });
                 if (configuredAgent != null) webView.getSettings().setUserAgentString(configuredAgent);
-                userAgent.set(DesktopChromeIdentity.INSTANCE.configure(webView));
+                if (requestedFullVersion != null) {
+                    userAgent.set(DesktopChromeIdentity.INSTANCE.configure(webView,
+                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/" + requestedFullVersion.split("\\.")[0] +
+                        ".0.0.0 Safari/537.36", requestedFullVersion));
+                } else {
+                    userAgent.set(DesktopChromeIdentity.INSTANCE.configure(webView));
+                }
                 webView.loadUrl("http://127.0.0.1:" + server.getLocalPort() + "/");
             });
             assertTrue("HTTP fixture served", served.await(10, TimeUnit.SECONDS));
@@ -115,8 +135,9 @@ public class DesktopChromeIdentityTest {
             Matcher nativeVersion = Pattern.compile("Chrome/(\\d+(?:\\.\\d+){3})")
                 .matcher(WebSettings.getDefaultUserAgent(activity.getActivity()));
             assertTrue(nativeVersion.find());
+            String expectedVersion = requestedFullVersion != null ? requestedFullVersion : nativeVersion.group(1);
             assertEquals("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/" + nativeVersion.group(1).split("\\.")[0] +
+                "(KHTML, like Gecko) Chrome/" + expectedVersion.split("\\.")[0] +
                 ".0.0.0 Safari/537.36", userAgent.get());
             assertEquals(userAgent.get(), request.get("user-agent"));
             assertEquals("?0", request.get("sec-ch-ua-mobile"));
@@ -130,14 +151,27 @@ public class DesktopChromeIdentityTest {
             CountDownLatch evaluated = new CountDownLatch(1);
             AtomicReference<String> snapshot = new AtomicReference<>();
             instrumentation.runOnMainSync(() -> view.get().evaluateJavascript(
-                "JSON.stringify({ua:navigator.userAgent,data:navigator.userAgentData.toJSON(),touch:navigator.maxTouchPoints,width:innerWidth,desktopLayout:matchMedia('(min-width: 900px)').matches,viewport:document.querySelector('meta[name=viewport]').content})",
+                "JSON.stringify({ua:navigator.userAgent,platform:navigator.platform,data:navigator.userAgentData.toJSON(),touch:navigator.maxTouchPoints,width:innerWidth,dpr:devicePixelRatio,scale:visualViewport.scale,visualWidth:visualViewport.width,first:firstDesktopMetrics,desktopLayout:matchMedia('(min-width: 900px)').matches,viewport:document.querySelector('meta[name=viewport]').content})",
                 result -> { snapshot.set(result); evaluated.countDown(); }));
             assertTrue(evaluated.await(5, TimeUnit.SECONDS));
             JSONObject identity = new JSONObject(new JSONArray("[" + snapshot.get() + "]").getString(0));
             assertEquals(userAgent.get(), identity.getString("ua"));
+            assertEquals("Linux x86_64", identity.getString("platform"));
             assertEquals("Linux", identity.getJSONObject("data").getString("platform"));
             assertFalse(identity.getJSONObject("data").getBoolean("mobile"));
             assertTrue("Phone touch remains available", identity.getInt("touch") > 0);
+            double density = activity.getActivity().getResources().getDisplayMetrics().density;
+            assertEquals("Phone DPR is native, not a fixed desktop value", density, identity.getDouble("dpr"), 0.01);
+            JSONObject first = identity.getJSONObject("first");
+            assertTrue("First website script already uses desktop layout", first.getInt("width") >= 980);
+            assertEquals("First script has native DPR", density, first.getDouble("dpr"), 0.01);
+            assertTrue("First script retains phone touch", first.getInt("touch") > 0);
+            double viewWidth = view.get().getWidth() / density;
+            assertTrue("Initial overview shows the whole desktop viewport", identity.getDouble("visualWidth") >= 978);
+            assertEquals("Initial scale fits desktop layout to phone width", viewWidth / identity.getDouble("width"),
+                identity.getDouble("scale"), 0.02);
+            assertEquals("Overview fits the phone's actual width", viewWidth,
+                identity.getDouble("visualWidth") * identity.getDouble("scale"), 2.0);
             assertTrue("Desktop viewport", identity.getInt("width") >= 980);
             assertTrue("Mobile viewport cannot force responsive phone layout", identity.getBoolean("desktopLayout"));
             assertEquals("Replaced viewport allows zoom", "width=980", identity.getString("viewport"));
@@ -149,10 +183,25 @@ public class DesktopChromeIdentityTest {
             assertEquals("64", hints.getString("bitness"));
             assertEquals("", hints.getString("model"));
             assertEquals("", hints.getString("platformVersion"));
-            assertTrue("Full Client Hints version matches the installed engine",
-                hints.getJSONArray("fullVersionList").toString().contains(nativeVersion.group(1)));
+            assertTrue("Full Client Hints version matches the requested identity",
+                hints.getJSONArray("fullVersionList").toString().contains(expectedVersion));
             assertEquals("[\"Desktop\"]", hints.getJSONArray("formFactors").toString());
             assertFalse(hints.getJSONArray("fullVersionList").toString().contains("Android WebView"));
+
+            // A site removing viewport directives must not restore phone layout.
+            CountDownLatch removed = new CountDownLatch(1);
+            instrumentation.runOnMainSync(() -> view.get().evaluateJavascript(
+                "document.querySelectorAll('meta[name=viewport]').forEach(meta=>meta.remove());", result -> removed.countDown()));
+            assertTrue(removed.await(5, TimeUnit.SECONDS));
+            CountDownLatch checked = new CountDownLatch(1);
+            AtomicReference<String> repaired = new AtomicReference<>();
+            instrumentation.runOnMainSync(() -> view.get().evaluateJavascript(
+                "JSON.stringify({width:innerWidth,viewport:document.querySelector('meta[name=viewport]').content})",
+                result -> { repaired.set(result); checked.countDown(); }));
+            assertTrue(checked.await(5, TimeUnit.SECONDS));
+            JSONObject restored = new JSONObject(new JSONArray("[" + repaired.get() + "]").getString(0));
+            assertEquals("width=980", restored.getString("viewport"));
+            assertTrue(restored.getInt("width") >= 980);
         } finally {
             server.close();
             worker.join(1000);

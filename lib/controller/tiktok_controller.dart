@@ -18,6 +18,7 @@ import '../core/scripts/auto_watch_script.dart';
 import '../core/scripts/country_modal_script.dart';
 import '../core/webview_proxy_ip.dart';
 import '../core/webview_user_agent.dart';
+import '../core/webview_timezone.dart';
 import '../core/app_configuration.dart';
 import '../core/otp_api.dart';
 import '../core/webview_failure.dart';
@@ -31,24 +32,30 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     required this.configuration,
     this.launchAction = TikTokLaunchAction.browse,
     this.startWithBrowserCheck = false,
+    this.startWithIpCheck = false,
     this.otpReaderFactory,
     this.onReturnToConfiguration,
     bool? useAccessibility,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now,
        _accessibilityOverride = useAccessibility,
-       browserCheckOpen = startWithBrowserCheck;
+      browserCheckOpen = startWithBrowserCheck || startWithIpCheck;
 
   final AppConfiguration configuration;
   final TikTokLaunchAction launchAction;
   final bool startWithBrowserCheck;
+  final bool startWithIpCheck;
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
   final VoidCallback? onReturnToConfiguration;
   final DateTime Function() _now;
   final bool? _accessibilityOverride;
-  String get initialUrl =>
-      startWithBrowserCheck ? browserCheckUrl : launchAction.initialUrl;
+    String get initialUrl => startWithBrowserCheck
+      ? browserCheckUrl
+      : startWithIpCheck
+      ? ipCheckUrl
+      : launchAction.initialUrl;
   static const browserCheckUrl = 'https://www.whatismybrowser.com/';
+    static const ipCheckUrl = 'https://www.whatismyip.com/';
   bool browserCheckOpen;
   bool browserIdentityReady = false;
 
@@ -1358,6 +1365,21 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           controller,
           userAgent: configuration.userAgent,
         );
+        final timeZone = configuration.webViewTimeZone;
+        if (timeZone != null) {
+          // Validate in the empty initial document before any external page.
+          final ready = await controller.evaluateJavascript(
+            source:
+                '${webViewTimeZoneScript(timeZone)}\n'
+                'Intl.DateTimeFormat().resolvedOptions().timeZone === '
+                'Intl.DateTimeFormat("en-US", {timeZone: ${jsonEncode(timeZone)}}).resolvedOptions().timeZone',
+          );
+          if (ready != true) {
+            throw const FormatException(
+              'WebView không áp dụng được múi giờ proxy.',
+            );
+          }
+        }
         if (!active) return;
         mutate(() => browserIdentityReady = true);
         await controller.loadUrl(
@@ -1366,6 +1388,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             headers: englishWebViewHeaders,
           ),
         );
+      } on FormatException catch (error) {
+        if (active) {
+          showPageFailure(
+            WebViewFailure('Không thể áp dụng múi giờ', error.message),
+          );
+        }
       } catch (_) {
         if (active) {
           showPageFailure(
@@ -1421,7 +1449,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       final host = url?.host ?? '';
       browserCheckOpen =
           host == 'whatismybrowser.com' ||
-          host.endsWith('.whatismybrowser.com');
+          host.endsWith('.whatismybrowser.com') ||
+          host == 'whatismyip.com' ||
+          host.endsWith('.whatismyip.com');
       navigationId++;
       loadingProgress = 0;
       pageFailure = null;
@@ -1566,7 +1596,13 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     unawaited(webViewController?.reload());
   }
 
-  void retryPage() => unawaited(webViewController?.reload());
+  void retryPage() {
+    final controller = webViewController;
+    if (controller == null) return;
+    unawaited(
+      browserIdentityReady ? controller.reload() : onWebViewCreated(controller),
+    );
+  }
 
   void retryProxyWarning() {
     if (checkingIp) return;

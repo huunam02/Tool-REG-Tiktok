@@ -13,7 +13,7 @@ void main() {
     final pending = Completer<String>();
     var calls = 0;
     await tester.pumpWidget(MaterialApp(
-      home: CreateProxyPage(generateUserAgent: () {
+      home: CreateProxyPage(detectTimeZone: (_, _) async => 'America/New_York', generateUserAgent: () {
         calls++;
         return calls == 1 ? Future.value('first-agent') : pending.future;
       }),
@@ -49,9 +49,11 @@ void main() {
       (tester) async {
     final pendingAgent = Completer<String>();
     final first = CreateProxyPage(
+        detectTimeZone: (_, _) async => 'America/New_York',
         key: const Key('firstEditor'),
         generateUserAgent: () => pendingAgent.future);
     final second = CreateProxyPage(
+        detectTimeZone: (_, _) async => 'America/New_York',
         key: const Key('secondEditor'),
         generateUserAgent: () async => 'second-agent');
 

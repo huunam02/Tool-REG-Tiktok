@@ -5,6 +5,7 @@ import '../../core/app_configuration.dart';
 import '../../core/otp_api.dart';
 import '../../core/configuration_data.dart';
 import '../../core/configuration_file_import.dart';
+import '../../core/proxy_time_zone.dart';
 import '../../controller/proxy_form_controller.dart';
 import 'controller_scope.dart';
 import 'proxy_widgets.dart';
@@ -22,6 +23,7 @@ class ProxyForm extends StatelessWidget {
     required this.randomizeOnOpen,
     required this.generateUserAgent,
     this.pickImportFile,
+    this.detectTimeZone,
   });
 
   final SavedProxy? entry;
@@ -30,6 +32,8 @@ class ProxyForm extends StatelessWidget {
   final bool randomizeOnOpen;
   final Future<String> Function() generateUserAgent;
   final Future<ConfigurationImportFile?> Function()? pickImportFile;
+  final Future<String> Function(WebViewProxy proxy, String userAgent)?
+  detectTimeZone;
 
   @override
   Widget build(BuildContext context) => ControllerScope<ProxyFormController>(
@@ -38,6 +42,7 @@ class ProxyForm extends StatelessWidget {
       randomizeOnOpen: randomizeOnOpen,
       selectUserAgent: generateUserAgent,
       pickImportFile: pickImportFile,
+      detectTimeZone: detectTimeZone,
     ),
     builder: (logic) => _ProxyFormView(
       logic: logic,
@@ -236,6 +241,7 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedProxyUrl', index),
           controller: fields.url,
+          onChanged: (_) => logic.update(),
           autocorrect: false,
           keyboardType: TextInputType.url,
           textInputAction: TextInputAction.next,
@@ -257,6 +263,7 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedProxyUsername', index),
           controller: fields.username,
+          onChanged: (_) => logic.update(),
           autocorrect: false,
           textInputAction: TextInputAction.next,
           decoration: const InputDecoration(
@@ -269,6 +276,7 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedProxyPassword', index),
           controller: fields.password,
+          onChanged: (_) => logic.update(),
           autocorrect: false,
           enableSuggestions: false,
           textInputAction: TextInputAction.next,
@@ -309,7 +317,7 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedProxyUserAgent', index),
           controller: fields.userAgent,
-          onChanged: (_) => logic.update(),
+          onChanged: (_) => logic.normalizeUserAgentFor(fields),
           enabled: !fields.generating,
           autocorrect: false,
           enableSuggestions: false,
@@ -333,6 +341,56 @@ class _ProxyFormView extends StatelessWidget {
             child: Text(
               'Không thể tạo User-Agent. Nhấn nút để thử lại.',
               style: TextStyle(color: ProxyColors.amber, fontSize: 12),
+            ),
+          ),
+        const SizedBox(height: 20),
+        _fieldLabel(
+          'Múi giờ WebView',
+          action: TextButton.icon(
+            key: _configurationKey('detectProxyTimeZone', index),
+            onPressed: !logic.canDetectTimeZone || fields.detectingTimeZone
+                ? null
+                : () => logic.detectTimeZoneFor(fields),
+            icon: fields.detectingTimeZone
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh, size: 16),
+            label: Text(
+              fields.detectingTimeZone ? 'Đang tra…' : 'Tra theo proxy',
+            ),
+          ),
+        ),
+        TextFormField(
+          key: _configurationKey('savedProxyTimeZone', index),
+          controller: fields.timeZoneId,
+          autocorrect: false,
+          enableSuggestions: false,
+          textInputAction: TextInputAction.next,
+          onChanged: (_) => logic.mutate(() => fields.timeZoneError = null),
+          decoration: const InputDecoration(
+            hintText: 'America/New_York',
+            helperText: 'Mã múi giờ IANA. Để trống để tự tra khi mở WebView.',
+            helperMaxLines: 2,
+            prefixIcon: Icon(Icons.schedule, size: 20),
+          ),
+          validator: (value) {
+            try {
+              normalizeProxyTimeZone(value);
+              return null;
+            } on FormatException catch (error) {
+              return error.message;
+            }
+          },
+        ),
+        if (fields.timeZoneError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              fields.timeZoneError!,
+              style: const TextStyle(color: ProxyColors.amber, fontSize: 12),
             ),
           ),
         const SizedBox(height: 20),
@@ -429,7 +487,8 @@ class _ProxyFormView extends StatelessWidget {
                           TextFormField(
                             key: const Key('proxyImportData'),
                             controller: logic.importData,
-                            enabled: !logic.importing,
+                            enabled:
+                                !(logic.importing || logic.detectingTimeZones),
                             autocorrect: false,
                             enableSuggestions: false,
                             keyboardType: TextInputType.multiline,
@@ -448,7 +507,9 @@ class _ProxyFormView extends StatelessWidget {
                               suffixIcon: IconButton(
                                 key: const Key('applyProxyImportData'),
                                 tooltip: 'Import dữ liệu đã nhập',
-                                onPressed: logic.importing
+                                onPressed:
+                                    (logic.importing ||
+                                        logic.detectingTimeZones)
                                     ? null
                                     : logic.importProxy,
                                 icon: const Icon(Icons.check_rounded, size: 20),
@@ -458,7 +519,8 @@ class _ProxyFormView extends StatelessWidget {
                           const SizedBox(height: 10),
                           OutlinedButton.icon(
                             key: const Key('importProxyData'),
-                            onPressed: logic.importing
+                            onPressed:
+                                (logic.importing || logic.detectingTimeZones)
                                 ? null
                                 : () => _showImportOptions(context),
                             icon: const Icon(
@@ -466,7 +528,11 @@ class _ProxyFormView extends StatelessWidget {
                               size: 19,
                             ),
                             label: Text(
-                              logic.importing ? 'Đang import…' : 'Import data',
+                              logic.importing
+                                  ? 'Đang import…'
+                                  : logic.detectingTimeZones
+                                  ? 'Đang tra múi giờ…'
+                                  : 'Import data',
                             ),
                           ),
                         ],
@@ -478,7 +544,7 @@ class _ProxyFormView extends StatelessWidget {
                     _fieldLabel(
                       '${logic.configurations.length} cấu hình',
                       action: TextButton(
-                        onPressed: logic.importing
+                        onPressed: (logic.importing || logic.detectingTimeZones)
                             ? null
                             : logic.clearImportedConfigurations,
                         child: const Text('Bỏ danh sách'),
@@ -512,7 +578,7 @@ class _ProxyFormView extends StatelessWidget {
               key: const Key('saveProxyEntry'),
               onPressed:
                   logic.generating ||
-                      logic.importing ||
+                      (logic.importing || logic.detectingTimeZones) ||
                       logic.configurations.any(
                         (fields) => fields.userAgent.text.trim().isEmpty,
                       )

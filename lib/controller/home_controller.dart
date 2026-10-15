@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_configuration.dart';
+import '../core/proxy_geolocation.dart';
 import '../core/configuration_data.dart';
 import '../core/desktop_user_agents.dart';
 import '../core/otp_api.dart';
@@ -20,8 +21,8 @@ class HomeController extends AppController {
     required this.initialOtpSettings,
     ProxyStore? store,
     OtpSettingsStore? otpSettingsStore,
-  })  : store = store ?? ProxyStore.instance,
-        otpSettingsStore = otpSettingsStore ?? OtpSettingsStore.instance;
+  }) : store = store ?? ProxyStore.instance,
+       otpSettingsStore = otpSettingsStore ?? OtpSettingsStore.instance;
 
   final String initialUserAgent;
   final OtpApiSettings initialOtpSettings;
@@ -38,12 +39,13 @@ class HomeController extends AppController {
   bool loadingProxy = true;
   bool proxyLoadFailed = false;
   bool managingProxies = false;
+  ProxyGeolocationLookup? _timeZoneLookup;
   late final ProxyStore proxyStore;
   bool get busy => opening || loadingProxy || managingProxies;
   TikTokLaunchAction get accountAction =>
       currentProxy?.statusAccount == AccountStatus.registered
-          ? TikTokLaunchAction.login
-          : TikTokLaunchAction.signup;
+      ? TikTokLaunchAction.login
+      : TikTokLaunchAction.signup;
 
   @override
   void onInit() {
@@ -91,6 +93,7 @@ class HomeController extends AppController {
 
   @override
   void onClose() {
+    _timeZoneLookup?.cancel();
     comments.dispose();
     super.onClose();
   }
@@ -103,7 +106,8 @@ class HomeController extends AppController {
     Future<void> Function(
       AppConfiguration configuration,
       TikTokLaunchAction action,
-    ) navigate,
+    )
+    navigate,
   ) async {
     if (busy || proxyLoadFailed) return;
     final account = currentProxy?.account;
@@ -133,21 +137,45 @@ class HomeController extends AppController {
         mutate(() {
           userAgent = browserUserAgent;
           if (profile != null) {
-            currentProxy = ProxyProfile(
-              proxy: profile.proxy,
-              userAgent: browserUserAgent,
-              name: profile.name,
-              hasBeenUsed: profile.hasBeenUsed,
-              account: profile.account,
-              statusAccount: profile.statusAccount,
-              configurationId: profile.configurationId,
-            );
+            currentProxy = profile.copyWith(userAgent: browserUserAgent);
           }
         });
       }
+      final proxy = currentProxy?.proxy;
+      final otpApi = otpApiFor(action);
+      await configureWebViewProxy(proxy);
+      if (!active) return;
+      var timeZone = currentProxy?.timeZoneId ?? '';
+      if (needsAndroidDesktopIdentity && proxy != null && timeZone.isEmpty) {
+        final lookup = ProxyGeolocationLookup();
+        _timeZoneLookup = lookup;
+        final location = await lookup.lookup(
+          proxy: proxy,
+          userAgent: browserUserAgent,
+        );
+        if (!active) return;
+        timeZone = location.timeZoneId;
+        final profile = currentProxy;
+        if (profile?.configurationId != null) {
+          final cached = await store.cacheCurrentTimeZone(
+            profile!.configurationId!,
+            proxy,
+            timeZone,
+          );
+          if (!cached) throw StateError('Cấu hình đang dùng đã thay đổi.');
+        }
+        if (!active) return;
+        if (profile != null) {
+          mutate(() => currentProxy = profile.copyWith(timeZoneId: timeZone));
+        }
+      }
       final configuration = AppConfiguration(
         userAgent: browserUserAgent,
-        proxy: currentProxy?.proxy,
+        proxy: proxy,
+        webViewTimeZone:
+            needsAndroidDesktopIdentity && proxy != null && timeZone.isNotEmpty
+            ? timeZone
+            : null,
         comments: AppConfiguration.parseComments(comments.text),
         signupEmail: account?.email ?? '',
         signupPassword: account?.password ?? '',
@@ -155,13 +183,11 @@ class HomeController extends AppController {
         loginPassword: account?.password ?? '',
         signupMailboxPassword: account?.mailboxPassword ?? '',
         loginMailboxPassword: account?.mailboxPassword ?? '',
-        otpApi: otpApiFor(action),
+        otpApi: otpApi,
         birthday: action == TikTokLaunchAction.signup
             ? AppConfiguration.randomSignupBirthday()
             : null,
       );
-      await configureWebViewProxy(configuration.proxy);
-      if (!active) return;
       await navigate(configuration, action);
     } on FormatException catch (error) {
       if (!active) return;
@@ -177,6 +203,8 @@ class HomeController extends AppController {
       if (!active) return;
       notify('Không thể mở TikTok. Hãy thử lại.');
     } finally {
+      _timeZoneLookup?.cancel();
+      _timeZoneLookup = null;
       if (active) mutate(() => opening = false);
     }
   }

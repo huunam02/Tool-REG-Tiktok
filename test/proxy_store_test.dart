@@ -7,6 +7,7 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
+import 'package:test_tiktok/core/chrome_user_agent.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -32,6 +33,212 @@ void main() {
     await store.close();
     await directory.delete(recursive: true);
   });
+
+  test(
+    'timezone survives batch save, selection, edits and reopening',
+    () async {
+      final proxy = WebViewProxy.parse('192.0.2.7:8080')!;
+      final ids = await store.saveDrafts([
+        ProxyDraft('US', proxy, 'agent', timeZoneId: 'America/New_York'),
+        ProxyDraft(
+          'JP',
+          WebViewProxy.parse('192.0.2.8:8080'),
+          'agent',
+          timeZoneId: 'Asia/Tokyo',
+        ),
+      ]);
+      await store.useSaved(ids.first);
+      await store.close();
+      store = openStore();
+      expect((await store.getCurrentProfile())!.timeZoneId, 'America/New_York');
+      expect((await store.list()).map((row) => row.timeZoneId), [
+        'Asia/Tokyo',
+        'America/New_York',
+      ]);
+      await store.save(id: ids.first, name: 'renamed', proxy: proxy);
+      expect((await store.getCurrentProfile())!.timeZoneId, 'America/New_York');
+      await store.save(
+        id: ids.first,
+        name: 'edited',
+        proxy: proxy,
+        timeZoneId: 'America/Los_Angeles',
+      );
+      expect((await store.getCurrentProfile())!.timeZoneId, 'America/New_York');
+      expect(
+        (await store.list())
+            .singleWhere((row) => row.id == ids.first)
+            .timeZoneId,
+        'America/Los_Angeles',
+      );
+      await store.useSaved(ids.first);
+      expect(
+        (await store.getCurrentProfile())!.timeZoneId,
+        'America/Los_Angeles',
+      );
+    },
+  );
+
+  test(
+    'v7 migration adds timezone without changing selected credentials or metadata',
+    () async {
+      final id = await store.save(
+        name: 'Existing',
+        proxy: WebViewProxy.parse(
+          '192.0.2.7:8080',
+          username: 'user',
+          password: 'pass',
+        ),
+        userAgent: 'custom-agent',
+      );
+      await store.useSaved(id);
+      await store.close();
+      final old = await databaseFactoryFfi.openDatabase(filename);
+      await old.execute('ALTER TABLE configurations DROP COLUMN time_zone_id');
+      await old.execute('PRAGMA user_version = 7');
+      await old.close();
+      store = openStore();
+      final selected = (await store.getCurrentProfile())!;
+      expect(selected.configurationId, id);
+      expect(selected.proxy!.username, 'user');
+      expect(selected.proxy!.password, 'pass');
+      expect(selected.userAgent, 'custom-agent');
+      expect(selected.hasBeenUsed, isTrue);
+      expect(selected.timeZoneId, isEmpty);
+      await store.close();
+      final migrated = await databaseFactoryFfi.openDatabase(filename);
+      expect(await migrated.getVersion(), 9);
+      expect(
+        (await migrated.rawQuery(
+          'PRAGMA table_info(configurations)',
+        )).map((row) => row['name']),
+        contains('time_zone_id'),
+      );
+      await migrated.close();
+      store = openStore();
+    },
+  );
+
+  test(
+    'invalid timezone rolls back a batch and changed proxy clears old timezone',
+    () async {
+      final proxy = WebViewProxy.parse('192.0.2.7:8080')!;
+      final id = await store.save(
+        name: 'US',
+        proxy: proxy,
+        timeZoneId: 'America/New_York',
+      );
+      await expectLater(
+        store.saveDrafts([
+          ProxyDraft('changed', proxy, 'agent', timeZoneId: 'Asia/Tokyo'),
+          ProxyDraft(
+            'invalid',
+            WebViewProxy.parse('192.0.2.8:8080'),
+            'agent',
+            timeZoneId: 'bad;script',
+          ),
+        ]),
+        throwsFormatException,
+      );
+      expect((await store.list()).single.timeZoneId, 'America/New_York');
+      await store.save(
+        id: id,
+        name: 'new proxy',
+        proxy: WebViewProxy.parse('192.0.2.9:8080'),
+      );
+      expect((await store.list()).single.timeZoneId, isEmpty);
+    },
+  );
+
+  test(
+    'automatic timezone caching only updates the matching blank active row',
+    () async {
+      final proxy = WebViewProxy.parse('192.0.2.7:8080')!;
+      final id = await store.save(name: 'old', proxy: proxy);
+      expect(
+        await store.cacheCurrentTimeZone(id, proxy, 'Asia/Tokyo'),
+        isFalse,
+      );
+      await store.useSaved(id);
+      expect(
+        await store.cacheCurrentTimeZone(
+          id,
+          WebViewProxy.parse('192.0.2.8:8080')!,
+          'Asia/Tokyo',
+        ),
+        isFalse,
+      );
+      expect(
+        await store.cacheCurrentTimeZone(id, proxy, 'America/New_York'),
+        isTrue,
+      );
+      expect(
+        await store.cacheCurrentTimeZone(id, proxy, 'Asia/Tokyo'),
+        isFalse,
+      );
+      await store.close();
+      store = openStore();
+      expect((await store.getCurrentProfile())!.timeZoneId, 'America/New_York');
+    },
+  );
+
+  test(
+    'version 6 upgrades generated UAs and preserves accounts and custom UAs',
+    () async {
+      const oldAgent =
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+          'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+      const custom = 'CustomBrowser/1.0';
+      const account = AccountCredentials(
+        email: 'person@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      final id = await store.save(
+        name: 'Existing',
+        proxy: WebViewProxy.parse('192.0.2.7:8080'),
+        userAgent: oldAgent,
+        account: account,
+        statusAccount: AccountStatus.registered,
+      );
+      await store.useSaved(id);
+      await store.save(
+        name: 'Edge',
+        proxy: WebViewProxy.parse('192.0.2.8:8080'),
+        userAgent: '$oldAgent Edg/140.0.0.0',
+      );
+      await store.save(
+        name: 'Custom',
+        proxy: WebViewProxy.parse('192.0.2.9:8080'),
+        userAgent: custom,
+      );
+      await store.close();
+      final previous = await databaseFactoryFfi.openDatabase(filename);
+      await previous.execute('PRAGMA user_version = 6');
+      await previous.close();
+      store = openStore();
+      final selected = (await store.getCurrentProfile())!;
+      final expected = chromeDesktopUserAgent(desktopChromePlatform);
+      expect(selected.configurationId, id);
+      expect(selected.userAgent, expected);
+      expect(selected.account!.email, account.email);
+      expect(selected.account!.password, account.password);
+      expect(selected.account!.mailboxPassword, account.mailboxPassword);
+      expect(selected.statusAccount, AccountStatus.registered);
+      expect(selected.hasBeenUsed, isTrue);
+      final saved = await store.list();
+      expect(
+        saved.singleWhere((row) => row.name == 'Edge').userAgent,
+        expected,
+      );
+      expect(
+        saved.singleWhere((row) => row.name == 'Custom').userAgent,
+        custom,
+      );
+      await store.close();
+      store = openStore();
+      expect((await store.getCurrentProfile())!.userAgent, expected);
+    },
+  );
 
   test('saves all imported drafts and rolls back a failed batch', () async {
     final records = ImportedConfiguration.parseMany(

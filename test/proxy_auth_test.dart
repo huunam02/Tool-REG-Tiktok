@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:test_tiktok/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
+import 'package:test_tiktok/core/webview_privacy.dart';
 import 'package:test_tiktok/screen/tiktok_page.dart';
 
 import 'support/test_proxy_ip_platform.dart';
@@ -109,6 +110,30 @@ void main() {
   }
 
   for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    for (final usingProxy in [true, false]) {
+      testWidgets('$platform WebRTC protection also applies without a proxy',
+          (tester) async {
+        debugDefaultTargetPlatformOverride = platform;
+        final params = await mount(tester, usingProxy: usingProxy);
+        final gpuScript = params.initialUserScripts!
+            .singleWhere((script) => script.source == hideGpuInfoScript);
+        expect(gpuScript.injectionTime, UserScriptInjectionTime.AT_DOCUMENT_START);
+        expect(gpuScript.forMainFrameOnly, isFalse);
+        expect(gpuScript.contentWorld, ContentWorld.PAGE);
+        expect(gpuScript.allowedOriginRules, {'*'});
+        final scripts = params.initialUserScripts!
+            .where((script) => script.source == disableWebRtcScript);
+        expect(scripts, hasLength(1));
+        expect(scripts.single.injectionTime,
+            UserScriptInjectionTime.AT_DOCUMENT_START);
+        expect(scripts.single.forMainFrameOnly, isFalse);
+        expect(scripts.single.contentWorld, ContentWorld.PAGE);
+        expect(scripts.single.allowedOriginRules, {'*'});
+        await tester.pumpWidget(const SizedBox.shrink());
+        debugDefaultTargetPlatformOverride = null;
+      });
+    }
+
     for (final action in [
       TikTokLaunchAction.signup,
       TikTokLaunchAction.login

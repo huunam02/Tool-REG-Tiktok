@@ -2,15 +2,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import 'chrome_user_agent.dart';
+
 bool get needsAndroidDesktopIdentity =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-String? androidChromeDesktopUserAgent(String nativeAgent) {
-  final major = RegExp(r'Chrome/(\d+)\.').firstMatch(nativeAgent)?.group(1);
-  if (major == null) return null;
-  return 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/$major.0.0.0 Safari/537.36';
-}
+String get currentAndroidChromeDesktopUserAgent =>
+    chromeDesktopUserAgent('X11; Linux x86_64');
+
+String androidChromeDesktopUserAgent(String configuredAgent) =>
+    chromeDesktopUserAgent(
+      'X11; Linux x86_64',
+      major: recentChromeMajorForUserAgent(configuredAgent),
+    );
 
 /// Complete native Client Hints configuration before the first navigation.
 Future<void> configureAndroidDesktopIdentity(
@@ -23,6 +27,7 @@ Future<void> configureAndroidDesktopIdentity(
   ).invokeMethod<String>('configure', {
     'id': controller.platform.params.id,
     'userAgent': userAgent,
+    'chromeFullVersion': chromeFullVersionForUserAgent(userAgent),
   });
 }
 
@@ -50,20 +55,9 @@ Future<String> resolveWebViewUserAgent(
   Future<String> Function()? nativeAgentLoader,
 }) async {
   if (needsAndroidDesktopIdentity) {
-    // Match Chrome Android's desktop profile to the installed engine instead
-    // of announcing a random Windows/macOS identity or an unrelated version.
-    try {
-      final nativeAgent =
-          await (nativeAgentLoader ??
-                  InAppWebViewController.getDefaultUserAgent)()
-              .timeout(const Duration(seconds: 2));
-      return androidChromeDesktopUserAgent(nativeAgent) ??
-          androidChromeDesktopUserAgent(configuredAgent) ??
-          configuredAgent;
-    } catch (_) {
-      // The native configure step must still succeed before any URL loads.
-      return androidChromeDesktopUserAgent(configuredAgent) ?? configuredAgent;
-    }
+    // A configured Chrome version changes the advertised identity, not the
+    // installed Chromium engine. Native Client Hints use the same version.
+    return androidChromeDesktopUserAgent(configuredAgent);
   }
   // A selected identity must reach the WebView unchanged. Deriving Safari
   // from the same device on every launch collapsed different proxy UAs into
@@ -71,7 +65,7 @@ Future<String> resolveWebViewUserAgent(
   if (configuredAgent.trim().isNotEmpty ||
       kIsWeb ||
       defaultTargetPlatform != TargetPlatform.iOS) {
-    return configuredAgent;
+    return normalizeDesktopUserAgentForPlatform(configuredAgent);
   }
   try {
     final nativeAgent =

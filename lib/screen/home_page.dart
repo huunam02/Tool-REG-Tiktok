@@ -80,6 +80,17 @@ class _HomeView extends StatelessWidget {
                 ),
               ),
             ),
+            onOpenIpCheck: () => logic.openTikTok(
+              TikTokLaunchAction.browse,
+              (configuration, _) => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => TikTokPage(
+                    configuration: configuration,
+                    startWithIpCheck: true,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       );

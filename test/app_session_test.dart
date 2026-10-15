@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_tiktok/core/app_session.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/desktop_user_agents.dart';
+import 'package:test_tiktok/core/chrome_user_agent.dart';
 import 'package:test_tiktok/main.dart';
 import 'package:test_tiktok/screen/home_page.dart';
 import 'package:test_tiktok/screen/create_proxy_page.dart';
@@ -136,11 +137,18 @@ void main() {
         );
   });
 
-  test('iOS User-Agent list contains only Windows and macOS', () {
+  test('iOS User-Agent list contains only macOS', () {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    expect(desktopUserAgents, hasLength(84));
+    expect(desktopUserAgents, hasLength(5));
+    expect(
+      desktopUserAgents.every(
+        (ua) => RegExp(r'Chrome/15[1-5]\.0\.0\.0').hasMatch(ua),
+      ),
+      isTrue,
+    );
+    expect(desktopUserAgents.any((ua) => ua.contains('Edg/')), isFalse);
     expect(desktopUserAgents.every((ua) => !ua.contains('Linux')), isTrue);
-    expect(desktopUserAgents.any((ua) => ua.contains('Windows NT')), isTrue);
+    expect(desktopUserAgents.any((ua) => ua.contains('Windows NT')), isFalse);
     expect(desktopUserAgents.any((ua) => ua.contains('Macintosh')), isTrue);
   });
 
@@ -167,7 +175,7 @@ void main() {
   });
 
   test(
-    'Android restores a saved Linux User-Agent across repeated loads',
+    'Android upgrades a saved built-in Linux UA and keeps it across loads',
     () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       const agent =
@@ -177,9 +185,15 @@ void main() {
         'desktop_user_agent_direct': agent,
         'desktop_user_agents_used': [agent],
       });
-      expect(await loadDirectDesktopUserAgent(), agent);
+      expect(
+        await loadDirectDesktopUserAgent(),
+        upgradeLegacyDesktopUserAgent(agent),
+      );
       await (await SharedPreferences.getInstance()).reload();
-      expect(await loadDirectDesktopUserAgent(), agent);
+      expect(
+        await loadDirectDesktopUserAgent(),
+        upgradeLegacyDesktopUserAgent(agent),
+      );
       expect(
         (await SharedPreferences.getInstance()).getStringList(
           'desktop_user_agents_used',
@@ -189,24 +203,52 @@ void main() {
     },
   );
 
-  test('Android preserves a saved Windows direct UA across launches', () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    const windowsAgent =
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-    SharedPreferences.setMockInitialValues({
-      'desktop_user_agent_direct': windowsAgent,
-      'desktop_user_agents_used': [windowsAgent],
-    });
-    final selected = await loadDirectDesktopUserAgent();
-    expect(selected, windowsAgent);
-    expect(
-      (await SharedPreferences.getInstance()).getString(
-        'desktop_user_agent_direct',
-      ),
-      selected,
-    );
-  });
+  test(
+    'Android normalizes an old Windows direct UA to phone desktop Linux',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      const windowsAgent =
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+          'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+      SharedPreferences.setMockInitialValues({
+        'desktop_user_agent_direct': windowsAgent,
+        'desktop_user_agents_used': [windowsAgent],
+      });
+      final selected = await loadDirectDesktopUserAgent();
+      expect(selected, chromeDesktopUserAgent('X11; Linux x86_64'));
+      expect(
+        (await SharedPreferences.getInstance()).getString(
+          'desktop_user_agent_direct',
+        ),
+        selected,
+      );
+    },
+  );
+
+  test(
+    'Android migrates duplicate Linux/Windows history without repeating the last Chrome version',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final linux = [
+        for (final major in recentChromeFullVersions.keys)
+          chromeDesktopUserAgent('X11; Linux x86_64', major: major),
+      ];
+      final windows = chromeDesktopUserAgent(
+        'Windows NT 10.0; Win64; x64',
+        major: 151,
+      );
+      SharedPreferences.setMockInitialValues({
+        'desktop_user_agents_used': [...linux, windows],
+      });
+      final selected = await selectNextDesktopUserAgent();
+      expect(selected, contains('X11; Linux x86_64'));
+      expect(selected, isNot(contains('Chrome/151.')));
+      final history = (await SharedPreferences.getInstance()).getStringList(
+        'desktop_user_agents_used',
+      )!;
+      expect(history, [selected]);
+    },
+  );
 
   for (final platform in [TargetPlatform.iOS]) {
     test(
@@ -229,29 +271,31 @@ void main() {
   }
 
   test(
-    'Android randomizes Chrome versions without repeating UA across full cycles',
+    'Android randomizes recent Chrome versions across complete cycles',
     () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       _platform.nativeUserAgent =
           'Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.107 Mobile Safari/537.36';
       final agents = <String>[];
-      expect(androidDesktopUserAgents, hasLength(42));
-      for (var i = 0; i < 84; i++) {
+      final count = androidDesktopUserAgents.length;
+      expect(count, 5);
+      for (var i = 0; i < count * 2; i++) {
         final agent = await selectNextDesktopUserAgent();
-        expect(agent, matches(r'Chrome/(12\d|13\d|140)\.0\.0\.0'));
-        expect(agent, isNot(matches(r'Android|Mobile| wv|Macintosh')));
+        expect(agent, matches(r'Chrome/15[1-5]\.0\.0\.0'));
+        expect(agent, contains('X11; Linux x86_64'));
+        expect(agent, isNot(matches(r'Android|Mobile| wv|Macintosh|Windows')));
         if (agents.isNotEmpty) expect(agent, isNot(agents.last));
         agents.add(agent);
         await (await SharedPreferences.getInstance()).reload();
       }
-      expect(agents.take(42).toSet(), androidDesktopUserAgents.toSet());
-      expect(agents.skip(42).toSet(), androidDesktopUserAgents.toSet());
+      expect(agents.take(count).toSet(), androidDesktopUserAgents.toSet());
+      expect(agents.skip(count).toSet(), androidDesktopUserAgents.toSet());
       expect(
         agents
-            .take(42)
+            .take(count)
             .map((agent) => RegExp(r'Chrome/(\d+)').firstMatch(agent)!.group(1))
             .toSet(),
-        hasLength(21),
+        {'151', '152', '153', '154', '155'},
       );
       expect(await loadDirectDesktopUserAgent(), agents.last);
       expect(await loadDirectDesktopUserAgent(), agents.last);
@@ -259,7 +303,7 @@ void main() {
         (await SharedPreferences.getInstance()).getStringList(
           'desktop_user_agents_used',
         ),
-        agents.skip(42).toList(),
+        agents.skip(count).toList(),
       );
     },
   );
@@ -280,16 +324,14 @@ void main() {
           .controller!
           .text;
       var previous = displayedAgent();
-      expect(previous, matches(r'Chrome/(12\d|13\d|140)\.0\.0\.0'));
-      final seen = {previous};
+      expect(previous, matches(r'Chrome/15[1-5]\.0\.0\.0'));
       for (var i = 0; i < 4; i++) {
         final button = find.byKey(const Key('generateProxyUserAgent'));
         await tester.ensureVisible(button);
         await tester.tap(button);
         await tester.pumpAndSettle();
         expect(displayedAgent(), isNot(previous));
-        expect(displayedAgent(), matches(r'Chrome/(12\d|13\d|140)\.0\.0\.0'));
-        expect(seen.add(displayedAgent()), isTrue);
+        expect(displayedAgent(), matches(r'Chrome/15[1-5]\.0\.0\.0'));
         previous = displayedAgent();
       }
       debugDefaultTargetPlatformOverride = null;
@@ -300,15 +342,15 @@ void main() {
     'direct User-Agent reuses the last known identity instead of selecting a new one',
     () async {
       SharedPreferences.setMockInitialValues({
-        'desktop_user_agents_used': [desktopUserAgents[7]],
+        'desktop_user_agents_used': [desktopUserAgents[1]],
       });
-      expect(await loadDirectDesktopUserAgent(), desktopUserAgents[7]);
-      expect(await loadDirectDesktopUserAgent(), desktopUserAgents[7]);
+      expect(await loadDirectDesktopUserAgent(), desktopUserAgents[1]);
+      expect(await loadDirectDesktopUserAgent(), desktopUserAgents[1]);
       expect(
         (await SharedPreferences.getInstance()).getStringList(
           'desktop_user_agents_used',
         ),
-        [desktopUserAgents[7]],
+        [desktopUserAgents[1]],
       );
     },
   );
@@ -355,7 +397,7 @@ void main() {
       );
       final store = MemoryProxyStore()
         ..current = WebViewProxy.parse('proxy.example.com:8080')
-        ..currentUserAgent = desktopUserAgents[5];
+        ..currentUserAgent = desktopUserAgents[1];
       final savedAgent = store.currentUserAgent;
       await tester.pumpWidget(MyApp(proxyStore: store));
       await tester.pumpAndSettle();
@@ -468,7 +510,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final store = MemoryProxyStore()
         ..current = WebViewProxy.parse('proxy.example.com:8080')
-        ..currentUserAgent = desktopUserAgents[5];
+        ..currentUserAgent = desktopUserAgents[1];
       final boundAgent = store.currentUserAgent;
       for (var launch = 0; launch < 2; launch++) {
         await tester.pumpWidget(MyApp(proxyStore: store));
@@ -508,7 +550,7 @@ void main() {
         (call) async => null,
       );
       final store = MemoryProxyStore();
-      final boundAgent = desktopUserAgents[11];
+      final boundAgent = desktopUserAgents[1];
       final id = await store.save(
         name: 'New proxy',
         proxy: WebViewProxy.parse('proxy.example.com:8080')!,

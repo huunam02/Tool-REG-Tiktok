@@ -5,6 +5,8 @@ import 'app_configuration.dart';
 import 'configuration_data.dart';
 import 'proxy_draft.dart';
 import 'desktop_user_agents.dart';
+import 'chrome_user_agent.dart';
+import 'proxy_time_zone.dart';
 
 class ProxyProfile {
   const ProxyProfile({
@@ -15,6 +17,7 @@ class ProxyProfile {
     this.account,
     this.statusAccount = AccountStatus.unregistered,
     this.configurationId,
+    this.timeZoneId = '',
   });
 
   final WebViewProxy? proxy;
@@ -24,6 +27,19 @@ class ProxyProfile {
   final AccountCredentials? account;
   final AccountStatus statusAccount;
   final int? configurationId;
+  final String timeZoneId;
+
+  ProxyProfile copyWith({String? userAgent, String? timeZoneId}) =>
+      ProxyProfile(
+        proxy: proxy,
+        userAgent: userAgent ?? this.userAgent,
+        timeZoneId: timeZoneId ?? this.timeZoneId,
+        name: name,
+        hasBeenUsed: hasBeenUsed,
+        account: account,
+        statusAccount: statusAccount,
+        configurationId: configurationId,
+      );
 }
 
 class SavedProxy extends ProxyProfile {
@@ -35,6 +51,7 @@ class SavedProxy extends ProxyProfile {
     super.hasBeenUsed,
     super.account,
     super.statusAccount,
+    super.timeZoneId,
   }) : super(configurationId: id);
   final int id;
 }
@@ -47,6 +64,7 @@ bool sameProxy(WebViewProxy? first, WebViewProxy? second) =>
 bool sameProfile(ProxyProfile? first, ProxyProfile? second) =>
     sameProxy(first?.proxy, second?.proxy) &&
     first?.userAgent == second?.userAgent &&
+    first?.timeZoneId == second?.timeZoneId &&
     sameAccount(first?.account, second?.account);
 
 String proxyAddress(WebViewProxy proxy) {
@@ -77,7 +95,7 @@ class ProxyStore {
   final Future<String> Function() _selectUserAgent;
   Future<Database>? _opening;
   Future<Database> get _database => _opening ??= _open();
-  Future<String> generateUserAgent() => _selectUserAgent();
+  Future<String> generateUserAgent() async => normalizeDesktopUserAgentForPlatform(await _selectUserAgent());
 
   static Future<void> _createSchema(Database db) async {
     await db.execute('''CREATE TABLE configurations (
@@ -94,7 +112,8 @@ class ProxyStore {
         CHECK (statusAccount IN ('unregistered', 'registered')),
       has_been_used INTEGER NOT NULL DEFAULT 0 CHECK (has_been_used IN (0, 1)),
       listed INTEGER NOT NULL DEFAULT 1 CHECK (listed IN (0, 1)),
-      is_current INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1))
+      is_current INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1)),
+      time_zone_id TEXT NOT NULL DEFAULT ''
     )''');
     await db.execute(
       'CREATE UNIQUE INDEX one_current_configuration '
@@ -112,12 +131,12 @@ class ProxyStore {
       db = await factory.openDatabase(
         filename,
         options: OpenDatabaseOptions(
-          version: 6,
+          version: 9,
           onCreate: (db, _) => _createSchema(db),
           onUpgrade: (db, oldVersion, _) async {
             if (oldVersion < 5) {
               await _migrate(db);
-            } else {
+            } else if (oldVersion < 6) {
               await db.execute(
                 'ALTER TABLE configurations RENAME TO configurations_legacy',
               );
@@ -126,9 +145,36 @@ class ProxyStore {
               );
               await _createSchema(db);
               await db.execute(
-                'INSERT INTO configurations SELECT * FROM configurations_legacy',
+                'INSERT INTO configurations (id, name, url, username, password, user_agent, '
+                'account_email, account_password, mailbox_password, statusAccount, has_been_used, listed, is_current) '
+                'SELECT id, name, url, username, password, user_agent, account_email, account_password, '
+                'mailbox_password, statusAccount, has_been_used, listed, is_current FROM configurations_legacy',
               );
               await db.execute('DROP TABLE configurations_legacy');
+            }
+            final columns = await db.rawQuery(
+              'PRAGMA table_info(configurations)',
+            );
+            if (!columns.any((column) => column['name'] == 'time_zone_id')) {
+              await db.execute(
+                "ALTER TABLE configurations ADD COLUMN time_zone_id TEXT NOT NULL DEFAULT ''",
+              );
+            }
+            final rows = await db.query(
+              'configurations',
+              columns: ['id', 'user_agent'],
+            );
+            for (final row in rows) {
+              final previous = row['user_agent'] as String;
+              final updated = normalizeDesktopUserAgentForPlatform(previous);
+              if (updated != previous) {
+                await db.update(
+                  'configurations',
+                  {'user_agent': updated},
+                  where: 'id = ?',
+                  whereArgs: [row['id']],
+                );
+              }
             }
           },
         ),
@@ -149,7 +195,7 @@ class ProxyStore {
       final agent = (row['user_agent'] as String?) ?? '';
       await db.insert('configurations', {
         ...row,
-        'user_agent': agent.isEmpty ? await _selectUserAgent() : agent,
+        'user_agent': agent.isEmpty ? normalizeDesktopUserAgentForPlatform(await _selectUserAgent()) : agent,
         'account_email': row['account_email'] ?? '',
         'account_password': row['account_password'] ?? '',
         'mailbox_password': row['mailbox_password'] ?? '',
@@ -184,7 +230,7 @@ class ProxyStore {
         id = await db.insert('configurations', {
           ..._values(proxy),
           'name': row['name'] ?? proxyLabel(proxy),
-          'user_agent': agent.isEmpty ? await _selectUserAgent() : agent,
+          'user_agent': agent.isEmpty ? normalizeDesktopUserAgentForPlatform(await _selectUserAgent()) : agent,
           'account_email': row['account_email'] ?? '',
           'account_password': row['account_password'] ?? '',
           'mailbox_password': row['mailbox_password'] ?? '',
@@ -238,6 +284,7 @@ class ProxyStore {
     statusAccount: _readStatus(row),
     hasBeenUsed: row['has_been_used'] == 1,
     configurationId: row['id'] as int,
+    timeZoneId: row['time_zone_id'] as String? ?? '',
   );
 
   static Future<Map<String, Object?>?> _findSaved(
@@ -305,7 +352,7 @@ class ProxyStore {
       final id = await txn.insert('configurations', {
         ..._values(proxy),
         'name': '',
-        'user_agent': await _selectUserAgent(),
+        'user_agent': normalizeDesktopUserAgentForPlatform(await _selectUserAgent()),
         'listed': 0,
       });
       await _applyCurrent(txn, id);
@@ -338,6 +385,7 @@ class ProxyStore {
             name: row['name'] as String,
             proxy: _readProxy(row),
             userAgent: row['user_agent'] as String,
+            timeZoneId: row['time_zone_id'] as String? ?? '',
             account: _readAccount(row),
             statusAccount: _readStatus(row),
             hasBeenUsed: row['has_been_used'] == 1,
@@ -353,6 +401,7 @@ class ProxyStore {
     String? userAgent,
     AccountCredentials? account,
     AccountStatus? statusAccount,
+    String? timeZoneId,
   }) async {
     final db = await _database;
     return db.transaction(
@@ -364,6 +413,7 @@ class ProxyStore {
         userAgent: userAgent,
         account: account,
         statusAccount: statusAccount,
+        timeZoneId: timeZoneId,
       ),
     );
   }
@@ -381,6 +431,7 @@ class ProxyStore {
             userAgent: draft.userAgent,
             account: draft.account,
             statusAccount: draft.statusAccount,
+            timeZoneId: draft.timeZoneId,
           ),
         );
       }
@@ -396,9 +447,13 @@ class ProxyStore {
     String? userAgent,
     AccountCredentials? account,
     AccountStatus? statusAccount,
+    String? timeZoneId,
   }) async {
     account?.validate();
-    final requestedAgent = userAgent?.trim();
+    final requestedTimeZone = timeZoneId == null
+        ? null
+        : normalizeProxyTimeZone(timeZoneId);
+    final requestedAgent = userAgent == null ? null : normalizeDesktopUserAgentForPlatform(userAgent.trim());
     if (requestedAgent != null &&
         (requestedAgent.isEmpty ||
             RegExp(r'[\r\n]').hasMatch(requestedAgent))) {
@@ -426,6 +481,11 @@ class ProxyStore {
       if (requestedAgent != null) 'user_agent': requestedAgent,
       if (account != null) ..._accountValues(account),
       if (statusAccount != null) 'statusAccount': statusAccount.name,
+      if (requestedTimeZone != null) 'time_zone_id': requestedTimeZone,
+      if (requestedTimeZone == null &&
+          existing != null &&
+          !sameProxy(_readProxy(existing), proxy))
+        'time_zone_id': '',
     };
     if (existing != null) {
       final savedId = existing['id'] as int;
@@ -433,6 +493,8 @@ class ProxyStore {
           sameProxy(_readProxy(existing), proxy) &&
           (requestedAgent == null ||
               requestedAgent == existing['user_agent']) &&
+          (requestedTimeZone == null ||
+              requestedTimeZone == existing['time_zone_id']) &&
           (account == null || sameAccount(_readAccount(existing), account));
       if (existing['is_current'] == 1 && !sameConnection) {
         await txn.update(
@@ -461,8 +523,34 @@ class ProxyStore {
         requestedAgent ??
         (current.isNotEmpty && sameProxy(_readProxy(current.single), proxy)
             ? current.single['user_agent'] as String
-            : await _selectUserAgent());
+            : normalizeDesktopUserAgentForPlatform(await _selectUserAgent()));
     return txn.insert('configurations', {...values, 'user_agent': agent});
+  }
+
+  /// Fill an old active configuration after lookup without changing selection.
+  Future<bool> cacheCurrentTimeZone(
+    int id,
+    WebViewProxy proxy,
+    String zone,
+  ) async {
+    final value = normalizeProxyTimeZone(zone);
+    if (value.isEmpty) {
+      throw const FormatException('Chưa xác định được múi giờ.');
+    }
+    return await (await _database).update(
+          'configurations',
+          {'time_zone_id': value},
+          where:
+              'id = ? AND is_current = 1 AND url = ? AND username = ? AND password = ? AND time_zone_id = ?',
+          whereArgs: [
+            id,
+            proxyAddress(proxy),
+            proxy.username,
+            proxy.password,
+            '',
+          ],
+        ) ==
+        1;
   }
 
   Future<void> delete(int id) async {

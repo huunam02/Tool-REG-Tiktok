@@ -13,7 +13,9 @@ import '../core/otp_api.dart';
 import '../core/tiktok_launch_action.dart';
 import '../core/webview_failure.dart';
 import '../core/webview_locale.dart';
+import '../core/webview_privacy.dart';
 import '../core/webview_user_agent.dart';
+import '../core/webview_timezone.dart';
 import 'widgets/controller_scope.dart';
 
 export '../core/tiktok_launch_action.dart';
@@ -24,15 +26,19 @@ class TikTokPage extends StatelessWidget {
     required this.configuration,
     this.launchAction = TikTokLaunchAction.browse,
     this.startWithBrowserCheck = false,
+    this.startWithIpCheck = false,
     this.otpReaderFactory,
   });
 
   final AppConfiguration configuration;
   final TikTokLaunchAction launchAction;
   final bool startWithBrowserCheck;
+  final bool startWithIpCheck;
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
-  String get initialUrl => startWithBrowserCheck
+    String get initialUrl => startWithBrowserCheck
       ? TikTokController.browserCheckUrl
+      : startWithIpCheck
+      ? TikTokController.ipCheckUrl
       : launchAction.initialUrl;
 
   @override
@@ -42,6 +48,7 @@ class TikTokPage extends StatelessWidget {
       configuration: configuration,
       launchAction: launchAction,
       startWithBrowserCheck: startWithBrowserCheck,
+      startWithIpCheck: startWithIpCheck,
       otpReaderFactory: otpReaderFactory,
       onReturnToConfiguration: () {
         if (context.mounted) Navigator.of(context).maybePop();
@@ -205,22 +212,6 @@ class _TikTokView extends StatelessWidget {
                 child: _autoWatchButton(),
               ),
             IconButton(
-              key: const Key('browserCheck'),
-              tooltip: logic.browserCheckOpen
-                  ? 'Quay lại TikTok'
-                  : 'Kiểm tra IP / User-Agent',
-              onPressed: !logic.browserIdentityReady
-                  ? null
-                  : logic.browserCheckOpen
-                  ? logic.goHome
-                  : logic.openBrowserCheck,
-              icon: Icon(
-                logic.browserCheckOpen
-                    ? Icons.home_outlined
-                    : Icons.fact_check_outlined,
-              ),
-            ),
-            IconButton(
               tooltip: 'Tải lại',
               onPressed: logic.reloadPage,
               icon: const Icon(Icons.refresh, color: Colors.black),
@@ -238,6 +229,13 @@ class _TikTokView extends StatelessWidget {
                       headers: englishWebViewHeaders,
                     ),
               initialUserScripts: UnmodifiableListView([
+                if (needsAndroidDesktopIdentity &&
+                    logic.configuration.webViewTimeZone != null)
+                  webViewTimeZoneUserScript(
+                    logic.configuration.webViewTimeZone!,
+                  ),
+                hideGpuInfoUserScript(),
+                disableWebRtcUserScript(),
                 englishWebViewLocaleUserScript(),
                 UserScript(
                   source: inlineVideoScript,

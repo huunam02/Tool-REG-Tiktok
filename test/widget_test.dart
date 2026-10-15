@@ -95,6 +95,16 @@ void main() {
       expect(logic.browserCheckOpen, isFalse);
     },
   );
+  test('WhatIsMyIP is the settings-only IP check URL', () {
+    final logic = TikTokController(
+      configuration: AppConfiguration.defaults('test-agent'),
+      startWithIpCheck: true,
+    );
+
+    expect(logic.initialUrl, TikTokController.ipCheckUrl);
+    logic.onInit();
+    addTearDown(logic.onClose);
+  });
   for (final action in TikTokLaunchAction.values) {
     testWidgets(
       'Android $action waits for native Client Hints before the first URL',

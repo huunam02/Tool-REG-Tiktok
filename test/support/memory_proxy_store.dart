@@ -8,6 +8,7 @@ class MemoryProxyStore extends ProxyStore {
   WebViewProxy? current;
   String currentUserAgent = 'cached-proxy-user-agent';
   String currentName = '';
+  String currentTimeZoneId = '';
   AccountCredentials? currentAccount;
   AccountStatus currentStatus = AccountStatus.unregistered;
   int? currentId;
@@ -36,6 +37,7 @@ class MemoryProxyStore extends ProxyStore {
           : ProxyProfile(
               proxy: current!,
               userAgent: currentUserAgent,
+              timeZoneId: currentTimeZoneId,
               name: currentName,
               account: currentAccount,
               statusAccount: currentStatus,
@@ -52,6 +54,7 @@ class MemoryProxyStore extends ProxyStore {
     if (saved.isNotEmpty) {
       currentUserAgent = saved.first.userAgent;
       currentName = saved.first.name;
+      currentTimeZoneId = saved.first.timeZoneId;
       currentAccount = saved.first.account;
       currentStatus = saved.first.statusAccount;
       currentId = saved.first.id;
@@ -73,6 +76,7 @@ class MemoryProxyStore extends ProxyStore {
     current = entry.proxy;
     currentUserAgent = entry.userAgent;
     currentName = entry.name;
+    currentTimeZoneId = entry.timeZoneId;
     currentAccount = entry.account;
     currentStatus = entry.statusAccount;
     currentId = entry.id;
@@ -87,18 +91,20 @@ class MemoryProxyStore extends ProxyStore {
     String? userAgent,
     AccountCredentials? account,
     AccountStatus? statusAccount,
+    String? timeZoneId,
   }) async {
     if (failWrites) throw StateError('Storage unavailable');
     account?.validate();
     final existing = entries.where(
       (entry) => id == null
           ? sameProxy(entry.proxy, proxy) &&
-              entry.account?.email == account?.email
+                entry.account?.email == account?.email
           : entry.id == id,
     );
     final old = existing.isEmpty ? null : existing.first;
     final savedId = id ?? old?.id ?? _nextId++;
-    final selectedUserAgent = userAgent?.trim() ??
+    final selectedUserAgent =
+        userAgent?.trim() ??
         old?.userAgent ??
         (sameProxy(current, proxy)
             ? currentUserAgent
@@ -110,6 +116,9 @@ class MemoryProxyStore extends ProxyStore {
         name: name,
         proxy: proxy,
         userAgent: selectedUserAgent,
+        timeZoneId:
+            timeZoneId ??
+            (old != null && sameProxy(old.proxy, proxy) ? old.timeZoneId : ''),
         account: account ?? old?.account,
         statusAccount:
             statusAccount ?? old?.statusAccount ?? AccountStatus.unregistered,
@@ -132,10 +141,41 @@ class MemoryProxyStore extends ProxyStore {
           name: draft.name,
           proxy: draft.proxy,
           userAgent: draft.userAgent,
+          timeZoneId: draft.timeZoneId,
           account: draft.account,
           statusAccount: draft.statusAccount,
         ),
     ];
+  }
+
+  @override
+  Future<bool> cacheCurrentTimeZone(
+    int id,
+    WebViewProxy proxy,
+    String zone,
+  ) async {
+    if (failWrites) throw StateError('Storage unavailable');
+    if (currentId != id ||
+        !sameProxy(current, proxy) ||
+        currentTimeZoneId.isNotEmpty) {
+      return false;
+    }
+    currentTimeZoneId = zone;
+    final index = entries.indexWhere((entry) => entry.id == id);
+    if (index >= 0) {
+      final entry = entries[index];
+      entries[index] = SavedProxy(
+        id: entry.id,
+        name: entry.name,
+        proxy: entry.proxy,
+        userAgent: entry.userAgent,
+        timeZoneId: zone,
+        account: entry.account,
+        statusAccount: entry.statusAccount,
+        hasBeenUsed: entry.hasBeenUsed,
+      );
+    }
+    return true;
   }
 
   @override
@@ -154,6 +194,7 @@ class MemoryProxyStore extends ProxyStore {
       name: entry.name,
       proxy: entry.proxy,
       userAgent: entry.userAgent,
+      timeZoneId: entry.timeZoneId,
       account: entry.account,
       statusAccount: entry.statusAccount,
       hasBeenUsed: used,

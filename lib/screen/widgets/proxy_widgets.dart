@@ -264,6 +264,14 @@ class ProxyDetails extends StatelessWidget {
           Icons.computer_outlined,
           valueKey: userAgentKey ?? Key('${keyPrefix}UserAgent'),
         ),
+        const SizedBox(height: 10),
+        _field(
+          context,
+          'Múi giờ WebView',
+          profile.timeZoneId.isEmpty ? 'Chưa xác định' : profile.timeZoneId,
+          Icons.schedule,
+          valueKey: Key('${keyPrefix}TimeZone'),
+        ),
         if (profile.account != null) ...[
           const SizedBox(height: 10),
           _field(

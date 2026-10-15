@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/webview_proxy_ip.dart';
+import 'package:test_tiktok/core/webview_privacy.dart';
 
 import 'support/test_proxy_ip_platform.dart';
 
@@ -52,6 +53,17 @@ void main() {
       expect(view.params.initialSettings!.incognito, isFalse);
       expect(view.params.initialSettings!.cacheEnabled, isTrue);
       expect(view.params.initialSettings!.userAgent, 'test-agent');
+      final privacyScript = view.params.initialUserScripts!
+          .singleWhere((script) => script.source == disableWebRtcScript);
+      expect(privacyScript.source, disableWebRtcScript);
+      expect(privacyScript.injectionTime,
+          UserScriptInjectionTime.AT_DOCUMENT_START);
+      expect(privacyScript.forMainFrameOnly, isFalse);
+      expect(privacyScript.contentWorld, ContentWorld.PAGE);
+      final gpuScript = view.params.initialUserScripts!
+          .singleWhere((script) => script.source == hideGpuInfoScript);
+      expect(gpuScript.injectionTime, UserScriptInjectionTime.AT_DOCUMENT_START);
+      expect(gpuScript.forMainFrameOnly, isFalse);
       expect(
         view.params.initialSettings!.preferredContentMode,
         UserPreferredContentMode.DESKTOP,

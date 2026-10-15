@@ -58,6 +58,8 @@ flutter_launcher_icons:
   min_sdk_android: 21 
 dev_dependencies:
   sqflite_common_ffi: 2.3.4+4
+  # sqflite_common_ffi 2.3.4+4 imports sqlite3/open.dart, removed in sqlite3 3.x.
+  sqlite3: 2.9.4
   flutter_test:
     sdk: flutter
 

@@ -29,6 +29,7 @@ void main() {
           password: 'proxy-pass',
         )!,
         userAgent: 'profile-agent',
+        timeZoneId: 'America/New_York',
         account: account,
         statusAccount: AccountStatus.registered,
       );
@@ -57,6 +58,9 @@ void main() {
       expect(sameAccount(preview.profile.account, account), isTrue);
       expect(preview.profile.proxy!.uri.host, '192.0.2.7');
       expect(preview.profile.userAgent, 'profile-agent');
+      expect(preview.profile.timeZoneId, 'America/New_York');
+      expect(find.byKey(const Key('currentProxyTimeZone')), findsOneWidget);
+      expect(find.text('America/New_York'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

@@ -106,5 +106,5 @@ const String emailSignup = '';
 const String passwordSignup = '';
 // API lấy OTP dùng chung cho đăng ký và đăng nhập.
 const String otpApiUrl =
-    'https://unfounded-roundup-eatable.ngrok-free.dev/api/code';
-const String otpApiToken = '37f9ff60089b017ea9f61e274cf3d0de';
+    'https://jump-diagnoses-unmixed.ngrok-free.dev/api/code';
+const String otpApiToken = 'f3ef211b03e0da6ea10e3bbf91e0647c';

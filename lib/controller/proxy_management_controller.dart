@@ -100,6 +100,7 @@ class ProxyManagementController extends AppController {
         name: draft.name,
         proxy: draft.proxy,
         userAgent: draft.userAgent,
+        timeZoneId: draft.timeZoneId,
         account: draft.account,
         statusAccount: draft.statusAccount,
       );

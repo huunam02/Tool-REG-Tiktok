@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../controller/proxy_management_controller.dart';
 import '../core/proxy_store.dart';
+import '../core/app_configuration.dart';
 import 'create_proxy_page.dart';
 import 'edit_proxy_page.dart';
 import 'widgets/controller_scope.dart';
@@ -11,26 +12,34 @@ import 'widgets/proxy_widgets.dart';
 enum _ProxyMenuAction { edit, delete }
 
 class ProxyManagementPage extends StatelessWidget {
-  const ProxyManagementPage({super.key, required this.store});
+  const ProxyManagementPage({
+    super.key,
+    required this.store,
+    this.detectTimeZone,
+  });
   final ProxyStore store;
+  final Future<String> Function(WebViewProxy, String)? detectTimeZone;
 
   @override
   Widget build(BuildContext context) =>
       ControllerScope<ProxyManagementController>(
         controller: ProxyManagementController(store: store),
-        builder: (logic) => _ProxyManagementView(logic),
+        builder: (logic) => _ProxyManagementView(logic, detectTimeZone),
       );
 }
 
 class _ProxyManagementView extends StatelessWidget {
-  const _ProxyManagementView(this.logic);
+  const _ProxyManagementView(this.logic, this.detectTimeZone);
   final ProxyManagementController logic;
+  final Future<String> Function(WebViewProxy, String)? detectTimeZone;
 
   Future<void> _create(BuildContext context) async {
     final drafts = await Navigator.of(context).push<List<ProxyDraft>>(
       MaterialPageRoute(
-        builder: (_) =>
-            CreateProxyPage(generateUserAgent: logic.store.generateUserAgent),
+        builder: (_) => CreateProxyPage(
+          generateUserAgent: logic.store.generateUserAgent,
+          detectTimeZone: detectTimeZone,
+        ),
       ),
     );
     if (context.mounted) await logic.saveDrafts(drafts);
@@ -42,6 +51,7 @@ class _ProxyManagementView extends StatelessWidget {
         builder: (_) => EditProxyPage(
           entry: entry,
           generateUserAgent: logic.store.generateUserAgent,
+          detectTimeZone: detectTimeZone,
         ),
       ),
     );

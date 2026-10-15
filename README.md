@@ -37,31 +37,63 @@ khỏi phần xem trước, giữ danh sách và phiên trình duyệt.
 Form **Tạo cấu hình** tự tạo User-Agent mặc định. Nút **Đổi User-Agent**
 cập nhật chuỗi trong form thêm hoặc sửa. App lưu chuỗi đang hiển thị cùng
 proxy bằng SQLite; chọn lại proxy hoặc mở lại app sẽ khôi phục cấu hình đó.
-Trên Android, nút đổi random UA Chrome desktop Linux hoặc Windows cùng phiên bản
-Chrome 120–140. Bộ có 42 UA; dùng hết bộ trước khi lặp, không lặp ngay UA cuối.
-Lịch sử được giữ qua các lần mở app. Không tạo mẫu macOS trên Android.
+User-Agent mặc định random giữa 5 phiên bản Chrome gần nhất: 151–155, không tạo Edge.
+Android dùng 5 mẫu Linux desktop, phù hợp Chrome Android bật Trang web cho máy tính
+(trong đó có Pixel 9 thật); iOS vẫn có 10 mẫu Windows/macOS.
+App dùng hết bộ trước khi lặp và không lặp ngay UA cuối khi bắt đầu vòng mới.
+Nút đổi UA và cấu hình mới dùng bộ này; UA đã chọn được giữ qua các lần mở app.
+Các mẫu Chrome/Edge 120–140 do app tạo trước đây được nâng lên Chrome 155 khi
+cập nhật dữ liệu; chuỗi tự nhập khác trong cấu hình được giữ nguyên.
+UA trực tiếp Android được chuẩn hóa thành Linux desktop khi khôi phục; giữ
+major 151–155 đã chọn. Lịch sử Linux/Windows cũ được gộp theo phiên bản,
+không lặp ngay phiên bản cuối khi bắt đầu bộ mới.
 Khi mở TikTok trên Android, app chuẩn hóa UA thành mẫu Chrome Android bật
 **Trang web cho máy tính**: `X11; Linux x86_64`, `Chrome/<major>.0.0.0`.
-Phiên bản major lấy từ Chromium của Android System WebView đang chạy,
-không dùng phiên bản/Windows/macOS ngẫu nhiên trong cấu hình đã lưu.
-Client Hints dùng `Google Chrome`/`Chromium`, phiên bản đầy đủ của engine,
-platform Linux,
+App giữ phiên bản 151–155 đã chọn; UA quá cũ/không hợp lệ dùng 155 dự phòng.
+Client Hints dùng `Google Chrome`/`Chromium`, major và phiên bản đầy đủ tương ứng
+với UA đã chọn, platform Linux,
 `mobile=false`, `formFactors=["Desktop"]`, model trống và kiến trúc x86/64 bit.
-Điện thoại vẫn giữ khả năng cảm ứng. Metadata được cấu hình native trước
+Điện thoại vẫn giữ khả năng cảm ứng. Đây là thay đổi nhận diện; engine Android System WebView
+và WebKit iOS vẫn là phiên bản đang cài trên máy. Chrome 155 được xác minh từ
+[Chrome Releases ngày 13/10/2026](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01668083673.html).
+Metadata được cấu hình native trước
 request đầu tiên, cho cả WebView TikTok và WebView kiểm tra IP. Nếu Android
 System WebView không hỗ trợ `USER_AGENT_METADATA`, `USER_AGENT_METADATA_FORM_FACTORS`
 và `DOCUMENT_START_SCRIPT`, app báo lỗi thay vì tải
 trang với nhận diện không đồng nhất. Cần build và chạy lại ứng dụng khi thay
 phần native; hot reload không cập nhật MethodChannel Android.
 Android dùng AndroidX WebKit 1.16.0 và yêu cầu Android 7.0 (API 24) trở lên.
-Viewport rộng 980 CSS px được giữ cả khi trang thay meta viewport, thu vừa
-màn hình và cho phép pinch zoom, với text zoom 100%.
-Trong màn TikTok, nhấn biểu tượng **Kiểm tra IP / User-Agent** để mở
-[WhatIsMyBrowser](https://www.whatismybrowser.com/) ngay trong WebView đang dùng.
-Bạn cũng có thể vào **Cài đặt → Kiểm tra IP / User-Agent** để mở trực tiếp
-trang kiểm tra bằng cấu hình proxy hiện đang chọn, không cần mở TikTok trước.
+Trên Pixel 9 thật, viewport desktop rộng 980 CSS px được giữ cả khi trang
+thay, xóa hoặc không có meta viewport, thu vừa bề ngang WebView và cho phép
+pinch zoom, với text zoom 100%. Kích thước vật lý, DPR, cảm ứng và chiều cao
+vùng hiển thị lấy từ điện thoại/cài đặt hiển thị hiện tại; không gán cố định
+1080×2424 hoặc một DPR giả. Chiều cao phụ thuộc thanh công cụ và bàn phím của
+app. Kiểm thử Android xác nhận viewport từ script đầu tiên, khả năng thu vừa
+màn hình, DPR native và metadata; kiểm thử trên emulator có màn hình Pixel 9,
+chưa khẳng định giống mọi phiên bản Chrome trên Pixel 9 thật.
+Trong **Cài đặt**, dùng **Kiểm tra IP / User-Agent** để mở
+[WhatIsMyBrowser](https://www.whatismybrowser.com/) hoặc **Kiểm tra IP với
+WhatIsMyIP** để mở [WhatIsMyIP](https://www.whatismyip.com/) bằng WebView đang
+dùng cùng cấu hình proxy, không cần mở TikTok trước.
 Đối chiếu **IP Address** với IP đầu ra proxy và **Your web browser's user agent**
 với UA Chrome desktop. Không so IP đầu ra với hostname proxy vì chúng có thể khác nhau.
+**Local IP Address** là IP nội bộ của thiết bị, nên không tự đổi khi đổi proxy.
+WebView luôn ẩn tên GPU/driver qua `WEBGL_debug_renderer_info`, trả chuỗi rỗng
+cho vendor/renderer và tắt WebGPU trong trang/frame để tránh lộ thông tin adapter.
+WebGL thông thường vẫn hoạt động; tính năng yêu cầu WebGPU cần cơ chế dự phòng.
+Trên Android, `navigator.platform` dùng `Linux x86_64` cho khớp UA/Client Hints.
+Đây là giảm thông tin ở cấp trang/frame; không che mọi dấu vân tay đồ họa hoặc
+API trong Web Worker, không thay engine hay biến emulator thành máy thật.
+App chặn các API kết nối WebRTC cả khi có proxy và khi kết nối trực tiếp,
+bằng script ở đầu mỗi document/frame
+để hạn chế trang đọc IP nội bộ qua ICE/STUN. Trang kiểm tra có thể báo không có
+Local IP hoặc WebRTC không được hỗ trợ; app không tạo IP nội bộ giả theo proxy.
+Tính năng gọi thoại/video dùng WebRTC sẽ không hoạt động trong chế độ này.
+Đây là bảo vệ ở cấp JavaScript của WebView, không phải firewall/VPN toàn thiết bị.
+WebView phụ kiểm tra IP cũng chặn WebRTC. Khi dùng proxy, Android từ chối mở
+trang nếu không hỗ trợ chèn script ở đầu document và bỏ bypass ngầm cho
+localhost/link-local. iOS đặt `allowFailover=false` để không chuyển sang kết nối
+trực tiếp khi proxy lỗi.
 Trang kiểm tra dùng cùng proxy/UA/Client Hints; các thao tác tự động TikTok dừng
 khi mở trang kiểm tra. Nhấn biểu tượng ngôi nhà để quay lại TikTok.
 Đây vẫn là WebView; đồng bộ User-Agent/Client Hints không biến engine thành Chrome thật.
@@ -131,6 +163,57 @@ không gọi `fetch` từ trang TikTok để tránh bị CSP/CORS chặn. App th
 IP, mỗi dịch vụ tối đa 8 giây; nút **Thử lại** chỉ kiểm tra lại IP. Nếu chưa nhận
 được IP, app báo chưa xác minh, không kết luận proxy hỏng. Việc kiểm tra chạy
 độc lập và không trì hoãn đăng ký/đăng nhập.
+
+## Múi giờ theo proxy trong WebView Android
+
+Khi import từ clipboard, TXT hoặc Excel trên Android, app tra
+`https://ipwho.is/?fields=success,ip,timezone.id` lần lượt qua từng proxy rồi
+điền **Múi giờ WebView** riêng cho từng cấu hình (ví dụ `America/New_York`).
+Có trạng thái đang tra và lỗi riêng từng dòng; lỗi không làm mất dữ liệu import.
+Nút **Tra theo proxy** cho phép tra lại, hoặc nhập/sửa mã IANA thủ công.
+Đổi địa chỉ/tài khoản/mật khẩu proxy sẽ xóa múi giờ cũ và bỏ kết quả tra đang
+chờ nếu nó thuộc kết nối trước. Lúc đang tra, nút lưu và import mới tạm khóa.
+
+Khi lưu, `ProxyDraft`/`ProxyProfile`/`SavedProxy` giữ `timeZoneId`; SQLite
+`configurations.time_zone_id` lưu chuỗi IANA. DB version 8 thêm cột mặc định
+rỗng, giữ cấu hình, tài khoản và lựa chọn cũ. Múi giờ hiện ở form tạo/sửa,
+chi tiết quản lý và phần cấu hình đang dùng trên Home. Mỗi lần tra tạm đổi
+proxy WebView trong hàng đợi, hủy khi đóng form, rồi khôi phục override trước;
+không đổi cấu hình được chọn hoặc xóa phiên/cookie.
+
+Khi mở TikTok/đăng ký/đăng nhập/trang kiểm tra, WebView dùng múi giờ đã lưu,
+không gọi API lại. Cấu hình cũ/chưa có múi giờ sẽ tra khi mở và lưu bổ sung
+vào dòng đang chọn. Nếu proxy xoay IP hoặc đổi địa điểm, dùng **Tra theo proxy**
+ở màn sửa rồi lưu/chọn lại cấu hình trước khi mở WebView. Không theo dõi IP
+xoay khi trang đang mở. Địa điểm suy ra từ IP phụ thuộc cơ sở dữ liệu của API.
+
+Script được chèn ở đầu document, cho cả trang và iframe, dùng dữ liệu IANA/ICU
+trong WebView để tính offset và DST theo ngày. iOS và chế độ không proxy không
+áp dụng bước mô phỏng múi giờ này.
+
+Áp dụng cho `Intl.DateTimeFormat` mặc định và các hàm local của `Date`: getter,
+setter, constructor/parse, `getTimezoneOffset`, `toString`, `toLocale*`.
+Múi giờ được chỉ định rõ trong tùy chọn Intl vẫn được giữ. Timestamp thực,
+`Date.now`, các hàm UTC, ISO và JSON không bị dịch giờ. Ngày giờ ISO không kèm
+zone được hiểu theo múi giờ proxy; ISO chỉ có ngày vẫn giữ cách hiểu UTC.
+Các định dạng ngày giờ cũ không chuẩn phụ thuộc bộ phân tích native của WebView;
+tên múi giờ lịch sử có thể khác cách Date native hiển thị.
+
+Không đổi múi giờ Android; không cần ADB, root, quyền hệ thống hoặc công cụ
+chạy trên máy tính. Cơ chế chạy trong cả APK debug/release cài trên máy thật.
+App xác nhận script trong document trống trước khi tải trang ngoài; API lỗi
+hoặc WebView không áp dụng được sẽ báo lỗi và dừng mở trang. Cần build lại APK
+để nhận thay đổi.
+
+Giới hạn: đây là mô phỏng API JavaScript trong document/frame, không phải
+múi giờ native của engine. Không áp dụng cho Web Worker, Service Worker,
+Temporal hoặc điều khiển ngày/giờ native của Android; không cam kết mọi cách
+kiểm tra đều trả cùng múi giờ. Script vẫn có thể được website nhận biết.
+
+Kiểm thử JavaScript: `node --test test/webview_timezone_script_test.js`.
+`WebViewTimeZoneTest` kiểm tra script thật trước JavaScript đầu tiên của trang
+và iframe, lần lượt dùng New York/Tokyo, đồng thời xác nhận múi giờ và thiết lập
+tự động của Android không đổi.
 
 ## Chọn sở thích
 

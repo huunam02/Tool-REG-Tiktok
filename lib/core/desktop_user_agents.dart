@@ -4,36 +4,24 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'webview_user_agent.dart';
+import 'chrome_user_agent.dart';
 
-/// Android: 42 Chrome desktop UAs, Linux/Windows with versions 120–140.
+/// Android phones (including Pixel 9): Chrome's Desktop site uses Linux x64.
 final List<String> androidDesktopUserAgents = List<String>.unmodifiable([
-  for (final platform in const [
-    'X11; Linux x86_64',
-    'Windows NT 10.0; Win64; x64',
-  ])
-    for (var version = 120; version <= 140; version++)
-      'Mozilla/5.0 ($platform) AppleWebKit/537.36 (KHTML, like Gecko) '
-          'Chrome/$version.0.0.0 Safari/537.36',
+  for (final major in recentChromeFullVersions.keys)
+    chromeDesktopUserAgent('X11; Linux x86_64', major: major),
 ]);
 
-/// Các nền tảng khác: 84 User-Agent Chrome/Edge desktop 120–140.
-final List<String> _otherDesktopUserAgents = List<String>.unmodifiable([
-  for (final platform in const [
-    'Windows NT 10.0; Win64; x64',
-    'Macintosh; Intel Mac OS X 10_15_7',
-  ])
-    for (var version = 120; version <= 140; version++) ...[
-      'Mozilla/5.0 ($platform) AppleWebKit/537.36 (KHTML, like Gecko) '
-          'Chrome/$version.0.0.0 Safari/537.36',
-      'Mozilla/5.0 ($platform) AppleWebKit/537.36 (KHTML, like Gecko) '
-          'Chrome/$version.0.0.0 Safari/537.36 Edg/$version.0.0.0',
-    ],
+/// iOS keeps macOS desktop identities. No generated Windows templates.
+final List<String> iosDesktopUserAgents = List<String>.unmodifiable([
+  for (final major in recentChromeFullVersions.keys)
+    chromeDesktopUserAgent(macChromePlatform, major: major),
 ]);
 
 List<String> get desktopUserAgents =>
-    defaultTargetPlatform == TargetPlatform.android
-    ? androidDesktopUserAgents
-    : _otherDesktopUserAgents;
+    defaultTargetPlatform == TargetPlatform.iOS
+    ? iosDesktopUserAgents
+    : androidDesktopUserAgents;
 
 const _usedUserAgentsKey = 'desktop_user_agents_used';
 const _directUserAgentKey = 'desktop_user_agent_direct';
@@ -41,21 +29,32 @@ const _directUserAgentKey = 'desktop_user_agent_direct';
 /// Reuse the same browser identity while keeping the direct connection session.
 Future<String> loadDirectDesktopUserAgent() async {
   final preferences = await SharedPreferences.getInstance();
-  final stored = preferences.getString(_directUserAgentKey);
+  final previous = preferences.getString(_directUserAgentKey);
+  final stored = previous == null
+      ? null
+      : normalizeDesktopUserAgentForPlatform(previous);
   if (needsAndroidDesktopIdentity) {
     final used = preferences.getStringList(_usedUserAgentsKey) ?? [];
     final selected = stored != null && stored.trim().isNotEmpty
         ? stored
         : used.isNotEmpty
-        ? used.last
+        ? normalizeDesktopUserAgentForPlatform(used.last)
         : await selectNextDesktopUserAgent();
-    if (!await preferences.setString(_directUserAgentKey, selected)) {
+    final desktopAgent = androidChromeDesktopUserAgent(selected);
+    if (!await preferences.setString(_directUserAgentKey, desktopAgent)) {
       throw StateError('Cannot persist direct User-Agent');
     }
-    return selected;
+    return desktopAgent;
   }
-  if (stored != null && desktopUserAgents.contains(stored)) return stored;
-  final used = preferences.getStringList(_usedUserAgentsKey) ?? [];
+  if (stored != null && desktopUserAgents.contains(stored)) {
+    if (stored != previous &&
+        !await preferences.setString(_directUserAgentKey, stored)) {
+      throw StateError('Cannot persist direct User-Agent');
+    }
+    return stored;
+  }
+  final used = (preferences.getStringList(_usedUserAgentsKey) ?? [])
+      .map(normalizeDesktopUserAgentForPlatform).toList();
   final selected = used.isNotEmpty && desktopUserAgents.contains(used.last)
       ? used.last
       : await selectNextDesktopUserAgent();
@@ -66,13 +65,20 @@ Future<String> loadDirectDesktopUserAgent() async {
 }
 
 /// Lưu lịch sử ngoài WebView để xóa cookie không làm mất các UA đã dùng.
-/// Randomize OS/version without repeating a UA until the pool is exhausted.
+/// Randomize Chrome versions without repeating until the platform pool is used.
 Future<String> selectNextDesktopUserAgent() async {
   final preferences = await SharedPreferences.getInstance();
   final candidates = desktopUserAgents;
-  var used = (preferences.getStringList(_usedUserAgentsKey) ?? [])
-      .where(candidates.contains)
-      .toList();
+  final history = preferences.getStringList(_usedUserAgentsKey) ?? [];
+  var used = <String>[];
+  for (final previous in history) {
+    final agent = normalizeDesktopUserAgentForPlatform(previous);
+    if (!candidates.contains(agent)) continue;
+    // Old Linux/Windows templates could advertise the same Chrome version.
+    // Retain the last occurrence when moving to the five Linux templates.
+    used.remove(agent);
+    used.add(agent);
+  }
   final last = used.isEmpty ? null : used.last;
   var available = candidates.where((ua) => !used.contains(ua)).toList();
   if (available.isEmpty) {

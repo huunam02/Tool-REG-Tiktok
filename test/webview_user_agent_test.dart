@@ -1,14 +1,20 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/webview_user_agent.dart';
+import 'package:test_tiktok/core/chrome_user_agent.dart';
+
+import 'support/test_proxy_ip_platform.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   const nativeIphone =
       'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) '
       'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
   const configured =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-      'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+      'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36';
 
   tearDown(() => debugDefaultTargetPlatformOverride = null);
 
@@ -48,7 +54,7 @@ void main() {
   });
 
   test(
-    'iOS keeps different selected identities instead of collapsing to native Safari',
+    'iOS normalizes Windows Chrome to macOS without reading native Safari',
     () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       var nativeReads = 0;
@@ -57,13 +63,16 @@ void main() {
         return nativeIphone;
       }
 
-      final next = configured.replaceAll('Chrome/140', 'Chrome/139');
+      final next = configured.replaceFirst(
+        'Windows NT 10.0; Win64; x64',
+        'Macintosh; Intel Mac OS X 10_15_7',
+      );
       expect(
         await resolveWebViewUserAgent(
           configured,
           nativeAgentLoader: loadNative,
         ),
-        configured,
+        next,
       );
       expect(
         await resolveWebViewUserAgent(next, nativeAgentLoader: loadNative),
@@ -88,7 +97,7 @@ void main() {
   );
 
   test(
-    'Android uses the installed Chromium version when no UA is configured',
+    'Android advertises Chrome 155 even when the installed engine is older',
     () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       final agent = await resolveWebViewUserAgent(
@@ -98,7 +107,7 @@ void main() {
       );
       expect(
         agent,
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36',
       );
       expect(agent, isNot(contains('Mobile')));
       expect(agent, isNot(contains(' wv')));
@@ -106,7 +115,7 @@ void main() {
   );
 
   test(
-    'Android normalizes saved identities to the installed Chrome desktop profile',
+    'Android keeps Chrome 155 across saved identities without reading native UA',
     () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       var nativeReads = 0;
@@ -127,10 +136,10 @@ void main() {
               return 'Chrome/154.0.8037.107';
             },
           ),
-          androidChromeDesktopUserAgent('Chrome/154.0.8037.107'),
+          currentAndroidChromeDesktopUserAgent,
         );
       }
-      expect(nativeReads, 3);
+      expect(nativeReads, 0);
     },
   );
 
@@ -141,16 +150,79 @@ void main() {
         configured,
         nativeAgentLoader: () async => throw StateError('Unavailable'),
       ),
-      androidChromeDesktopUserAgent(configured),
+      currentAndroidChromeDesktopUserAgent,
     );
     expect(
       await resolveWebViewUserAgent(
         configured,
         nativeAgentLoader: () async => 'unknown',
       ),
-      androidChromeDesktopUserAgent(configured),
+      currentAndroidChromeDesktopUserAgent,
     );
   });
+
+  for (final major in [151, 152, 153, 154, 155]) {
+    test(
+      'Android keeps selected Chrome $major and matching full version',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        final selected = chromeDesktopUserAgent(
+          'Windows NT 10.0; Win64; x64',
+          major: major,
+        );
+        final resolved = await resolveWebViewUserAgent(selected);
+        expect(
+          resolved,
+          chromeDesktopUserAgent('X11; Linux x86_64', major: major),
+        );
+        expect(chromeFullVersionForUserAgent(resolved), startsWith('$major.'));
+        expect(await resolveWebViewUserAgent(resolved), resolved);
+        MethodCall? nativeCall;
+        const channel = MethodChannel('test_tiktok/webview_identity');
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(channel, (call) async {
+          nativeCall = call;
+          return resolved;
+        });
+        addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+        await configureAndroidDesktopIdentity(
+          InAppWebViewController.fromPlatform(
+            platform: TestProxyIpController(),
+          ),
+          userAgent: resolved,
+        );
+        expect(nativeCall!.method, 'configure');
+        expect(nativeCall!.arguments['userAgent'], resolved);
+        expect(
+          nativeCall!.arguments['chromeFullVersion'],
+          recentChromeFullVersions[major],
+        );
+      },
+    );
+    test('iOS preserves selected Chrome $major', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final selected = chromeDesktopUserAgent(
+        'Macintosh; Intel Mac OS X 10_15_7',
+        major: major,
+      );
+      expect(await resolveWebViewUserAgent(selected), selected);
+    });
+  }
+
+  test(
+    'iOS upgrades an old built-in Chrome UA to the current stable',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      expect(
+        await resolveWebViewUserAgent(
+          configured.replaceFirst('Chrome/155', 'Chrome/140'),
+        ),
+        chromeDesktopUserAgent(macChromePlatform),
+      );
+      expect(currentChromeMajor, 155);
+    },
+  );
 
   test('iOS preserves a custom Safari UA as well as a Chromium UA', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;

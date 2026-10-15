@@ -73,7 +73,11 @@ class MainActivity: FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 try {
-                    result.success(DesktopChromeIdentity.configure(webView))
+                    val userAgent = call.argument<String>("userAgent")
+                        ?: error("Thiếu User-Agent Chrome desktop.")
+                    val fullVersion = call.argument<String>("chromeFullVersion")
+                        ?: error("Thiếu phiên bản Chrome cho Client Hints.")
+                    result.success(DesktopChromeIdentity.configure(webView, userAgent, fullVersion))
                 } catch (error: Exception) {
                     result.error("identity_unsupported", error.message, null)
                 }

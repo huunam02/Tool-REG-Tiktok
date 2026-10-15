@@ -14,6 +14,9 @@ import 'package:test_tiktok/screen/proxy_management_page.dart';
 
 import 'support/memory_proxy_store.dart';
 
+Future<String> _testTimeZone(WebViewProxy proxy, String userAgent) async =>
+    'America/New_York';
+
 void main() {
   const record = '192.0.2.7:9323:proxy-user:proxy-password';
   const combinedRecord =
@@ -67,7 +70,10 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+        home: CreateProxyPage(
+          detectTimeZone: _testTimeZone,
+          generateUserAgent: () async => 'test-agent',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -98,6 +104,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: ProxyForm(
+            detectTimeZone: _testTimeZone,
             title: 'Tạo cấu hình',
             submitLabel: 'Tạo cấu hình',
             randomizeOnOpen: true,
@@ -159,7 +166,9 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final store = MemoryProxyStore();
     await tester.pumpWidget(
-      MaterialApp(home: ProxyManagementPage(store: store)),
+      MaterialApp(
+        home: ProxyManagementPage(store: store, detectTimeZone: _testTimeZone),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('addProxy')));
@@ -176,6 +185,7 @@ void main() {
     expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
     expect(text(tester, 'savedProxyUsername'), 'proxy-user');
     expect(text(tester, 'savedProxyPassword'), 'proxy-password');
+    expect(text(tester, 'savedProxyTimeZone'), 'America/New_York');
     expect(text(tester, 'savedProxyUserAgent'), agent);
     expect(text(tester, 'proxyImportData'), isEmpty);
     expect(find.text('Đã import thành công 1 cấu hình.'), findsOneWidget);
@@ -200,7 +210,10 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
-        home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+        home: CreateProxyPage(
+          detectTimeZone: _testTimeZone,
+          generateUserAgent: () async => 'test-agent',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -256,7 +269,10 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
-        home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+        home: CreateProxyPage(
+          detectTimeZone: _testTimeZone,
+          generateUserAgent: () async => 'test-agent',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -297,7 +313,12 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        MaterialApp(home: ProxyManagementPage(store: store)),
+        MaterialApp(
+          home: ProxyManagementPage(
+            store: store,
+            detectTimeZone: _testTimeZone,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('addProxy')));
@@ -365,7 +386,10 @@ void main() {
           ).copyWith(textScaler: const TextScaler.linear(1.5)),
           child: child!,
         ),
-        home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+        home: CreateProxyPage(
+          detectTimeZone: _testTimeZone,
+          generateUserAgent: () async => 'test-agent',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -411,7 +435,9 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final store = MemoryProxyStore();
     await tester.pumpWidget(
-      MaterialApp(home: ProxyManagementPage(store: store)),
+      MaterialApp(
+        home: ProxyManagementPage(store: store, detectTimeZone: _testTimeZone),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('addProxy')));
@@ -510,7 +536,12 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        MaterialApp(home: ProxyManagementPage(store: store)),
+        MaterialApp(
+          home: ProxyManagementPage(
+            store: store,
+            detectTimeZone: _testTimeZone,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Tùy chọn cấu hình'));
@@ -551,7 +582,10 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(
-          home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+          home: CreateProxyPage(
+            detectTimeZone: _testTimeZone,
+            generateUserAgent: () async => 'test-agent',
+          ),
         ),
       );
       await tester.pumpAndSettle();

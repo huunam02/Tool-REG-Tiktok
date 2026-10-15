@@ -7,12 +7,14 @@ class ProxyDraft {
     this.proxy,
     this.userAgent, {
     this.account,
+    this.timeZoneId = '',
     this.statusAccount = AccountStatus.unregistered,
   });
 
   final String name;
   final WebViewProxy? proxy;
   final String userAgent;
+  final String timeZoneId;
   final AccountCredentials? account;
   final AccountStatus statusAccount;
 }

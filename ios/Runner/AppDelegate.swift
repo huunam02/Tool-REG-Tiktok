@@ -53,8 +53,11 @@ import Network
           return
         }
         let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: endpointPort)
-        let proxy = ProxyConfiguration(httpCONNECTProxy: endpoint,
+        var proxy = ProxyConfiguration(httpCONNECTProxy: endpoint,
           tlsOptions: scheme == "https" ? NWProtocolTLS.Options() : nil)
+        // Never fall back to a direct connection if this proxy fails.
+        proxy.allowFailover = false
+        proxy.excludedDomains = []
         let username = arguments?["username"] as? String ?? ""
         if !username.isEmpty {
           proxy.applyCredential(username: username,

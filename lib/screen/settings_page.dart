@@ -16,6 +16,7 @@ class SettingsPage extends StatelessWidget {
     required this.onOtpSettingsChanged,
     this.accessibilityPermission,
     this.onOpenBrowserCheck,
+    this.onOpenIpCheck,
   });
 
   final OtpApiSettings initialOtpSettings;
@@ -23,6 +24,7 @@ class SettingsPage extends StatelessWidget {
   final ValueChanged<OtpApiSettings> onOtpSettingsChanged;
   final AccessibilityPermissionService? accessibilityPermission;
   final VoidCallback? onOpenBrowserCheck;
+  final VoidCallback? onOpenIpCheck;
 
   @override
   Widget build(BuildContext context) => ControllerScope<SettingsController>(
@@ -32,15 +34,24 @@ class SettingsPage extends StatelessWidget {
           onSettingsChanged: onOtpSettingsChanged,
           accessibilityPermission: accessibilityPermission,
         ),
-        builder: (controller) => _SettingsView(controller, onOpenBrowserCheck),
+        builder: (controller) => _SettingsView(
+          controller,
+          onOpenBrowserCheck,
+          onOpenIpCheck,
+        ),
       );
 }
 
 class _SettingsView extends StatelessWidget {
-  const _SettingsView(this.controller, this.onOpenBrowserCheck);
+  const _SettingsView(
+    this.controller,
+    this.onOpenBrowserCheck,
+    this.onOpenIpCheck,
+  );
 
   final SettingsController controller;
   final VoidCallback? onOpenBrowserCheck;
+  final VoidCallback? onOpenIpCheck;
 
   Future<void> _openOtpSettings(BuildContext context) async {
     final settings =
@@ -102,6 +113,13 @@ class _SettingsView extends StatelessWidget {
                         onPressed: onOpenBrowserCheck,
                         icon: const Icon(Icons.fact_check_outlined),
                         label: const Text('Kiểm tra IP / User-Agent'),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        key: const Key('openIpCheckSettings'),
+                        onPressed: onOpenIpCheck,
+                        icon: const Icon(Icons.public_outlined),
+                        label: const Text('Kiểm tra IP với WhatIsMyIP'),
                       ),
                     ],
                   ),

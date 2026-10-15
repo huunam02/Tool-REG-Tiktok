@@ -9,6 +9,10 @@ import '../core/proxy_store.dart';
 import '../core/proxy_draft.dart';
 import '../core/configuration_data.dart';
 import '../core/configuration_file_import.dart';
+import '../core/proxy_time_zone.dart';
+import '../core/proxy_time_zone_detector.dart';
+import '../core/webview_user_agent.dart';
+import '../core/chrome_user_agent.dart';
 import 'app_controller.dart';
 
 class ProxyFormController extends AppController {
@@ -17,13 +21,22 @@ class ProxyFormController extends AppController {
     required this.randomizeOnOpen,
     required this.selectUserAgent,
     Future<ConfigurationImportFile?> Function()? pickImportFile,
-  }) : pickImportFile = pickImportFile ?? pickConfigurationImportFile,
+    Future<String> Function(WebViewProxy proxy, String userAgent)?
+    detectTimeZone,
+  }) : _detectTimeZoneOverride = detectTimeZone,
+       pickImportFile = pickImportFile ?? pickConfigurationImportFile,
        configurations = [ConfigurationFormFields(entry: entry)];
 
   final SavedProxy? entry;
   final bool randomizeOnOpen;
   final Future<String> Function() selectUserAgent;
   final Future<ConfigurationImportFile?> Function() pickImportFile;
+  final Future<String> Function(WebViewProxy, String)? _detectTimeZoneOverride;
+  final _timeZoneDetector = ProxyTimeZoneDetector();
+  bool get canDetectTimeZone =>
+      _detectTimeZoneOverride != null || needsAndroidDesktopIdentity;
+  bool get detectingTimeZones =>
+      configurations.any((fields) => fields.detectingTimeZone);
 
   final form = GlobalKey<FormState>();
   List<ConfigurationFormFields> configurations;
@@ -31,6 +44,7 @@ class ProxyFormController extends AppController {
   TextEditingController get username => configurations.first.username;
   TextEditingController get password => configurations.first.password;
   TextEditingController get userAgent => configurations.first.userAgent;
+  TextEditingController get timeZoneId => configurations.first.timeZoneId;
   late final importData = TextEditingController();
   TextEditingController get accountEmail => configurations.first.accountEmail;
   TextEditingController get accountPassword =>
@@ -65,10 +79,10 @@ class ProxyFormController extends AppController {
     try {
       await previous;
       if (!active || fields.disposed) return;
-      var generatedAgent = await selectUserAgent();
+      var generatedAgent = normalizeDesktopUserAgentForPlatform(await selectUserAgent());
       if (!active || fields.disposed) return;
       if (generatedAgent == fields.userAgent.text) {
-        generatedAgent = await selectUserAgent();
+        generatedAgent = normalizeDesktopUserAgentForPlatform(await selectUserAgent());
         if (!active || fields.disposed) return;
       }
       fields.userAgent.text = generatedAgent;
@@ -85,6 +99,7 @@ class ProxyFormController extends AppController {
 
   @override
   void onClose() {
+    _timeZoneDetector.cancel();
     importData.dispose();
     for (final fields in configurations) {
       fields.dispose();
@@ -92,8 +107,14 @@ class ProxyFormController extends AppController {
     super.onClose();
   }
 
+  void normalizeUserAgentFor(ConfigurationFormFields fields) {
+    final agent = normalizeDesktopUserAgentForPlatform(fields.userAgent.text);
+    if (agent != fields.userAgent.text) fields.userAgent.text = agent;
+    update();
+  }
+
   Future<List<ProxyDraft>?> save() async {
-    if (importing || generating) return null;
+    if (importing || generating || detectingTimeZones) return null;
     final invalid = form.currentState!.validateGranularly();
     if (invalid.isNotEmpty) {
       final fieldContext = invalid.first.context;
@@ -111,7 +132,7 @@ class ProxyFormController extends AppController {
   }
 
   void importProxy() {
-    if (!active || importing) return;
+    if (!active || importing || detectingTimeZones) return;
     try {
       final records = ImportedConfiguration.parseMany(importData.text);
       _applyImportedConfigurations(records);
@@ -139,12 +160,17 @@ class ProxyFormController extends AppController {
     for (final fields in configurations.skip(1)) {
       unawaited(generateUserAgentFor(fields));
     }
+    if (canDetectTimeZone) {
+      for (final fields in configurations) {
+        unawaited(detectTimeZoneFor(fields));
+      }
+    }
     FocusManager.instance.primaryFocus?.unfocus();
     notify('Đã import thành công ${records.length} cấu hình.');
   }
 
   Future<void> importFromFile() async {
-    if (!active || importing) return;
+    if (!active || importing || detectingTimeZones) return;
     mutate(() => importing = true);
     try {
       final file = await pickImportFile();
@@ -162,7 +188,7 @@ class ProxyFormController extends AppController {
   }
 
   Future<void> pasteImportData() async {
-    if (!active || importing) return;
+    if (!active || importing || detectingTimeZones) return;
     mutate(() => importing = true);
     try {
       final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
@@ -191,8 +217,55 @@ class ProxyFormController extends AppController {
 
   void clearImportError(String _) => mutate(() => importError = null);
 
+  Future<void> detectTimeZoneFor(ConfigurationFormFields fields) async {
+    if (!active ||
+        fields.disposed ||
+        fields.detectingTimeZone ||
+        !canDetectTimeZone) {
+      return;
+    }
+    final revision = fields.revision;
+    mutate(() {
+      fields.detectingTimeZone = true;
+      fields.timeZoneError = null;
+    });
+    try {
+      final proxy = WebViewProxy.parse(
+        fields.url.text,
+        username: fields.username.text,
+        password: fields.password.text,
+      );
+      if (proxy == null) {
+        throw const FormatException('Nhập proxy trước khi tra múi giờ.');
+      }
+      final zone = normalizeProxyTimeZone(
+        await (_detectTimeZoneOverride ?? _timeZoneDetector.detect)(
+          proxy,
+          fields.userAgent.text,
+        ),
+      );
+      if (!active || fields.disposed || fields.revision != revision) return;
+      if (zone.isEmpty) {
+        throw const FormatException('API chưa xác định được múi giờ.');
+      }
+      mutate(() => fields.timeZoneId.text = zone);
+    } catch (error) {
+      if (active && !fields.disposed && fields.revision == revision) {
+        mutate(
+          () => fields.timeZoneError = error is FormatException
+              ? error.message
+              : 'Không thể tra múi giờ qua proxy. Hãy thử lại.',
+        );
+      }
+    } finally {
+      if (active && !fields.disposed) {
+        mutate(() => fields.detectingTimeZone = false);
+      }
+    }
+  }
+
   void clearImportedConfigurations() {
-    if (importing) return;
+    if (importing || detectingTimeZones) return;
     final oldFields = configurations.skip(1).toList();
     mutate(() {
       configurations = [configurations.first];
@@ -202,6 +275,7 @@ class ProxyFormController extends AppController {
       accountEmail.clear();
       accountPassword.clear();
       mailboxPassword.clear();
+      timeZoneId.clear();
       statusAccount = AccountStatus.unregistered;
     });
     for (final fields in oldFields) {
@@ -217,18 +291,32 @@ class ConfigurationFormFields {
       ),
       username = TextEditingController(text: entry?.proxy?.username),
       password = TextEditingController(text: entry?.proxy?.password),
-      userAgent = TextEditingController(text: entry?.userAgent),
+      userAgent = TextEditingController(text: entry == null ? '' : normalizeDesktopUserAgentForPlatform(entry.userAgent)),
+      timeZoneId = TextEditingController(text: entry?.timeZoneId),
       accountEmail = TextEditingController(text: entry?.account?.email),
       accountPassword = TextEditingController(text: entry?.account?.password),
       mailboxPassword = TextEditingController(
         text: entry?.account?.mailboxPassword,
       ),
-      statusAccount = entry?.statusAccount ?? AccountStatus.unregistered;
+      statusAccount = entry?.statusAccount ?? AccountStatus.unregistered {
+    for (final field in [url, username, password]) {
+      field.addListener(() {
+        revision++;
+        timeZoneId.clear();
+        timeZoneError = null;
+      });
+    }
+    timeZoneId.addListener(() => revision++);
+  }
 
   final TextEditingController url;
   final TextEditingController username;
   final TextEditingController password;
   final TextEditingController userAgent;
+  final TextEditingController timeZoneId;
+  int revision = 0;
+  bool detectingTimeZone = false;
+  String? timeZoneError;
   final TextEditingController accountEmail;
   final TextEditingController accountPassword;
   final TextEditingController mailboxPassword;
@@ -238,6 +326,8 @@ class ConfigurationFormFields {
   bool disposed = false;
 
   void applyImport(ImportedConfiguration data) {
+    timeZoneId.clear();
+    timeZoneError = null;
     url.text = proxyAddress(data.proxy);
     username.text = data.proxy.username;
     password.text = data.proxy.password;
@@ -254,13 +344,14 @@ class ConfigurationFormFields {
       username: username.text,
       password: password.text,
     ),
-    userAgent.text.trim(),
+    normalizeDesktopUserAgentForPlatform(userAgent.text.trim()),
     account: AccountCredentials(
       email: accountEmail.text.trim(),
       password: accountPassword.text,
       mailboxPassword: mailboxPassword.text,
     ),
     statusAccount: statusAccount,
+    timeZoneId: normalizeProxyTimeZone(timeZoneId.text),
   );
 
   void dispose() {
@@ -270,6 +361,7 @@ class ConfigurationFormFields {
       username,
       password,
       userAgent,
+      timeZoneId,
       accountEmail,
       accountPassword,
       mailboxPassword,

@@ -7,13 +7,18 @@ import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 
-/** Match Chrome Android's desktop profile using the installed Chromium engine. */
+/** Configure matching desktop User-Agent and Client Hints before navigation. */
 object DesktopChromeIdentity {
     // Chrome's "Desktop site" ignores mobile viewport directives. WebView's
     // desktop UA alone does not, so keep the default 980 CSS-pixel phone layout
     // even when the site inserts/replaces its viewport after navigation.
     private val desktopViewportScript = """
         (() => {
+            // Keep the legacy JS platform consistent with the desktop UA and
+            // native Client Hints, including documents inside frames.
+            Object.defineProperty(Navigator.prototype, 'platform', {
+                get: () => 'Linux x86_64', configurable: false
+            });
             if (window.top !== window) return;
             const normalize = (element) => {
                 if (element.tagName === 'META' &&
@@ -27,20 +32,34 @@ object DesktopChromeIdentity {
                 normalize(node);
                 node.querySelectorAll('meta').forEach(normalize);
             };
+            const ensureViewport = () => {
+                // Pages may omit or remove the tag. Keep a desktop layout
+                // without overriding the phone's screen size, DPR or touch.
+                if (document.head && !document.querySelector('meta[name="viewport" i]')) {
+                    const viewport = document.createElement('meta');
+                    viewport.name = 'viewport';
+                    viewport.content = 'width=980';
+                    document.head.prepend(viewport);
+                }
+            };
             new MutationObserver((records) => {
                 for (const record of records) {
                     if (record.type === 'attributes') normalize(record.target);
                     else record.addedNodes.forEach(scan);
                 }
+                ensureViewport();
             }).observe(document, {
                 subtree: true, childList: true, attributes: true,
                 attributeFilter: ['name', 'content']
             });
             document.querySelectorAll('meta').forEach(normalize);
+            ensureViewport();
         })();
     """.trimIndent()
 
-    fun configure(webView: WebView): String {
+    @JvmOverloads
+    fun configure(webView: WebView, requestedAgent: String? = null,
+                  requestedFullVersion: String? = null): String {
         check(WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             "WebView cần hỗ trợ cấu hình viewport trước khi tải trang. Hãy cập nhật Android System WebView."
         }
@@ -53,9 +72,23 @@ object DesktopChromeIdentity {
         val nativeAgent = WebSettings.getDefaultUserAgent(webView.context)
         val nativeVersion = Regex("Chrome/(\\d+(?:\\.\\d+){3})").find(nativeAgent)?.groupValues?.get(1)
             ?: error("Không đọc được phiên bản Chromium của WebView.")
+        val requestedMajor = requestedAgent?.let {
+            Regex("Chrome/(\\d+)\\.").find(it)?.groupValues?.get(1)
+                ?: error("User-Agent Chrome desktop không hợp lệ.")
+        }
+        val version = if (requestedMajor != null) {
+            require(requestedFullVersion != null &&
+                Regex("\\d+(?:\\.\\d+){3}").matches(requestedFullVersion) &&
+                requestedFullVersion.substringBefore('.') == requestedMajor) {
+                "Phiên bản Chrome và Client Hints không khớp."
+            }
+            requestedFullVersion
+        } else nativeVersion
         val userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/${nativeVersion.substringBefore('.')}.0.0.0 Safari/537.36"
-        val version = nativeVersion
+            "(KHTML, like Gecko) Chrome/${version.substringBefore('.')}.0.0.0 Safari/537.36"
+        require(requestedAgent == null || requestedAgent == userAgent) {
+            "User-Agent phải dùng cấu hình Chrome desktop Linux."
+        }
         val major = version.substringBefore('.')
         val settings = webView.settings
         val defaults = WebSettingsCompat.getUserAgentMetadata(settings)

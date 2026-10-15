@@ -8,7 +8,13 @@ const source = readFileSync(
   new URL('../lib/core/scripts/auto_login_script.dart', `file://${__filename}`), 'utf8',
 );
 const step = source.match(/autoLoginStepScript = r'''([\s\S]*?)''';/)[1];
+const homeSource = readFileSync(
+  new URL('../lib/core/scripts/home_account_modal_script.dart', `file://${__filename}`), 'utf8',
+);
+const homeStep = homeSource.match(/openHomeAccountModalScript = r'''([\s\S]*?)''';/)[1];
 const flush = () => new Promise(setImmediate);
+
+require('./support/home_modal_scenarios')('login', setup);
 
 function setup({ autoPaste = true, pasteResult = true, sendCodeAcknowledged = true } = {}) {
   const elements = [];
@@ -64,8 +70,8 @@ function setup({ autoPaste = true, pasteResult = true, sendCodeAcknowledged = tr
       },
     },
   };
-  const execute = runInNewContext(`(${step})`, {
-    window, location, document,
+  const execute = runInNewContext(`((config, allowSubmit) => (${step})(config, allowSubmit, (${homeStep})))`, {
+    window, location, document, innerWidth: 400, innerHeight: 800,
     Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
     Date: class extends Date { static now() { return time; } },
     getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),

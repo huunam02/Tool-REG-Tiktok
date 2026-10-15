@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'home_account_modal_script.dart';
+
 
 
 String buildAutoSignupScript({
@@ -72,7 +74,7 @@ String buildAutoSignupScript({
 
           'useAccessibilityUsernameSkip': useAccessibilityUsernameSkip,
 
-        })}, $allowSubmit);
+        })}, $allowSubmit, ($openHomeAccountModalScript));
 
 ''';
 
@@ -84,7 +86,7 @@ String buildAutoSignupScript({
 
 const String autoSignupStepScript = r'''
 
-(config, allowSubmit) => {
+(config, allowSubmit, openHomeAccountModal) => {
 
   if (location.origin !== 'https://www.tiktok.com') return 'wrong-origin';
 
@@ -142,11 +144,22 @@ const String autoSignupStepScript = r'''
 
   const passwordInput = findForm('input[type="password"]');
 
-  const findVerification = () => findForm('input[autocomplete="one-time-code"], input[name="code"], ' +
-
-    'input[name="verification_code"], input[name="otp"], input[name="verifyCode"], ' +
-
-    'input[placeholder*="code" i], input[placeholder*="mã" i]');
+  const findVerificationInputs = () => {
+    if (!signupFormVisible()) return [];
+    const root = dialog() || document;
+    const known = Array.from(root.querySelectorAll(
+      'input[autocomplete="one-time-code"], input[name="code"], ' +
+      'input[name="verification_code"], input[name="otp"], input[name="verifyCode"], ' +
+      'input[placeholder*="code" i], input[placeholder*="mã" i]')).filter(visible);
+    const singles = Array.from(root.querySelectorAll('input[maxlength="1"]'))
+      .filter(el => visible(el) && el.type !== 'password');
+    const waitingForCode = config.otpRequestedAt != null ||
+      window.__flutterAutoSignup?.attempt === config.attempt &&
+        (window.__flutterAutoSignup.codeRequest || window.__flutterAutoSignup.otpRequestedAt != null);
+    if (singles.length === 6 && (waitingForCode || known.some(el => singles.includes(el)))) return singles;
+    return known.slice(0, 1);
+  };
+  const findVerification = () => findVerificationInputs()[0] || null;
 
   const verification = findVerification();
 
@@ -154,7 +167,7 @@ const String autoSignupStepScript = r'''
 
     'input[type="tel"], input[name="phone"], input[name="mobile"], input[autocomplete="tel"]'
 
-  )).find(el => visible(el) && el !== findVerification());
+  )).find(el => visible(el) && !findVerificationInputs().includes(el));
 
   const phoneInput = findPhone();
 
@@ -206,7 +219,10 @@ const String autoSignupStepScript = r'''
 
   const otp = (config.otp || '').trim();
 
-  if (verification && verification.value?.trim() && verification.value !== otp) {
+  const enteredOtp = findVerificationInputs().map(el => el.value || '').join('');
+  const pastingOwnOtp = previousState?.pending?.field === 'otp' &&
+    previousState.pending.text === otp;
+  if (verification && enteredOtp.trim() && enteredOtp !== otp && !pastingOwnOtp) {
 
     return 'verification-required';
 
@@ -370,29 +386,48 @@ const String autoSignupStepScript = r'''
 
     .find((el) => enabled(el) && pattern.test(el.textContent.trim()));
 
-  const nativeButtonTarget = (control) => {
-    const rect = control.getBoundingClientRect();
+  const nativeButtonTarget = (control, action = 'button') => {
     const viewport = window.visualViewport;
     const offsetX = viewport?.offsetLeft || 0;
     const offsetY = viewport?.offsetTop || 0;
     const viewportWidth = viewport?.width || window.innerWidth;
     const viewportHeight = viewport?.height || window.innerHeight;
-    let x = rect.left + rect.width / 2;
-    let y = rect.top + rect.height / 2;
-    if (![x, y, viewportWidth, viewportHeight].every(Number.isFinite) ||
-        rect.width <= 0 || rect.height <= 0 || viewportWidth <= 0 || viewportHeight <= 0 ||
-        x < offsetX || y < offsetY || x >= offsetX + viewportWidth ||
-        y >= offsetY + viewportHeight) return null;
-    // Slightly vary each tap, keeping it inside the button and visible viewport.
-    const jitterX = Math.min(6, rect.width * 0.15,
-      (x - offsetX) * 0.8, (offsetX + viewportWidth - x) * 0.8);
-    const jitterY = Math.min(6, rect.height * 0.15,
-      (y - offsetY) * 0.8, (offsetY + viewportHeight - y) * 0.8);
-    x += (Math.random() * 2 - 1) * jitterX;
-    y += (Math.random() * 2 - 1) * jitterY;
-    const hit = document.elementFromPoint(x, y);
-    if (!hit || hit !== control && !control.contains(hit)) return null;
-    return { x: x - offsetX, y: y - offsetY, viewportWidth, viewportHeight };
+    const geometry = [offsetX, offsetY, viewportWidth, viewportHeight,
+      window.devicePixelRatio || 1].join(':');
+    // Keep only geometry, never account data or detached DOM nodes. A new
+    // attempt can reuse a region when the live button still occupies it.
+    const cache = window.__flutterNativeTapTargets ||= new Map();
+    const pointIn = rect => {
+      let x = rect.left + rect.width / 2;
+      let y = rect.top + rect.height / 2;
+      if (![x, y, viewportWidth, viewportHeight].every(Number.isFinite) ||
+          rect.width <= 0 || rect.height <= 0 || viewportWidth <= 0 || viewportHeight <= 0 ||
+          x < offsetX || y < offsetY || x >= offsetX + viewportWidth ||
+          y >= offsetY + viewportHeight) return null;
+      const jitterX = Math.min(6, rect.width * 0.15,
+        (x - offsetX) * 0.8, (offsetX + viewportWidth - x) * 0.8);
+      const jitterY = Math.min(6, rect.height * 0.15,
+        (y - offsetY) * 0.8, (offsetY + viewportHeight - y) * 0.8);
+      x += (Math.random() * 2 - 1) * jitterX;
+      y += (Math.random() * 2 - 1) * jitterY;
+      // A cache hit still has to land on the currently authorized control.
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || hit !== control && !control.contains(hit)) return null;
+      return { x: x - offsetX, y: y - offsetY, viewportWidth, viewportHeight };
+    };
+    const cached = cache.get(action);
+    if (cached?.geometry === geometry) {
+      const point = pointIn(cached.rect);
+      if (point) return point;
+    }
+    cache.delete(action);
+    const bounds = control.getBoundingClientRect();
+    const rect = {left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height};
+    const point = pointIn(rect);
+    if (!point) return null;
+    if (cache.size >= 16) cache.delete(cache.keys().next().value);
+    cache.set(action, {geometry, rect});
+    return point;
   };
 
   if (usernameScreen) {
@@ -425,7 +460,7 @@ const String autoSignupStepScript = r'''
           .includes(request.control);
     };
     state.getUsernameSkipTarget = (attempt) => state.canSkipUsernameWithAccessibility(attempt)
-      ? nativeButtonTarget(state.usernameSkipRequest.control) : null;
+      ? nativeButtonTarget(state.usernameSkipRequest.control, 'signup/skip-username') : null;
 
     if (!skip) {
 
@@ -498,7 +533,7 @@ const String autoSignupStepScript = r'''
     enabled(state.codeRequest.control) && sendCodePattern.test(controlText(state.codeRequest.control));
 
   state.getSendCodeTarget = (attempt) => state.canSendCodeWithAccessibility(attempt)
-    ? nativeButtonTarget(state.codeRequest.control) : null;
+    ? nativeButtonTarget(state.codeRequest.control, 'signup/send-code') : null;
 
   state.canSubmitPasswordWithAccessibility = (attempt) => {
     const request = state.passwordRequest;
@@ -514,7 +549,7 @@ const String autoSignupStepScript = r'''
   };
 
   state.getPasswordSubmitTarget = (attempt) => state.canSubmitPasswordWithAccessibility(attempt)
-    ? nativeButtonTarget(state.passwordRequest.control) : null;
+    ? nativeButtonTarget(state.passwordRequest.control, 'signup/submit-password') : null;
 
   const codeRequestResult = () => {
 
@@ -552,67 +587,7 @@ const String autoSignupStepScript = r'''
 
   if (state.codeRequest) return codeRequestResult();
 
-  const activeVideo = () => Array.from(document.querySelectorAll('video'))
-    .filter(video => visible(video) && video.getBoundingClientRect().bottom > 0 &&
-      video.getBoundingClientRect().top < innerHeight)
-    .sort((a, b) => {
-      const area = video => {
-        const rect = video.getBoundingClientRect();
-        return Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) *
-          Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
-      };
-      return area(b) - area(a);
-    })[0] || null;
-
-  // Start signup from a real Home feed interaction so TikTok opens its
-  // account dialog through the same path as a normal viewer.
-  if (!signupFormVisible() && !dialog()) {
-    const video = activeVideo();
-    if (video) {
-      const preSignup = window.__flutterSignupHomeInteraction ||= {
-        video: null, startedAt: 0, liked: false,
-      };
-      if (preSignup.video !== video) {
-        preSignup.video = video;
-        preSignup.startedAt = Date.now();
-        preSignup.liked = false;
-      }
-      if (!preSignup.liked) {
-        if (video.paused) video.play?.().catch?.(() => {});
-        const duration = Number(video.duration);
-        const watched = video.ended ||
-          Number.isFinite(duration) && duration > 0 &&
-            video.currentTime >= Math.min(duration - 0.2, 8) ||
-          Date.now() - preSignup.startedAt >= 10000;
-        if (!watched) return 'waiting-home-video';
-
-        const root = video.closest('article') || document;
-        const like = Array.from(root.querySelectorAll(
-          'button, [role="button"], [data-e2e*="like" i]'
-        )).find(control => {
-          const label = (control.getAttribute('aria-label') ||
-            control.getAttribute('title') || control.getAttribute('data-e2e') ||
-            control.textContent || '').trim();
-          return visible(control) && control.getAttribute('aria-pressed') !== 'true' &&
-            /^(like|like video|thích|thích video)$/i.test(label) ||
-            visible(control) && control.getAttribute('aria-pressed') !== 'true' &&
-            /like|thích/i.test(label);
-        });
-        if (!like) return 'waiting-home-like';
-        like.click();
-        preSignup.liked = true;
-        return 'home-video-liked';
-      }
-      return 'waiting-login-modal';
-    }
-  }
-
-
-
-  // Start on Home and open the login dialog through the Account icon. The
-
-  // signup dialog can keep the Home URL, so identify its visible form too.
-
+  // The Home URL can stay unchanged while the account dialog opens.
   if (!signupFormVisible()) {
 
     const modal = dialog();
@@ -631,23 +606,11 @@ const String autoSignupStepScript = r'''
 
     }
 
-    const account = find('[data-e2e="nav-profile"], [data-e2e="nav-account"], ' +
-
-      '[data-e2e="account-icon"], a[href^="/profile"], ' +
-
-      '[aria-label="Account"], [aria-label="Profile"], [aria-label="Tài khoản"], [aria-label="Hồ sơ"]') ||
-
-      Array.from(document.querySelectorAll('a, button, [role="button"], [role="link"]'))
-
-        .find(el => enabled(el) && /^(account|profile|tài khoản|hồ sơ)$/i.test(el.textContent.trim()));
-
-    if (account && enabled(account)) clickOnce(account, 'open-account');
-
+    if (!state.emailEntered && state.otpRequestedAt == null) {
+      return openHomeAccountModal(state, visible, enabled, find);
+    }
     return 'waiting-form';
-
   }
-
-
 
   // Switch method before processing birthday menus on the phone form.
 
@@ -1005,9 +968,15 @@ const String autoSignupStepScript = r'''
 
     if (!verification) return 'waiting-otp';
 
-    const result = paste(verification, 'otp', otp);
+    const otpInputs = findVerificationInputs();
+    const splitCodeComplete = otpInputs.length === 6 && enteredOtp === otp;
+    const result = splitCodeComplete ? null : paste(verification, 'otp', otp);
 
     if (result) return result === 'waiting-paste' ? 'waiting-otp-paste' : result;
+
+    if (splitCodeComplete && otpInputs.includes(document.activeElement)) {
+      document.activeElement.blur?.();
+    }
 
     const verify = button(/^(sign\s*up|register|verify|confirm|continue|next|đăng ký|xác minh|xác nhận|tiếp tục|tiếp theo)$/i);
 

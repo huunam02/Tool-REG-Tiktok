@@ -15,7 +15,7 @@ void main() {
     expect(initial.token, defaults.otpApiToken);
 
     const edited = OtpApiSettings(
-      url: 'https://otp.example.com/api/code',
+      url: 'http://10.0.2.2:5678/api/code',
       token: 'new-reader-token',
     );
     await store.save(edited);

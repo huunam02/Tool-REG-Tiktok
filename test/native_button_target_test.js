@@ -22,7 +22,9 @@ for (const flow of ['login', 'signup']) {
       Math: Object.assign(Object.create(Math), { random: () => randomValue }),
       document: { elementFromPoint: (x, y) => {
         hitPoint = { x, y };
-        return covered ? {} : control;
+        const inside = x >= rect.left && x < rect.left + rect.width &&
+          y >= rect.top && y < rect.top + rect.height;
+        return covered || !inside ? {} : control;
       } },
     });
     for (rect of [
@@ -50,5 +52,84 @@ for (const flow of ['login', 'signup']) {
     }
     covered = true;
     assert.equal(target(control), null);
+  });
+
+  test(`${flow} reuses a button region and remeasures after it moves or the viewport changes`, () => {
+    let measurements = 0;
+    let rect = {left: 100, top: 200, width: 100, height: 40};
+    let covered = false;
+    let current;
+    const makeControl = () => ({
+      getBoundingClientRect() { measurements++; return rect; },
+      contains: () => false,
+    });
+    current = makeControl();
+    const viewport = {offsetLeft: 0, offsetTop: 0, width: 400, height: 800};
+    const window = {visualViewport: viewport, scrollX: 0, scrollY: 0, location: {pathname: '/login'}};
+    const target = runInNewContext(`(${targetFunction})`, {
+      window,
+      Math: Object.assign(Object.create(Math), {random: () => 0.5}),
+      document: {elementFromPoint: (x, y) => !covered &&
+        x >= rect.left && x < rect.left + rect.width &&
+        y >= rect.top && y < rect.top + rect.height ? current : null},
+    });
+    assert.ok(target(current, 'send-code'));
+    assert.ok(target(current, 'send-code'));
+    assert.equal(measurements, 1);
+    // A fresh form can reuse the same safe region even with a new DOM node.
+    current = makeControl();
+    assert.ok(target(current, 'send-code'));
+    assert.equal(measurements, 1);
+    rect = {...rect, top: 400};
+    assert.equal(target(current, 'send-code').y, 420);
+    assert.equal(measurements, 2);
+    window.scrollY = 20;
+    assert.ok(target(current, 'send-code'));
+    assert.equal(measurements, 2); // Fixed modal stayed in the same place.
+    window.location.pathname = '/login/email';
+    assert.ok(target(current, 'send-code'));
+    assert.equal(measurements, 2);
+    viewport.width = 390;
+    assert.ok(target(current, 'send-code'));
+    assert.equal(measurements, 3);
+    covered = true;
+    assert.equal(target(current, 'send-code'), null);
+    assert.equal(window.__flutterNativeTapTargets.has('send-code'), false);
+  });
+
+  test(`${flow} remeasures a failed action without dropping other cached buttons`, () => {
+    let measurements = 0;
+    const control = {
+      getBoundingClientRect() { measurements++; return {left: 100, top: 200, width: 100, height: 40}; },
+      contains: () => false,
+    };
+    const window = {innerWidth: 400, innerHeight: 800};
+    const target = runInNewContext(`(${targetFunction})`, {
+      window, document: {elementFromPoint: () => control},
+    });
+    target(control, 'password');
+    target(control, 'otp');
+    window.__flutterNativeTapTargets.delete('password');
+    target(control, 'password');
+    target(control, 'otp');
+    assert.equal(measurements, 3);
+  });
+
+  test(`${flow} keeps action caches separate and bounds their memory`, () => {
+    let measurements = 0;
+    const control = {
+      getBoundingClientRect() { measurements++; return {left: 100, top: 200, width: 100, height: 40}; },
+      contains: () => false,
+    };
+    const window = {innerWidth: 400, innerHeight: 800};
+    const target = runInNewContext(`(${targetFunction})`, {
+      window, document: {elementFromPoint: () => control},
+    });
+    assert.ok(target(control, 'password'));
+    assert.ok(target(control, 'otp'));
+    assert.ok(target(control, 'password'));
+    assert.equal(measurements, 2);
+    for (let i = 0; i < 30; i++) assert.ok(target(control, `step-${i}`));
+    assert.equal(window.__flutterNativeTapTargets.size, 16);
   });
 }

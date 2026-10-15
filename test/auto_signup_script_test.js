@@ -8,7 +8,13 @@ const source = readFileSync(
   new URL('../lib/core/scripts/auto_signup_script.dart', `file://${__filename}`), 'utf8',
 );
 const step = source.match(/autoSignupStepScript = r'''([\s\S]*?)''';/)[1];
+const homeSource = readFileSync(
+  new URL('../lib/core/scripts/home_account_modal_script.dart', `file://${__filename}`), 'utf8',
+);
+const homeStep = homeSource.match(/openHomeAccountModalScript = r'''([\s\S]*?)''';/)[1];
 const flush = () => new Promise(setImmediate);
+
+require('./support/home_modal_scenarios')('signup', setup);
 
 function setup({ inputs = true, autoPaste = true, pasteResult = true, sendCodeAcknowledged = true } = {}) {
   const elements = [];
@@ -17,7 +23,7 @@ function setup({ inputs = true, autoPaste = true, pasteResult = true, sendCodeAc
   const document = {
     hidden: false, activeElement: null,
     querySelectorAll: (selector) => elements.filter(
-      (element) => selector.split(', ').includes(element.selector),
+      (element) => selector.split(', ').some(part => part === element.selector || element.selectors?.includes(part)),
     ),
   };
   const location = { origin: 'https://www.tiktok.com', pathname: '/signup/phone-or-email' };
@@ -78,7 +84,7 @@ function setup({ inputs = true, autoPaste = true, pasteResult = true, sendCodeAc
     set value(value) { this._value = value; }
     dispatchEvent(event) { this.events.push(event.type); }
   }
-  const execute = runInNewContext(`(${step})`, {
+  const execute = runInNewContext(`((config, allowSubmit) => (${step})(config, allowSubmit, (${homeStep})))`, {
     window, document, location, HTMLSelectElement: Select,
     Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
     Event: class { constructor(type) { this.type = type; } },
@@ -100,6 +106,48 @@ async function fill(env) {
   assert.equal(env.run(), 'waiting-next');
   await env.resolvePaste();
 }
+
+for (const split of [false, true]) {
+  test(`signup pastes the complete OTP into ${split ? 'six slots' : 'one input'}`, async () => {
+    const env = setup({inputs: false, autoPaste: false});
+    env.config.otp = '012345';
+    env.config.otpRequestedAt = 0;
+    const inputs = Array.from({length: split ? 6 : 1}, () => {
+      const input = env.add(split ? 'input[maxlength="1"]' : 'input[name="code"]', '', 'INPUT');
+      input.type = split ? 'tel' : 'text';
+      if (split) input.selectors = ['input[type="tel"]'];
+      return input;
+    });
+    assert.equal(env.run(), 'waiting-otp-paste');
+    const state = env.window.__flutterAutoSignup;
+    assert.equal(state.canPasteFromClipboard(1, 'otp', env.config.otp), true);
+    assert.equal(state.canPasteFromClipboard(2, 'otp', env.config.otp), false);
+    assert.equal(state.canPasteFromClipboard(1, 'otp', '999999'), false);
+    assert.deepEqual(env.requests, [['FlutterSignupPaste', 1, 'otp']]);
+    // The page can distribute a paste across six inputs before resolving the bridge.
+    inputs.forEach((input, i) => { input.value = split ? env.config.otp[i] : env.config.otp; });
+    assert.equal(env.run(), 'waiting-otp-paste');
+    await env.resolvePaste();
+    assert.equal(env.run(), 'otp-submitted');
+    assert.equal(env.submit.clicks, 1);
+    env.run();
+    assert.equal(env.requests.length, 1);
+    assert.equal(env.submit.clicks, 1);
+  });
+}
+
+test('signup does not submit a truncated pasted OTP', async () => {
+  const env = setup({inputs: false, autoPaste: false});
+  env.config.otp = '012345';
+  env.config.otpRequestedAt = 0;
+  const input = env.add('input[name="code"]', '', 'INPUT');
+  assert.equal(env.run(), 'waiting-otp-paste');
+  input.value = '0';
+  assert.equal(env.run(), 'waiting-otp-paste');
+  await env.resolvePaste();
+  assert.equal(env.run(), 'verification-required');
+  assert.equal(env.submit.clicks, 0);
+});
 
 test('post-OTP Sign up waits ten seconds and dispatches a separate native gesture once', async () => {
   const env = setup();

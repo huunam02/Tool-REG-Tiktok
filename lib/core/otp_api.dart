@@ -25,11 +25,11 @@ class OtpApiConfiguration {
   static Uri parseUrl(String value) {
     final url = Uri.tryParse(value.trim());
     if (url == null ||
-        url.scheme != 'https' ||
+        (url.scheme != 'http' && url.scheme != 'https') ||
         url.host.isEmpty ||
         url.userInfo.isNotEmpty ||
         url.hasFragment) {
-      throw const FormatException('Nhập URL API HTTPS hợp lệ.');
+      throw const FormatException('Nhập URL API HTTP/HTTPS hợp lệ.');
     }
     return url;
   }

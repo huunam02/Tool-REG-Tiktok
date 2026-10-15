@@ -8,6 +8,7 @@ import 'package:test_tiktok/controller/home_controller.dart';
 import 'package:test_tiktok/core/accessibility_permission.dart';
 import 'package:test_tiktok/core/desktop_user_agents.dart';
 import 'package:test_tiktok/core/otp_settings_store.dart';
+import 'package:test_tiktok/core/tiktok_launch_action.dart';
 import 'package:test_tiktok/screen/home_page.dart';
 import 'package:test_tiktok/screen/otp_settings_page.dart';
 import 'package:test_tiktok/screen/settings_page.dart';
@@ -184,7 +185,7 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const Key('otpApiUrl')),
-      'https://otp.example.com/api/code',
+      'http://10.0.2.2:5678/api/code',
     );
     await tester.enterText(
       find.byKey(const Key('otpApiToken')),
@@ -195,7 +196,7 @@ void main() {
     expect(find.byType(SettingsPage), findsOneWidget);
 
     final saved = await settingsStore.load();
-    expect(saved.url, 'https://otp.example.com/api/code');
+    expect(saved.url, 'http://10.0.2.2:5678/api/code');
     expect(saved.token, 'saved-reader-token');
 
     await tester.tap(find.byKey(const Key('openUsageGuide')));
@@ -215,6 +216,9 @@ void main() {
         .controller!;
     expect(homeController.otpSettings.url, saved.url);
     expect(homeController.otpSettings.token, saved.token);
+    for (final action in [TikTokLaunchAction.signup, TikTokLaunchAction.login]) {
+      expect(homeController.otpApiFor(action)!.url.toString(), saved.url);
+    }
     expect(tester.takeException(), isNull);
   });
 }

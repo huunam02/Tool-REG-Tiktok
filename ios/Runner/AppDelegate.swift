@@ -12,15 +12,10 @@ import Network
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Undo the English overrides persisted by previous versions. Leave other
-    // language preferences alone and let iOS choose the normal app locale.
+    // Set WebKit language preferences before any WebView is created.
     let defaults = UserDefaults.standard
-    if defaults.stringArray(forKey: "AppleLanguages") == ["en-US", "en"] {
-      defaults.removeObject(forKey: "AppleLanguages")
-    }
-    if defaults.string(forKey: "AppleLocale") == "en_US" {
-      defaults.removeObject(forKey: "AppleLocale")
-    }
+    defaults.set(["en-US", "en"], forKey: "AppleLanguages")
+    defaults.set("en_US", forKey: "AppleLocale")
     GeneratedPluginRegistrant.register(with: self)
     if let controller = window?.rootViewController as? FlutterViewController {
       proxyChannel = FlutterMethodChannel(

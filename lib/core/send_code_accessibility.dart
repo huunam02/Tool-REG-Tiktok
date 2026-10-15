@@ -12,8 +12,9 @@ enum SendCodeTapFailure {
   gestureTimedOut,
 }
 
-/// Taps the live DOM target returned by the app's native WebView bridge.
-/// DOM lookup adds a small random offset within the button before hit-testing.
+/// Taps an authorized target returned by the app's native WebView bridge.
+/// Cached DOM regions and native geometry avoid repeated layout measurement;
+/// every lookup still hit-tests the live button with a small random offset.
 /// The bridge verifies origin, attempt, focus, hit-testing and visible bounds;
 /// dispatchGesture does not require an Accessibility node or ACTION_CLICK.
 class SendCodeAccessibility {
@@ -73,8 +74,8 @@ class SendCodeAccessibility {
     final generation = _generation;
     var dispatching = false;
     try {
-      // Read after the signup delay. A System UI accessibility event cannot
-      // discard a valid DOM target or block dispatching the gesture.
+      // Resolve/validate the cached region after the signup delay. A System UI
+      // accessibility event cannot discard a valid target or block the gesture.
       final target = await getTarget();
       if (!_started || generation != _generation) return false;
       if (target == null ||

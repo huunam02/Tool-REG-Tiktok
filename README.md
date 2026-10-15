@@ -127,14 +127,13 @@ không bấm lại Continue trong cùng modal và tạm ngưng khi trang ở n�
 
 ## Ngôn ngữ WebView
 
-Tạm tắt ép tiếng Anh cho cả xem, đăng nhập và đăng ký. App không đặt locale
-native, không gửi header `Accept-Language` riêng, không thêm `lang=en` vào URL
-và không ghi đè `navigator.language` / `navigator.languages`. Ngôn ngữ do máy
-và phiên TikTok hiện tại quyết định. iOS gỡ các override `en-US` / `en_US`
-đã được bản trước lưu; cookie và thiết lập ngôn ngữ khác được giữ nguyên.
-Script tiếng Anh trong `lib/core/webview_locale.dart` được giữ để bật lại sau,
-hiện không được inject. Dừng app và build/chạy lại hoàn toàn để áp dụng thay
-đổi native; hot reload không đủ.
+WebView dùng tiếng Anh (`en-US`, `en`) cho cả xem, đăng nhập và đăng ký.
+App đặt locale native trên Android/iOS, gửi header `Accept-Language` khi mở
+trang và về Home, đồng thời inject script tại đầu mỗi document/frame để đặt
+`navigator.language` / `navigator.languages` sang tiếng Anh.
+Trang web vẫn có thể ưu tiên ngôn ngữ đã lưu trong tài khoản hoặc cookie.
+Dừng app và build/chạy lại hoàn toàn để áp dụng thay đổi native;
+hot reload không đủ.
 
 ## OTP API
 
@@ -144,7 +143,7 @@ màn **Home**, rồi chọn cấu hình để sử dụng.
 
 Khi chạy đăng ký, app tự tạo ngày sinh ngẫu nhiên trong khoảng 1960–2004,
 bao gồm ngày hợp lệ theo số ngày của từng tháng và năm nhuận.
-Luồng **Tự động đăng ký** mở trang chủ TikTok → bấm Account → mở dialog Login
+Luồng **Tự động đăng ký** mở trang chủ TikTok → xem video → bấm tim → mở dialog Login
 → bấm Sign up → Use phone or email → Use Email, rồi tiếp tục điền ngày sinh,
 email, mật khẩu và xử lý OTP như trước. Biểu mẫu trong dialog được hỗ trợ cả
 khi URL vẫn ở trang chủ.
@@ -154,32 +153,49 @@ dùng, kể cả khi tên gợi ý không khả dụng. Trên Android, nút Skip
 `dispatchGesture()` tại tọa độ hiện tại trong WebView. App tiếp tục chờ xác nhận đăng ký
 thành công; nút **Dừng** vẫn hủy được thao tác trong thời gian chờ.
 
-Luồng **Tự động đăng nhập** mở trang chủ TikTok → bấm Account → mở dialog Login
+Luồng **Tự động đăng nhập** mở trang chủ TikTok → xem video → bấm tim → mở dialog Login
 → Use phone or email → Username or Email, rồi tiếp tục nhập tài khoản, mật khẩu
 và xử lý OTP như trước, kể cả khi dialog giữ nguyên URL trang chủ.
 Khi hiện **Verify it’s really you**, app chờ 5 giây trước khi chọn ô **Email**.
-Trên Android, app lấy lại tọa độ từ WebView và dùng `dispatchGesture()` chạm
-80 ms, có kiểm tra ô đang hiển thị và không bị che. Sau đó app chờ TikTok
-mở bước nhập mã rồi gọi API OTP. Luồng đăng nhập có tối đa 120 giây để mở
+Trên Android, app dùng vùng bấm đã cache khi còn hợp lệ và dùng `dispatchGesture()` chạm
+140 ms, có kiểm tra ô đang hiển thị và không bị che. Sau đó app chờ TikTok
+mở bước nhập mã rồi gọi API OTP. Luồng đăng nhập có tối đa 180 giây để mở
 biểu mẫu; sau khi gửi mật khẩu, chọn Email hoặc gửi OTP, mỗi bước có thêm
 45 giây chờ kết quả để tránh dừng ngay khi hộp xác minh xuất hiện trên mạng chậm.
-Đăng ký và đăng nhập tự động nghỉ 2,5 giây giữa các thao tác thông thường.
-Từ bước yêu cầu/nhập OTP, app kiểm tra mỗi 300 ms để nhập mã và bấm tiếp
+Nếu bấm tim chưa mở modal, app chờ ít nhất 15 giây giữa các lần thử, tối đa
+3 lần, rồi dùng Account dự phòng. Account cũng thử tối đa 3 lần cách nhau ít
+nhất 15 giây. Khi modal xuất hiện, app dừng bấm lại ngay; không bấm nút đang
+bị che, bị tắt hoặc bỏ thích video đã được thích. Mỗi lần chạy có trạng thái
+thử lại riêng. Các nút gửi thông tin tài khoản và gửi OTP vẫn chỉ bấm một lần.
+Đăng ký và đăng nhập tự động nghỉ ngẫu nhiên 2–10 giây giữa các thao tác thông thường.
+Từ bước yêu cầu/nhập OTP, app kiểm tra mỗi 200–400 ms để nhập mã và bấm tiếp
 ngay khi sẵn sàng; không chờ cố định 5 giây trước khi nhập OTP.
-Các bước mở Account, chọn phương thức/email, gửi mã, xác nhận OTP, gửi mật khẩu,
+Các bước chọn phương thức/email, gửi mã, xác nhận OTP, gửi mật khẩu,
 đăng ký và Skip đều có chốt theo bước trong mỗi lần chạy. Trang tạo lại nút DOM
 không khiến app bấm lại bước đã thực hiện; cùng một nút vẫn có thể được dùng
 ở hai bước khác nhau như gửi mật khẩu rồi xác nhận OTP. Trên Android, Send code
 của cả đăng ký và đăng nhập, ô Email xác minh đăng nhập, Sign up sau OTP, Skip tạo username và Continue
 trong biểu mẫu đăng nhập dùng
-`flutter_accessibility_service 1.2.0` để
-`dispatchGesture()` một cú chạm 80 ms tại tọa độ nút trong WebView, sau khi
+`flutter_accessibility_service 1.2.0` (bản vá cục bộ trong `third_party/`) để
+`dispatchGesture()` một cú chạm 140 ms tại tọa độ nút trong WebView, sau khi
 kiểm tra nút đang hiển thị, được bật và không bị che. Không cần node Accessibility
 để bấm tọa độ; các sự kiện System UI không làm mất mục tiêu. Mỗi bước chỉ yêu cầu một gesture
 trong mỗi lượt chạy; cần bật quyền Trợ năng cho Tool TikTok. Các nút còn lại gọi click một lần.
 Continue/Tiếp tục có chốt riêng cho bước gửi mật khẩu và bước xác nhận OTP,
-kể cả khi trang dùng lại cùng một nút. App lấy lại tọa độ khi chạm và dừng nếu
+kể cả khi trang dùng lại cùng một nút. App dùng cache vùng bấm khi chạm và dừng nếu
 gesture không hoàn tất.
+Cache vùng bấm tách theo luồng và nút (Send code, Email xác minh, Continue mật khẩu,
+Continue OTP, Sign up, Skip), lưu tối đa 16 vùng trong trang. Lần dùng lại không đo
+DOM nếu vùng cũ vẫn trúng đúng nút hiện tại, kể cả khi trang phát sinh layout,
+đổi bước hoặc cuộn nền nhưng modal vẫn đứng yên. Chỉ đo lại khi điểm cũ không
+còn trúng nút hoặc kích thước/viewport thực sự thay đổi. Phía Android cũng cache
+vị trí, kích thước và vùng hiển thị của WebView; sự kiện layout không đổi hình học
+không xoá cache. Khi gesture thất bại hoặc hết thời gian chờ, app bỏ cache của
+đúng nút đó để lần chạy sau đo lại; không tự gửi thêm gesture cho bước đang chạy.
+Cache nằm trong RAM, tự bỏ khi trang/WebView được tạo lại; không
+lưu tọa độ cố định để dùng trên màn hình khác.
+Bản vá Trợ năng cho phép Android khởi động dịch vụ trước khi Flutter engine của
+overlay sẵn sàng, tránh crash khi hệ thống kết nối lại dịch vụ lúc mở/cài lại app.
 Bước Send code đăng nhập cũng
 chờ bộ đếm gửi lại hoặc màn OTP xác nhận gửi mã; hết 15 giây không có xác nhận
 thì dừng, chưa gọi API lấy OTP và không tự gửi lại mã.
@@ -188,17 +204,26 @@ App luôn lấy OTP qua API cho **Đăng nhập** và **Đăng ký**. Mở biể
 **Cài đặt** trên AppBar, chọn **Cấu hình OTP API** để sửa URL và token dùng chung
 cho hai luồng. App lưu cấu hình bằng `SharedPreferences`; các giá trị
 `otpApiUrl` và `otpApiToken` trong `lib/core/config.dart` là mặc định lần đầu.
+URL API chấp nhận cả HTTP và HTTPS. Nếu API chạy trên máy tính, Android Emulator
+dùng `10.0.2.2`, iOS Simulator trên cùng máy dùng `127.0.0.1`; điện thoại thật
+dùng IP LAN của máy tính hoặc địa chỉ API truy cập được từ thiết bị.
 Nhập mật khẩu hộp thư của email trong màn tạo hoặc sửa cấu hình.
 Mật khẩu hộp thư là trường riêng với mật khẩu TikTok. App tự lấy mã OTP từ API.
 
 App dùng thư viện `http` để gọi `POST /api/code` sau khi TikTok yêu cầu OTP, với JSON
 `{"email":"email|mật khẩu hộp thư","wait":180}` và headers
 `X-Reader-Token`, `ngrok-skip-browser-warning: 1`. Khi API trả
-`{"ok":true,"code":"012345"}`, app dán mã bằng clipboard native rồi xác nhận.
+`{"ok":true,"code":"012345"}`, app nhập mã bằng bộ nhập native rồi xác nhận.
+Trên Android, OTP đăng ký và đăng nhập được sao chép đủ sáu số vào clipboard
+rồi dán bằng `InputConnection.performContextMenuAction(android.R.id.paste)`.
+App kiểm tra đúng ô đang focus và trạng thái tác vụ trước khi dán; chỉ xác nhận
+khi WebView đã nhận đủ mã, kể cả khi trang phân phối mã vào sáu ô riêng.
+Email, mật khẩu và bình luận tiếp tục dùng `InputConnection.commitText`,
+cùng cơ chế nhập của bàn phím. iOS vẫn dùng clipboard native.
 Trong thời gian chờ, app vẫn theo dõi CAPTCHA, lỗi biểu mẫu và nút Dừng.
 Ở luồng đăng ký, app chờ 5 giây sau khi nhập xong thông tin và nút Send code
 được bật. Nếu nút bị thay thế hoặc tắt, thời gian chờ bắt đầu lại.
-Ở luồng đăng ký Android, app bỏ focus khỏi ô vừa dán và chạm Send code qua
+Ở luồng đăng ký Android, app bỏ focus khỏi ô vừa nhập và chạm Send code qua
 Accessibility; không gọi thêm JavaScript click cho nút này.
 Sau OTP, ở modal nhập mật khẩu, app chờ 10 giây kể từ khi mật khẩu đã nhập đúng
 và nút **Sign up** được bật. Trên Android, nút này cũng được chạm bằng
@@ -215,8 +240,11 @@ Luồng tự động cũng nhận diện thông báo giới hạn hiển thị t
 biểu mẫu, kể cả màn mật khẩu sau OTP không có `role=alert`. Khi gặp lỗi này,
 app dừng thao tác và hủy yêu cầu OTP đang chờ. Lỗi tài khoản và cảnh báo proxy
 hiện bằng toast phía dưới, không thêm banner làm co WebView. Toast lỗi tài khoản
-có nút **Cấu hình** trở về màn trước và giữ thông tin đã nhập. Trạng thái auto
-và nút Dừng cũng nằm đè phía dưới để giữ nguyên kích thước WebView.
+có nút **Cấu hình** trở về màn trước và giữ thông tin đã nhập. Toast tự ẩn sau
+vài giây, kể cả khi có nút thao tác. Trạng thái auto và nút Dừng nằm trong
+overlay nhỏ phía dưới; lỗi tải trang dùng overlay nhỏ có nút **Thử lại**.
+Thanh tiến trình cũng nằm đè lên WebView, không thay đổi chiều cao AppBar.
+WebView giữ nguyên kích thước khi tải trang, hiện thông báo hoặc mở bàn phím.
 Đây là phản hồi từ TikTok; app không gỡ
 giới hạn hay tự gửi lại đăng ký. Không có thời gian chờ cụ thể trong phản hồi.
 

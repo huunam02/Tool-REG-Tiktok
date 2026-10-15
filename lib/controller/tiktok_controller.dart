@@ -21,6 +21,7 @@ import '../core/webview_user_agent.dart';
 import '../core/app_configuration.dart';
 import '../core/otp_api.dart';
 import '../core/webview_failure.dart';
+import '../core/webview_locale.dart';
 import '../core/tiktok_launch_action.dart';
 import '../core/tiktok_account_failure.dart';
 import 'app_controller.dart';
@@ -45,6 +46,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   String get initialUrl => launchAction.initialUrl;
 
   static const commentInputChannel = MethodChannel('test_tiktok/comment_input');
+  bool get _usesKeyboardInput =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   // Randomize the login/signup JS evaluation cadence, not API timeouts.
   // Most normal interactions wait 3-6s, while all waits remain inside 2-10s.
   static final Random _actionRandom = Random();
@@ -126,7 +129,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   bool autoWatchBusy = false;
   bool appActive = true;
   late final List<String> comments;
-  bool pasteBusy = false;
+  bool inputBusy = false;
 
   @override
   void onInit() {
@@ -187,18 +190,18 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
   }
 
-  Future<bool> pasteCommentFromClipboard(List<dynamic> args) async {
+  Future<bool> inputCommentText(List<dynamic> args) async {
     if (!active ||
         !autoWatchEnabled ||
         !appActive ||
-        pasteBusy ||
+        inputBusy ||
         args.length != 1 ||
         args.first is! String) {
       return false;
     }
     final text = args.first as String;
     if (!comments.contains(text)) return false;
-    pasteBusy = true;
+    inputBusy = true;
     try {
       final url = await webViewController?.getUrl();
       if (url == null ||
@@ -211,7 +214,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       if (await webViewController?.evaluateJavascript(source: source) != true) {
         return false;
       }
-      await Clipboard.setData(ClipboardData(text: text));
+      if (!_usesKeyboardInput) {
+        await Clipboard.setData(ClipboardData(text: text));
+      }
       if (!active ||
           !autoWatchEnabled ||
           !appActive ||
@@ -226,9 +231,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
                 true) {
           return false;
         }
-        if (await commentInputChannel.invokeMethod<bool>('paste', {
-              'context': 'comment',
-            }) ==
+        if (await commentInputChannel.invokeMethod<bool>(
+              _usesKeyboardInput ? 'typeText' : 'paste',
+              {'context': 'comment', if (_usesKeyboardInput) 'text': text},
+            ) ==
             true) {
           return true;
         }
@@ -240,7 +246,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     } catch (_) {
       return false;
     } finally {
-      pasteBusy = false;
+      inputBusy = false;
     }
   }
 
@@ -304,11 +310,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     if (updateUi && active) mutate(() => autoSignupBusy = false);
   }
 
-  Future<bool> pasteSignupFromClipboard(List<dynamic> args) =>
-      pasteAccountFromClipboard(args, signup: true);
+  Future<bool> inputSignupText(List<dynamic> args) =>
+      inputAccountText(args, signup: true);
 
-  Future<bool> pasteLoginFromClipboard(List<dynamic> args) =>
-      pasteAccountFromClipboard(args, signup: false);
+  Future<bool> inputLoginText(List<dynamic> args) =>
+      inputAccountText(args, signup: false);
 
   Future<bool> clickLoginSendCode(List<dynamic> args) =>
       tapAccountButton(args, signup: false);
@@ -408,6 +414,19 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           return Offset(x.toDouble(), y.toDouble());
         },
       );
+      if (!completed && isActive()) {
+        try {
+          await const MethodChannel(
+            'test_tiktok/send_code_target',
+          ).invokeMethod<bool>('invalidateTarget', {
+            'id': controller.platform.params.id,
+            'context': context,
+            'action': action,
+          });
+        } catch (_) {
+          // Keep the original failure; clearing a cache never repeats a tap.
+        }
+      }
       debugPrint('[$buttonLabel] $context gesture completed: $completed.');
       return completed;
     } catch (_) {
@@ -415,7 +434,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
   }
 
-  Future<bool> pasteAccountFromClipboard(
+  Future<bool> inputAccountText(
     List<dynamic> args, {
     required bool signup,
   }) async {
@@ -430,7 +449,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             ? autoSignupBusy && attempt == autoSignupAttempt
             : autoLoginBusy && attempt == autoLoginAttempt);
     if (!isActive() ||
-        pasteBusy ||
+        inputBusy ||
         controller == null ||
         args.length != 2 ||
         args[0] != attempt ||
@@ -445,13 +464,17 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       'otp' => signup ? activeSignupOtp : activeLoginOtp,
       _ => signup ? configuration.signupPassword : configuration.loginPassword,
     };
-    if (text.isEmpty) return false;
+    if (text.isEmpty ||
+        field == 'otp' && !RegExp(r'^[0-9]{6}$').hasMatch(text)) {
+      return false;
+    }
+    final useKeyboard = _usesKeyboardInput && field != 'otp';
     final source =
         'window.$stateName?.canPasteFromClipboard('
         '$attempt, ${jsonEncode(field)}, ${jsonEncode(text)}) === true;';
-    pasteBusy = true;
+    inputBusy = true;
     try {
-      debugPrint('Auto $accountContext: pasting $field from clipboard.');
+      debugPrint('Auto $accountContext: entering $field through native input.');
       final url = await controller.getUrl();
       // Account dialogs can keep the Home URL. The script authorizes only the
       // focused field in the visible form for this attempt.
@@ -462,8 +485,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         return false;
       }
       if (!isActive()) return false;
-      await Clipboard.setData(ClipboardData(text: text));
-      // DOM focus can arrive before the native editor is ready to paste. Retry
+      if (!useKeyboard) {
+        await Clipboard.setData(ClipboardData(text: text));
+      }
+      // DOM focus can arrive before the native editor is ready for input. Retry
       // only rejected native actions, checking the field and attempt each time.
       for (var retry = 0; retry < 6; retry++) {
         if (!isActive() ||
@@ -471,21 +496,25 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             !isActive()) {
           return false;
         }
-        final pasted = await commentInputChannel.invokeMethod<bool>('paste', {
-          'context': accountContext,
-          'attempt': attempt,
-        });
-        if (pasted == true) return true;
+        final entered = await commentInputChannel.invokeMethod<bool>(
+          useKeyboard ? 'typeText' : 'paste',
+          {
+            'context': accountContext,
+            'attempt': attempt,
+            if (_usesKeyboardInput) ...{'field': field, 'text': text},
+          },
+        );
+        if (entered == true) return true;
         if (retry < 5) {
           await Future<void>.delayed(const Duration(milliseconds: 150));
         }
       }
-      debugPrint('Auto $accountContext: native paste rejected for $field.');
+      debugPrint('Auto $accountContext: native input rejected for $field.');
       return false;
     } catch (_) {
       return false;
     } finally {
-      pasteBusy = false;
+      inputBusy = false;
     }
   }
 
@@ -538,8 +567,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         _sendCodeAccessibility ??= SendCodeAccessibility();
         _sendCodeAccessibility!.start();
       } catch (_) {
-        if (active)
+        if (active) {
           notify('Không thể kết nối dịch vụ Trợ năng để bấm Send code.');
+        }
         return false;
       } finally {
         _requestingAccessibility = false;
@@ -683,6 +713,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           lastStep = result;
         }
         final status = switch (result) {
+          'waiting-home-video' => 'Đang chờ video trên trang chủ…',
+          'waiting-home-like' => 'Đang chờ nút tim trên trang chủ…',
+          'home-video-liked' => 'Đã bấm tim, đang chờ hộp đăng nhập…',
+          'waiting-login-modal' => 'Mạng chậm, đang chờ hộp đăng nhập…',
           'waiting-send-code' => 'Đang chờ 5 giây trước khi bấm Send code…',
           'requesting-verification' => 'Đang chờ TikTok xác nhận gửi mã…',
           'verification-requested' => 'TikTok đã tiếp nhận yêu cầu gửi mã…',
@@ -785,13 +819,18 @@ class TikTokController extends AppController with WidgetsBindingObserver {
               'Chưa tích được ô nhận tin TikTok. '
               'Hãy tích ô này trên biểu mẫu rồi tiếp tục.';
           break;
+        } else if (result == 'home-modal-failed') {
+          message =
+              'TikTok chưa mở hộp đăng nhập sau khi thử lại. '
+              'Hãy kiểm tra mạng hoặc tải lại trang.';
+          break;
         } else if (result == 'signup-error') {
           message =
               'TikTok báo lỗi đăng ký. Hãy kiểm tra thông tin trên trang.';
           break;
         } else if (result == 'paste-failed') {
           message =
-              'Không thể dán thông tin đăng ký từ clipboard. '
+              'Không thể tự nhập thông tin đăng ký. '
               'Đã dừng, bạn có thể nhập thủ công.';
           break;
         } else if (result == 'draft-exists') {
@@ -1021,8 +1060,13 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           break;
         } else if (result == 'paste-failed') {
           message =
-              'Không thể dán thông tin đăng nhập từ clipboard. '
+              'Không thể tự nhập thông tin đăng nhập. '
               'Đã dừng, bạn có thể nhập thủ công.';
+          break;
+        } else if (result == 'home-modal-failed') {
+          message =
+              'TikTok chưa mở hộp đăng nhập sau khi thử lại. '
+              'Hãy kiểm tra mạng hoặc tải lại trang.';
           break;
         } else if (result == 'login-error') {
           message =
@@ -1064,8 +1108,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         'Có bình luận đang soạn. Đã dừng để giữ nội dung của bạn.',
       'comment-post-changed' =>
         'Video đã thay đổi khi đang bình luận. Đã dừng tự động.',
-      'comment-paste-failed' =>
-        'Không thể dán bình luận từ clipboard. Đã dừng tự động.',
+      'comment-paste-failed' => 'Không thể tự nhập bình luận. Đã dừng tự động.',
       _ =>
         'Chưa xác nhận được bình luận đã gửi. Đã dừng, không gửi lại để tránh trùng.',
     };
@@ -1250,11 +1293,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     webViewController = controller;
     controller.addJavaScriptHandler(
       handlerName: 'FlutterCommentPaste',
-      callback: pasteCommentFromClipboard,
+      callback: inputCommentText,
     );
     controller.addJavaScriptHandler(
       handlerName: 'FlutterLoginPaste',
-      callback: pasteLoginFromClipboard,
+      callback: inputLoginText,
     );
     controller.addJavaScriptHandler(
       handlerName: 'FlutterLoginSendCode',
@@ -1274,7 +1317,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     );
     controller.addJavaScriptHandler(
       handlerName: 'FlutterSignupPaste',
-      callback: pasteSignupFromClipboard,
+      callback: inputSignupText,
     );
     controller.addJavaScriptHandler(
       handlerName: 'FlutterSignupSendCode',
@@ -1304,7 +1347,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         );
         if (!active) return;
         await controller.loadUrl(
-          urlRequest: URLRequest(url: WebUri(initialUrl)),
+          urlRequest: URLRequest(
+            url: WebUri(initialUrl),
+            headers: englishWebViewHeaders,
+          ),
         );
       } catch (_) {
         if (active) {
@@ -1465,7 +1511,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     cancelAutoActions();
     unawaited(
       webViewController?.loadUrl(
-        urlRequest: URLRequest(url: WebUri(tiktokHomeUrl)),
+        urlRequest: URLRequest(
+          url: WebUri(tiktokHomeUrl),
+          headers: englishWebViewHeaders,
+        ),
       ),
     );
   }

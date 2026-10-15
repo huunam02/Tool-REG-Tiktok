@@ -126,6 +126,68 @@ void main() {
     expect(logic.accountFailure, TikTokAccountFailure.rateLimited);
   });
 
+  testWidgets('loading, long status, IP and keyboard keep the WebView bounds', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(tester.view.resetViewInsets);
+    final logic = await mount(tester);
+    final webView = find.byType(InAppWebView);
+    final bounds = tester.getRect(webView);
+
+    for (final progress in [40, 100, 0, 100]) {
+      logic.mutate(() => logic.loadingProgress = progress);
+      await tester.pump();
+      expect(tester.getRect(webView), bounds);
+    }
+    logic.mutate(() {
+      logic.detectedIp = '203.0.113.10';
+      logic.autoSignupBusy = true;
+      logic.signupStatus = List.filled(
+        20,
+        'Đang chờ mạng tải biểu mẫu…',
+      ).join(' ');
+    });
+    await tester.pump();
+    expect(tester.getRect(webView), bounds);
+    final controls = tester.getRect(
+      find.byKey(const Key('accountAutoControls')),
+    );
+    expect(controls.width, lessThanOrEqualTo(280));
+    expect(controls.height, lessThan(100));
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pump();
+    expect(tester.getRect(webView), bounds);
+    logic.mutate(() {
+      logic.autoSignupBusy = false;
+      logic.autoLoginBusy = true;
+    });
+    await tester.pump();
+    expect(tester.getRect(webView), bounds);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'page failure stays in a small overlay and preserves the WebView',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final logic = await mount(tester);
+      final bounds = tester.getRect(find.byType(InAppWebView));
+      logic.showPageFailure(WebViewFailure.proxyAuth);
+      await tester.pumpAndSettle();
+      final error = tester.getRect(find.byKey(const Key('webViewFailure')));
+      expect(error.width, lessThanOrEqualTo(340));
+      expect(error.height, lessThanOrEqualTo(220));
+      expect(error.height, lessThan(bounds.height / 2));
+      expect(tester.getRect(find.byType(InAppWebView)), bounds);
+      expect(find.byKey(const Key('retryWebViewFailure')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('proxy toast replaces previous notice and retry still reloads', (
     tester,
   ) async {

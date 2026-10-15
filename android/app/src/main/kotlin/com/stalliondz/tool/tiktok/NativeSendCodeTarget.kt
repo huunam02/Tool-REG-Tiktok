@@ -1,10 +1,68 @@
 package com.stalliondz.tool.tiktok
 
 import android.graphics.Rect
+import android.view.View
 import android.webkit.WebView
 import org.json.JSONObject
+import java.util.WeakHashMap
 
 object NativeSendCodeTarget {
+    private data class Geometry(
+        val left: Int, val top: Int, val width: Int, val height: Int,
+        val frame: List<Float>, val windowFrame: Rect, val visible: Rect
+    )
+
+    private class GeometryCache {
+        var geometry: Geometry? = null
+    }
+
+    // Weak keys release the cache when the WebView is disposed. No view is
+    // retained by its cache entry, and all access runs on Android's UI thread.
+    private val geometryCaches = WeakHashMap<WebView, GeometryCache>()
+
+    private fun frameOf(view: View): List<Float> {
+        // Translations/zoom can change without a layout event. Compare cheap
+        // view properties up the hierarchy before reusing physical geometry.
+        val frame = ArrayList<Float>()
+        var current: View? = view
+        while (current != null) {
+            frame.addAll(listOf(current.left.toFloat(), current.top.toFloat(),
+                current.width.toFloat(), current.height.toFloat(),
+                current.scrollX.toFloat(), current.scrollY.toFloat(),
+                current.translationX, current.translationY,
+                current.scaleX, current.scaleY, current.rotation))
+            current = current.parent as? View
+        }
+        return frame
+    }
+
+    private fun geometryFor(view: WebView): Geometry? {
+        val cache = geometryCaches.getOrPut(view) {
+            GeometryCache().also { entry ->
+                view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                    override fun onViewAttachedToWindow(v: View) { entry.geometry = null }
+                    override fun onViewDetachedFromWindow(v: View) { entry.geometry = null }
+                })
+            }
+        }
+        val frame = frameOf(view)
+        // Window clipping detects IME changes without throwing away geometry
+        // just because Android reports another layout for the same modal.
+        val windowFrame = Rect()
+        view.getWindowVisibleDisplayFrame(windowFrame)
+        cache.geometry?.let {
+            if (it.frame == frame && it.windowFrame == windowFrame) return it
+        }
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        val visible = Rect()
+        if (!view.getLocalVisibleRect(visible)) return null
+        // DOM coordinates already include scrolling inside the document.
+        visible.offset(-view.scrollX, -view.scrollY)
+        return Geometry(location[0], location[1], view.width, view.height,
+            frame, windowFrame, visible).also { cache.geometry = it }
+    }
+
     fun read(webView: WebView, attempt: Int, context: String, action: String,
              complete: (Map<String, Double>?) -> Unit) {
         val stateName = when (context) {
@@ -12,15 +70,8 @@ object NativeSendCodeTarget {
             "login" -> "__flutterAutoLogin"
             else -> { complete(null); return }
         }
-        val targetMethod = when {
-            action == "send-code" -> "getSendCodeTarget"
-            action == "select-verification-email" && context == "login" -> "getEmailVerificationTarget"
-            action == "submit-password" && context == "signup" -> "getPasswordSubmitTarget"
-            action == "skip-username" && context == "signup" -> "getUsernameSkipTarget"
-            action == "continue-password" && context == "login" -> "getPasswordContinueTarget"
-            action == "continue-otp" && context == "login" -> "getOtpContinueTarget"
-            else -> { complete(null); return }
-        }
+        val targetMethod = targetMethod(context, action)
+        if (targetMethod == null) { complete(null); return }
         if (!ready(webView)) {
             complete(null)
             return
@@ -38,20 +89,38 @@ object NativeSendCodeTarget {
             }
             val point = try {
                 val target = JSONObject(raw)
-                val location = IntArray(2)
-                webView.getLocationOnScreen(location)
-                val visible = Rect()
-                if (!webView.getLocalVisibleRect(visible)) null else {
-                    // getLocalVisibleRect includes this View's native scroll.
-                    // DOM coordinates already describe the visible viewport.
-                    visible.offset(-webView.scrollX, -webView.scrollY)
-                    toScreen(target, location[0], location[1], webView.width, webView.height, visible)
+                geometryFor(webView)?.let {
+                    toScreen(target, it.left, it.top, it.width, it.height, it.visible)
                 }
             } catch (_: Exception) {
                 null
             }
             complete(point)
         }
+    }
+
+    private fun targetMethod(context: String, action: String): String? = when {
+            action == "send-code" && (context == "login" || context == "signup") -> "getSendCodeTarget"
+            action == "select-verification-email" && context == "login" -> "getEmailVerificationTarget"
+            action == "submit-password" && context == "signup" -> "getPasswordSubmitTarget"
+            action == "skip-username" && context == "signup" -> "getUsernameSkipTarget"
+            action == "continue-password" && context == "login" -> "getPasswordContinueTarget"
+            action == "continue-otp" && context == "login" -> "getOtpContinueTarget"
+            else -> null
+        }
+
+    fun invalidate(webView: WebView, context: String, action: String,
+                   complete: (Boolean) -> Unit) {
+        if (targetMethod(context, action) == null) { complete(false); return }
+        geometryCaches[webView]?.geometry = null
+        val key = JSONObject.quote("$context/$action")
+        webView.evaluateJavascript("""
+            (() => {
+              if (location.origin !== 'https://www.tiktok.com') return false;
+              window.__flutterNativeTapTargets?.delete($key);
+              return true;
+            })()
+        """.trimIndent()) { complete(it == "true") }
     }
 
     // Both getLocationOnScreen and Accessibility screenBounds use physical

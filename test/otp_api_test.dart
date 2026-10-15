@@ -197,12 +197,22 @@ void main() {
     expect(reader.closed, isTrue);
   });
 
-  test('URL validation requires HTTPS and keeps credentials out of the URL',
+  test('URL validation accepts HTTP/HTTPS and keeps credentials out of the URL',
       () {
     expect(OtpApiConfiguration.parseUrl('https://example.com/api/code').host,
         'example.com');
     for (final url in [
+      'http://10.0.2.2:5678/api/code',
+      'http://127.0.0.1:5678/api/code',
+      'http://192.168.1.10:5678/api/code',
       'http://example.com/api/code',
+    ]) {
+      expect(OtpApiConfiguration.parseUrl(url).toString(), url);
+    }
+    for (final url in [
+      'ftp://example.com/api/code',
+      'http:///api/code',
+      'http://token@10.0.2.2:5678/api/code',
       'https://token@example.com/api/code',
       'https://example.com/api/code#token',
       'bad-url'

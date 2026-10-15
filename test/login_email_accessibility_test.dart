@@ -14,20 +14,31 @@ void main() {
   const targetChannel = MethodChannel('test_tiktok/send_code_target');
   late List<MethodCall> gestures;
   late List<MethodCall> targets;
+  late List<MethodCall> invalidations;
+  bool gestureSucceeds = true;
   Future<Map<String, double>?> Function()? readTarget;
 
   setUp(() {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     gestures = [];
     targets = [];
+    invalidations = [];
+    gestureSucceeds = true;
     readTarget = () async => {'x': 123.5, 'y': 456.0};
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(accessibilityChannel, (call) async {
-      if (call.method == 'dispatchGesture') gestures.add(call);
+      if (call.method == 'dispatchGesture') {
+        gestures.add(call);
+        return gestureSucceeds;
+      }
       return true;
     });
     messenger.setMockMethodCallHandler(targetChannel, (call) async {
+      if (call.method == 'invalidateTarget') {
+        invalidations.add(call);
+        return true;
+      }
       targets.add(call);
       return readTarget!();
     });
@@ -107,6 +118,28 @@ void main() {
     expect(await logic.clickLoginEmailVerification([5]), isFalse);
     expect(targets, hasLength(1));
     expect(gestures, isEmpty);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('failed Email tap invalidates its cache without repeating the gesture',
+      (tester) async {
+    final (logic, _) = await prepare();
+    gestureSucceeds = false;
+    expect(await logic.clickLoginEmailVerification([4]), isFalse);
+    expect(invalidations.single.arguments, {
+      'id': 77,
+      'context': 'login',
+      'action': 'select-verification-email',
+    });
+    expect(await logic.clickLoginEmailVerification([4]), isFalse);
+    expect(gestures, hasLength(1));
+    expect(targets, hasLength(1));
+    logic.autoLoginAttempt = 5;
+    gestureSucceeds = true;
+    expect(await logic.clickLoginEmailVerification([5]), isTrue);
+    expect(gestures, hasLength(2));
+    expect(targets, hasLength(2));
+    expect(invalidations, hasLength(1));
     debugDefaultTargetPlatformOverride = null;
   });
 

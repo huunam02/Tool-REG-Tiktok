@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'home_account_modal_script.dart';
+
 
 
 String buildAutoLoginScript({
@@ -66,7 +68,7 @@ String buildAutoLoginScript({
 
           'emailVerificationDelayMs': emailVerificationDelayMs,
 
-        })}, $allowSubmit
+        })}, $allowSubmit, ($openHomeAccountModalScript)
 
   );
 
@@ -82,7 +84,7 @@ String buildAutoLoginScript({
 
 const String autoLoginStepScript = r'''
 
-(config, allowSubmit) => {
+(config, allowSubmit, openHomeAccountModal) => {
 
   if (location.origin !== 'https://www.tiktok.com') return 'wrong-origin';
 
@@ -356,36 +358,52 @@ const String autoLoginStepScript = r'''
     codeControls().includes(state.codeRequest.control) &&
     enabled(state.codeRequest.control) && sendCodePattern.test(controlText(state.codeRequest.control));
 
-  const nativeButtonTarget = (control) => {
-    const rect = control.getBoundingClientRect();
+  const nativeButtonTarget = (control, action = 'button') => {
     const viewport = window.visualViewport;
     const offsetX = viewport?.offsetLeft || 0;
     const offsetY = viewport?.offsetTop || 0;
     const viewportWidth = viewport?.width || window.innerWidth;
     const viewportHeight = viewport?.height || window.innerHeight;
-    let x = rect.left + rect.width / 2;
-    let y = rect.top + rect.height / 2;
-    if (![x, y, viewportWidth, viewportHeight].every(Number.isFinite) ||
-        rect.width <= 0 || rect.height <= 0 || viewportWidth <= 0 || viewportHeight <= 0 ||
-        x < offsetX || y < offsetY || x >= offsetX + viewportWidth ||
-        y >= offsetY + viewportHeight) return null;
-    // Slightly vary each tap, keeping it inside the button and visible viewport.
-    const jitterX = Math.min(6, rect.width * 0.15,
-      (x - offsetX) * 0.8, (offsetX + viewportWidth - x) * 0.8);
-    const jitterY = Math.min(6, rect.height * 0.15,
-      (y - offsetY) * 0.8, (offsetY + viewportHeight - y) * 0.8);
-    x += (Math.random() * 2 - 1) * jitterX;
-    y += (Math.random() * 2 - 1) * jitterY;
-    // Reject another DOM element covering the button (including modal overlays).
-    const hit = document.elementFromPoint(x, y);
-    if (!hit || hit !== control && !control.contains(hit)) return null;
-    // CSS pixels relative to the visible viewport, already accounting for scroll
-    // via getBoundingClientRect. Native code adds the WebView's screen offset.
-    return { x: x - offsetX, y: y - offsetY, viewportWidth, viewportHeight };
+    const geometry = [offsetX, offsetY, viewportWidth, viewportHeight,
+      window.devicePixelRatio || 1].join(':');
+    // Keep only geometry, never account data or detached DOM nodes. A new
+    // attempt can reuse a region when the live button still occupies it.
+    const cache = window.__flutterNativeTapTargets ||= new Map();
+    const pointIn = rect => {
+      let x = rect.left + rect.width / 2;
+      let y = rect.top + rect.height / 2;
+      if (![x, y, viewportWidth, viewportHeight].every(Number.isFinite) ||
+          rect.width <= 0 || rect.height <= 0 || viewportWidth <= 0 || viewportHeight <= 0 ||
+          x < offsetX || y < offsetY || x >= offsetX + viewportWidth ||
+          y >= offsetY + viewportHeight) return null;
+      const jitterX = Math.min(6, rect.width * 0.15,
+        (x - offsetX) * 0.8, (offsetX + viewportWidth - x) * 0.8);
+      const jitterY = Math.min(6, rect.height * 0.15,
+        (y - offsetY) * 0.8, (offsetY + viewportHeight - y) * 0.8);
+      x += (Math.random() * 2 - 1) * jitterX;
+      y += (Math.random() * 2 - 1) * jitterY;
+      // A cache hit still has to land on the currently authorized control.
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || hit !== control && !control.contains(hit)) return null;
+      return { x: x - offsetX, y: y - offsetY, viewportWidth, viewportHeight };
+    };
+    const cached = cache.get(action);
+    if (cached?.geometry === geometry) {
+      const point = pointIn(cached.rect);
+      if (point) return point;
+    }
+    cache.delete(action);
+    const bounds = control.getBoundingClientRect();
+    const rect = {left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height};
+    const point = pointIn(rect);
+    if (!point) return null;
+    if (cache.size >= 16) cache.delete(cache.keys().next().value);
+    cache.set(action, {geometry, rect});
+    return point;
   };
 
   state.getSendCodeTarget = (attempt) => state.canSendCodeWithAccessibility(attempt)
-    ? nativeButtonTarget(state.codeRequest.control) : null;
+    ? nativeButtonTarget(state.codeRequest.control, 'login/send-code') : null;
 
   const findEmailVerificationMethod = (root) => {
     const isEmailMethod = el => enabled(el) &&
@@ -406,7 +424,7 @@ const String autoLoginStepScript = r'''
         !request?.pending || request.failed || request.control.isConnected === false ||
         findEmailVerificationMethod(root) !== request.control ||
         find('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]')) return null;
-    return nativeButtonTarget(request.control);
+    return nativeButtonTarget(request.control, 'login/select-verification-email');
   };
 
   const continuePattern = /^(continue|tiếp tục)$/i;
@@ -432,7 +450,7 @@ const String autoLoginStepScript = r'''
       const email = findEmail();
       if (findVerification() || !email || email !== request.email || email.value !== config.email) return null;
     } else if (state.otpRequestedAt == null) return null;
-    return nativeButtonTarget(request.control);
+    return nativeButtonTarget(request.control, 'login/continue-' + stage);
   };
   state.getPasswordContinueTarget = (attempt) => continueTarget(attempt, 'password');
   state.getOtpContinueTarget = (attempt) => continueTarget(attempt, 'otp');
@@ -586,30 +604,11 @@ const String autoLoginStepScript = r'''
 
   }
 
-  // Open Login through Home's Account icon. Its dialog can keep the Home URL.
-
+  // Home can render before TikTok attaches its click handlers.
   if (!loginFormVisible()) {
-
     if (!allowSubmit || state.submitted) return 'waiting-result';
-
-    if (!dialog()) {
-
-      const account = find('[data-e2e="nav-profile"], [data-e2e="nav-account"], ' +
-
-        '[data-e2e="account-icon"], a[href^="/profile"], ' +
-
-        '[aria-label="Account"], [aria-label="Profile"], [aria-label="Tài khoản"], [aria-label="Hồ sơ"]') ||
-
-        Array.from(document.querySelectorAll('a, button, [role="button"], [role="link"]'))
-
-          .find(el => enabled(el) && /^(account|profile|tài khoản|hồ sơ)$/i.test(el.textContent.trim()));
-
-      if (account && enabled(account)) clickOnce(account, 'open-account');
-
-    }
-
+    if (!dialog()) return openHomeAccountModal(state, visible, enabled, find);
     return 'waiting-form';
-
   }
 
   // Switch away from phone login before entering credentials or requesting OTP.

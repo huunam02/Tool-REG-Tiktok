@@ -89,6 +89,7 @@ class _OtpSettingsView extends StatelessWidget {
                           decoration: const InputDecoration(
                             labelText: 'URL API',
                             hintText: 'https://example.com/api/code',
+                            helperText: 'Chấp nhận URL HTTP hoặc HTTPS.',
                           ),
                         ),
                         const SizedBox(height: 16),

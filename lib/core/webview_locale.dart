@@ -1,7 +1,5 @@
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-// Temporarily inactive. No navigation or WebView injects this override.
-
 const englishWebViewHeaders = {'Accept-Language': 'en-US,en;q=0.9'};
 
 // Run in each document and frame before the website chooses its language.
@@ -22,7 +20,7 @@ const englishWebViewLocaleScript = r'''
 ''';
 
 UserScript englishWebViewLocaleUserScript() => UserScript(
-      source: englishWebViewLocaleScript,
-      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-      forMainFrameOnly: false,
-    );
+  source: englishWebViewLocaleScript,
+  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+  forMainFrameOnly: false,
+);

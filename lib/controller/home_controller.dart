@@ -190,7 +190,7 @@ class HomeController extends AppController {
       return otpSettings.toConfiguration();
     } on FormatException {
       throw const FormatException(
-        'Hãy cấu hình URL OTP API HTTPS hợp lệ trong Cài đặt.',
+        'Hãy cấu hình URL OTP API HTTP/HTTPS hợp lệ trong Cài đặt.',
       );
     }
   }

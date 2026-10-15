@@ -1,0 +1,25 @@
+name: flutter_accessibility_service
+description: Flutter plugin for interacting with Accessibility Service in Android.
+version: 1.2.0
+homepage: https://github.com/X-SLAYER/flutter_accessibility_service
+
+environment:
+  sdk: ">=3.0.1 <4.0.0"
+  flutter: ">=2.5.0"
+
+dependencies:
+  collection: ^1.19.1
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: slayer.accessibility.service.flutter_accessibility_service
+        pluginClass: FlutterAccessibilityServicePlugin

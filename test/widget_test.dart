@@ -28,8 +28,7 @@ class _TestWebViewPlatform extends InAppWebViewPlatform {
   @override
   PlatformInAppWebViewWidget createPlatformInAppWebViewWidget(
     PlatformInAppWebViewWidgetCreationParams params,
-  ) =>
-      _TestWebView(params);
+  ) => _TestWebView(params);
 }
 
 class _TestWebView extends PlatformInAppWebViewWidget {
@@ -50,9 +49,9 @@ void main() {
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('test_tiktok/webview_identity'),
-      (call) async => 'test-agent',
-    );
+          const MethodChannel('test_tiktok/webview_identity'),
+          (call) async => 'test-agent',
+        );
   });
   for (final action in TikTokLaunchAction.values) {
     testWidgets(
@@ -85,6 +84,7 @@ void main() {
         gate.complete('test-agent');
         await created;
         expect(platform.loads.single.url.toString(), action.initialUrl);
+        expect(platform.loads.single.headers, englishWebViewHeaders);
         debugDefaultTargetPlatformOverride = null;
       },
     );
@@ -219,9 +219,11 @@ void main() {
         await homeController.restoreProxy();
         await tester.pumpAndSettle();
         expect(
-          find.text(action == TikTokLaunchAction.login
-              ? 'Đăng nhập tài khoản'
-              : 'Đăng ký tài khoản'),
+          find.text(
+            action == TikTokLaunchAction.login
+                ? 'Đăng nhập tài khoản'
+                : 'Đăng ký tài khoản',
+          ),
           findsOneWidget,
         );
         expect(
@@ -479,8 +481,7 @@ void main() {
   });
 
   for (final action in TikTokLaunchAction.values) {
-    testWidgets('$action opens its page and runs only the selected action once',
-        (
+    testWidgets('$action opens its page and runs only the selected action once', (
       tester,
     ) async {
       final previousPlatform = InAppWebViewPlatform.instance;
@@ -510,27 +511,27 @@ void main() {
       if (debugDefaultTargetPlatformOverride != TargetPlatform.iOS) {
         expect(params.initialUrlRequest, isNull);
       } else {
-        expect(
-            params.initialUrlRequest!.url.toString(),
-            switch (action) {
-              TikTokLaunchAction.browse => tiktokHomeUrl,
-              TikTokLaunchAction.login => tiktokHomeUrl,
-              TikTokLaunchAction.signup => tiktokHomeUrl,
-            });
+        expect(params.initialUrlRequest!.url.toString(), switch (action) {
+          TikTokLaunchAction.browse => tiktokHomeUrl,
+          TikTokLaunchAction.login => tiktokHomeUrl,
+          TikTokLaunchAction.signup => tiktokHomeUrl,
+        });
         expect(params.initialUrlRequest!.url!.queryParameters['lang'], isNull);
-        expect(params.initialUrlRequest!.headers?['Accept-Language'], isNull);
+        expect(params.initialUrlRequest!.headers, englishWebViewHeaders);
       }
       expect(params.initialSettings!.userAgent, configuration.userAgent);
       expect(
         params.initialSettings!.preferredContentMode,
         UserPreferredContentMode.DESKTOP,
       );
-      expect(
-        params.initialUserScripts!.where(
-          (script) => script.source == englishWebViewLocaleScript,
-        ),
-        isEmpty,
+      final localeScript = params.initialUserScripts!.singleWhere(
+        (script) => script.source == englishWebViewLocaleScript,
       );
+      expect(
+        localeScript.injectionTime,
+        UserScriptInjectionTime.AT_DOCUMENT_START,
+      );
+      expect(localeScript.forMainFrameOnly, isFalse);
       final controller = _TestController(WebUri(page.initialUrl));
       final cookieScript = params.initialUserScripts!.singleWhere(
         (script) => script.source == autoAcceptCookieScript,
@@ -591,13 +592,22 @@ void main() {
             .length,
         action == TikTokLaunchAction.signup ? 1 : 0,
       );
-      expect(find.text('Bật auto xem và bình luận'), findsOneWidget);
+      expect(
+        find.byTooltip('Bật tự động xem video và bình luận'),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('autoWatch')));
       await tester.pumpAndSettle();
-      expect(find.text('Dừng tự động'), findsOneWidget);
+      expect(
+        find.byTooltip('Dừng tự động xem video và bình luận'),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('autoWatch')));
       await tester.pumpAndSettle();
-      expect(find.text('Bật auto xem và bình luận'), findsOneWidget);
+      expect(
+        find.byTooltip('Bật tự động xem video và bình luận'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }
@@ -655,15 +665,15 @@ void main() {
       final reader = _TestOtpReader();
       final controller =
           await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
-        'verification-requested',
-        'otp-submitted',
-        'waiting-password-screen',
-        'waiting-paste',
-        'waiting-password-submit',
-        'password-submitted',
-        'waiting-result',
-        'signup-success',
-      ]);
+            'verification-requested',
+            'otp-submitted',
+            'waiting-password-screen',
+            'waiting-paste',
+            'waiting-password-submit',
+            'password-submitted',
+            'waiting-result',
+            'signup-success',
+          ]);
       await tester.pump(const Duration(milliseconds: 2500));
       await tester.pump();
       reader.response.complete('012345');
@@ -706,14 +716,14 @@ void main() {
       final reader = _TestOtpReader();
       final controller =
           await _mountApiPage(tester, TikTokLaunchAction.login, reader, [
-        'submitted',
-        'email-verification-selected',
-        'requesting-verification',
-        'verification-requested',
-        'waiting-otp-paste',
-        'otp-submitted',
-        'login-success',
-      ]);
+            'submitted',
+            'email-verification-selected',
+            'requesting-verification',
+            'verification-requested',
+            'waiting-otp-paste',
+            'otp-submitted',
+            'login-success',
+          ]);
       await tester.pump(const Duration(milliseconds: 2500));
       await tester.pump();
       for (var i = 0; i < 2; i++) {
@@ -848,13 +858,19 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.textContaining('TikTok đang giới hạn số lần thử'), findsOneWidget);
+      expect(
+        find.textContaining('TikTok đang giới hạn số lần thử'),
+        findsOneWidget,
+      );
       params.onConsoleMessage!(
         wrapped,
         ConsoleMessage(message: 'Login: email bind failed: 7 ().'),
       );
       await tester.pump();
-      expect(find.textContaining('TikTok đang giới hạn số lần thử'), findsOneWidget);
+      expect(
+        find.textContaining('TikTok đang giới hạn số lần thử'),
+        findsOneWidget,
+      );
       await tester.pump(const Duration(seconds: 2));
       expect(reader.requests, isEmpty);
       expect(find.textContaining('Chưa hoàn tất đăng ký'), findsNothing);
@@ -897,7 +913,10 @@ void main() {
         hasLength(calls),
       );
       expect(find.text('Dừng'), findsNothing);
-      expect(find.textContaining('TikTok đang giới hạn số lần thử'), findsOneWidget);
+      expect(
+        find.textContaining('TikTok đang giới hạn số lần thử'),
+        findsOneWidget,
+      );
     },
   );
 
@@ -917,11 +936,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
       expect(reader.closed, isTrue);
-      expect(find.textContaining('TikTok đang giới hạn số lần thử'), findsOneWidget);
       expect(
-        find.widgetWithText(SnackBarAction, 'Cấu hình'),
+        find.textContaining('TikTok đang giới hạn số lần thử'),
         findsOneWidget,
       );
+      expect(find.widgetWithText(SnackBarAction, 'Cấu hình'), findsOneWidget);
       expect(find.text('Dừng'), findsNothing);
       reader.response.complete('012345');
       await tester.pump(const Duration(seconds: 5));
@@ -937,17 +956,15 @@ void main() {
   testWidgets('account failure offers a return to the configuration route', (
     tester,
   ) async {
-    await _mountApiPage(
-        tester,
-        TikTokLaunchAction.signup,
-        _TestOtpReader(),
-        [
-          'account-rate-limited',
-        ],
-        routed: true);
+    await _mountApiPage(tester, TikTokLaunchAction.signup, _TestOtpReader(), [
+      'account-rate-limited',
+    ], routed: true);
     await tester.pump(const Duration(milliseconds: 2600));
     await tester.pump();
-    expect(find.textContaining('TikTok đang giới hạn số lần thử'), findsOneWidget);
+    expect(
+      find.textContaining('TikTok đang giới hạn số lần thử'),
+      findsOneWidget,
+    );
     await tester.tap(find.widgetWithText(SnackBarAction, 'Cấu hình'));
     await tester.pumpAndSettle();
     expect(find.text('Thông tin cấu hình'), findsOneWidget);
@@ -961,11 +978,11 @@ void main() {
     final reader = _TestOtpReader();
     final controller =
         await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
-      'requesting-verification',
-      'requesting-verification',
-      'verification-requested',
-      ...List.generate(10, (_) => 'otp-required'),
-    ]);
+          'requesting-verification',
+          'requesting-verification',
+          'verification-requested',
+          ...List.generate(10, (_) => 'otp-required'),
+        ]);
     for (var i = 0; i < 2; i++) {
       await tester.pump(Duration(milliseconds: i == 0 ? 2500 : 300));
       await tester.pump();
@@ -1017,12 +1034,12 @@ void main() {
       final reader = _TestOtpReader();
       final controller =
           await _mountApiPage(tester, TikTokLaunchAction.signup, reader, [
-        'otp-submitted',
-        'password-submitted',
-        'waiting-username-skip',
-        'username-skipped',
-        'signup-success',
-      ]);
+            'otp-submitted',
+            'password-submitted',
+            'waiting-username-skip',
+            'username-skipped',
+            'signup-success',
+          ]);
       await tester.pump(const Duration(milliseconds: 2600));
       await tester.pump();
       for (var i = 0; i < 2; i++) {
@@ -1203,9 +1220,10 @@ void main() {
         expect(source, contains('"otp":"012345"'));
         expect(source, isNot(contains('mail-secret')));
         expect(source, isNot(contains('test-reader-token')));
-        final handler = controller.handlers[action == TikTokLaunchAction.login
-            ? 'FlutterLoginPaste'
-            : 'FlutterSignupPaste']!;
+        final handler =
+            controller.handlers[action == TikTokLaunchAction.login
+                ? 'FlutterLoginPaste'
+                : 'FlutterSignupPaste']!;
         expect(await handler([1, 'otp']), true);
         expect(clipboard, ['012345']);
         for (var i = 0; i < 2; i++) {
@@ -1241,8 +1259,9 @@ void main() {
       final step = action == TikTokLaunchAction.login
           ? autoLoginStepScript
           : autoSignupStepScript;
-      final evaluated =
-          controller.sources.where((source) => source.contains(step)).length;
+      final evaluated = controller.sources
+          .where((source) => source.contains(step))
+          .length;
       reader.response.complete('012345');
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -1250,9 +1269,10 @@ void main() {
         controller.sources.where((source) => source.contains(step)),
         hasLength(evaluated),
       );
-      final handler = controller.handlers[action == TikTokLaunchAction.login
-          ? 'FlutterLoginPaste'
-          : 'FlutterSignupPaste']!;
+      final handler =
+          controller.handlers[action == TikTokLaunchAction.login
+              ? 'FlutterLoginPaste'
+              : 'FlutterSignupPaste']!;
       expect(await handler([1, 'otp']), false);
     });
 
@@ -1312,7 +1332,7 @@ void main() {
       TikTokLaunchAction.login,
       TikTokLaunchAction.signup,
     ]) {
-      testWidgets('$platform $action pastes credentials and OTP natively', (
+      testWidgets('$platform $action enters credentials and OTP natively', (
         tester,
       ) async {
         debugDefaultTargetPlatformOverride = platform;
@@ -1394,22 +1414,26 @@ void main() {
         for (final field in ['email', 'password', 'otp']) {
           expect(await paste([1, field]), true);
         }
-        expect(
-          clipboard,
-          signup
-              ? ['signup@example.com', 'signup-secret', '012345']
-              : ['login-user', 'login-secret', '654321'],
-        );
+        final expectedText = signup
+            ? ['signup@example.com', 'signup-secret', '012345']
+            : ['login-user', 'login-secret', '654321'];
+        final keyboardInput = platform == TargetPlatform.android;
+        expect(clipboard, keyboardInput ? [expectedText.last] : expectedText);
         expect(nativePastes, hasLength(3));
-        for (final call in nativePastes) {
-          expect(call.method, 'paste');
+        for (var i = 0; i < nativePastes.length; i++) {
+          final call = nativePastes[i];
+          expect(call.method, keyboardInput && i < 2 ? 'typeText' : 'paste');
           expect(call.arguments, {
             'context': signup ? 'signup' : 'login',
             'attempt': 1,
+            if (keyboardInput) ...{
+              'field': ['email', 'password', 'otp'][i],
+              'text': expectedText[i],
+            },
           });
         }
         await tester.pumpWidget(const SizedBox());
-        await tester.pump(const Duration(milliseconds: 2600));
+        await tester.pump(const Duration(seconds: 10));
         expect(await paste([1, 'otp']), false);
         expect(nativePastes, hasLength(3));
         debugDefaultTargetPlatformOverride = null;
@@ -1495,8 +1519,10 @@ Future<_TestController> _mountApiPage(
   } else {
     await tester.pumpWidget(MaterialApp(home: page));
   }
-  final params =
-      tester.widget<InAppWebView>(find.byType(InAppWebView)).platform.params;
+  final params = tester
+      .widget<InAppWebView>(find.byType(InAppWebView))
+      .platform
+      .params;
   final controller = _TestController(WebUri(page.initialUrl), steps: steps);
   final wrapped = InAppWebViewController.fromPlatform(platform: controller);
   params.onWebViewCreated!.call(wrapped);
@@ -1522,9 +1548,9 @@ class _TestOtpReader implements OtpCodeReader {
 
 class _TestController extends PlatformInAppWebViewController {
   _TestController(this.url, {this.steps})
-      : super.implementation(
-          const PlatformInAppWebViewControllerCreationParams(id: 0),
-        );
+    : super.implementation(
+        const PlatformInAppWebViewControllerCreationParams(id: 0),
+      );
 
   final WebUri url;
   final List<String>? steps;

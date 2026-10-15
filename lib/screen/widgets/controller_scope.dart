@@ -36,6 +36,7 @@ class ControllerScope<T extends AppController> extends StatelessWidget {
             behavior: floatingNotices ? SnackBarBehavior.floating : null,
             content: Text(notice.message),
             duration: notice.duration,
+            persist: floatingNotices ? false : null,
             action: notice.actionLabel == null || notice.onAction == null
                 ? null
                 : SnackBarAction(

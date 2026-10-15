@@ -177,10 +177,9 @@ packages:
   flutter_accessibility_service:
     dependency: "direct main"
     description:
-      name: flutter_accessibility_service
-      sha256: a63ca662e871483e78c476325f69c6a110f0da128451337339ac04962729d0b4
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/flutter_accessibility_service"
+      relative: true
+    source: path
     version: "1.2.0"
   flutter_expandable_fab:
     dependency: "direct main"

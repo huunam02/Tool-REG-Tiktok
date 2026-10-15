@@ -125,7 +125,7 @@ class _AccessibilityPermissionDialogState
         content: Text(widget.enabled
             ? 'Tool TikTok đã có quyền Trợ năng để bấm nút Send code.'
             : _message ??
-                'Tool TikTok cần quyền Trợ năng để tìm và bấm nút Send code trên biểu mẫu TikTok.\n\n'
+                'Tool TikTok cần quyền Trợ năng tự động thao tác bấm trên màn hình.\n\n'
                     'Nhấn Mở cài đặt → chọn Tool TikTok → bật Sử dụng dịch vụ, rồi quay lại ứng dụng.'),
         actions: [
           TextButton(

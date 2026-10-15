@@ -124,6 +124,7 @@ public class NativeClipboardPasteTest {
             awaitValue(id, values[i]);
         }
         assertEquals("3", evaluate("window.inputEvents"));
+        assertEquals("3", evaluate("events.filter(e=>e[0]==='paste' && e[2]===true).length"));
     }
 
     @Test public void testPastesUnicodeComment() throws Exception {

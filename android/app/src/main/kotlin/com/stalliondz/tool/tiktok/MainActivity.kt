@@ -1,19 +1,32 @@
 package com.stalliondz.tool.tiktok
 
+import android.content.Context
+import android.content.res.Configuration
+import android.os.LocaleList
+import java.util.Locale
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import org.json.JSONObject
 import com.pichillilorenzo.flutter_inappwebview_android.InAppWebViewFlutterPlugin
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: FlutterActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        val locales = LocaleList(Locale.US, Locale.ENGLISH)
+        LocaleList.setDefault(locales)
+        val configuration = Configuration(newBase.resources.configuration)
+        configuration.setLocales(locales)
+        super.attachBaseContext(newBase.createConfigurationContext(configuration))
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/send_code_target")
             .setMethodCallHandler { call, result ->
-                if (call.method != "getTarget") {
+                if (call.method != "getTarget" && call.method != "invalidateTarget") {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
@@ -25,7 +38,15 @@ class MainActivity: FlutterActivity() {
                     flutterEngine.platformViewsController.getPlatformViewById(it.toInt())
                 }
                 val webView = root?.let { findWebView(it) }
-                if (webView == null || attempt == null) {
+                if (webView == null) {
+                    result.success(null)
+                    return@setMethodCallHandler
+                }
+                if (call.method == "invalidateTarget") {
+                    NativeSendCodeTarget.invalidate(webView, context, action) { result.success(it) }
+                    return@setMethodCallHandler
+                }
+                if (attempt == null) {
                     result.success(null)
                     return@setMethodCallHandler
                 }
@@ -59,7 +80,7 @@ class MainActivity: FlutterActivity() {
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/comment_input")
             .setMethodCallHandler { call, result ->
-                if (call.method != "paste") {
+                if (call.method != "typeText" && call.method != "paste") {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
@@ -68,35 +89,44 @@ class MainActivity: FlutterActivity() {
                     result.success(false)
                     return@setMethodCallHandler
                 }
+                val text = call.argument<String>("text")
+                if (text.isNullOrEmpty()) {
+                    result.success(false)
+                    return@setMethodCallHandler
+                }
+                val encodedText = JSONObject.quote(text)
                 val context = call.argument<String>("context") ?: "comment"
                 val guardScript = if (context == "signup" || context == "login") {
                     val attempt = call.argument<Int>("attempt")
-                    if (attempt == null) {
+                    val field = call.argument<String>("field")
+                    if (attempt == null || field !in listOf("email", "password", "otp")) {
                         result.success(false)
                         return@setMethodCallHandler
                     }
                     val stateName = if (context == "signup") "__flutterAutoSignup" else "__flutterAutoLogin"
-                    "window.$stateName?.canPasteFromClipboard($attempt) === true"
+                    "window.$stateName?.canPasteFromClipboard($attempt, ${JSONObject.quote(field)}, $encodedText) === true"
                 } else if (context == "comment") {
-                    """
-                    (() => {
-                      if (document.hidden || window.__flutterAutoWatch?.getStatus?.().commentStage !== 'pasting') return false;
-                      const e = document.activeElement;
-                      return !!e && !!e.closest('[data-e2e="comment-text"], [data-e2e="comment-input"]') &&
-                        (e.isContentEditable || e.tagName === 'TEXTAREA');
-                    })()
-                    """.trimIndent()
+                    "window.__flutterAutoWatch?.canPasteComment($encodedText) === true"
                 } else {
                     result.success(false)
                     return@setMethodCallHandler
                 }
-                NativeClipboardPaste.paste(webView, guardScript) { result.success(it) }
+                if (call.method == "paste") {
+                    if (context !in listOf("signup", "login") ||
+                        call.argument<String>("field") != "otp" || !text.matches(Regex("[0-9]{6}"))) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    NativeClipboardPaste.paste(webView, guardScript) { result.success(it) }
+                } else {
+                    NativeKeyboardInput.typeText(webView, text, guardScript) { result.success(it) }
+                }
             }
     }
 
     private fun findWebView(view: View): WebView? {
         // The IP checker adds an invisible headless WebView before TikTok.
-        // Clipboard actions must target the visible account/comment page.
+        // Keyboard input must target the visible account/comment page.
         if (view.visibility != View.VISIBLE) return null
         if (view is WebView) return view
         if (view is ViewGroup) {

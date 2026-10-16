@@ -7,7 +7,7 @@ import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 
 void main() {
-  final format = RegExp(r'^[A-Z][a-z]{6,10}[0-9]{2}$');
+  final format = RegExp(r'^[A-Z][a-z]{5,9}[0-9]{2}[!@#$%^&*]$');
   test(
     'generated passwords cover all allowed lengths and required characters',
     () {

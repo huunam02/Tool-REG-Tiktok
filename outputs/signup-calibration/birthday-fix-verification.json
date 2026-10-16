@@ -1,0 +1,17 @@
+{
+  "time": "2026-10-16T21:21:20.299392+07:00",
+  "step": "birthday-only",
+  "result": {
+    "ok": true,
+    "birthday": "1967-10-28"
+  },
+  "readback": {
+    "Year": "1967",
+    "Month": "October",
+    "Day": "28"
+  },
+  "snapshot": "birthday-fixed-verified.json",
+  "input": "Accessibility gestures",
+  "html": "read-only labels and clipped visible bounds",
+  "sendCodeTapped": false
+}

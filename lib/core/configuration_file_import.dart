@@ -86,8 +86,7 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
       try {
         final line = switch (cells.length) {
           1 => cells.first,
-          2 => '${cells[0]} ${cells[1]}',
-          4 || 5 => '${cells.first} ${cells.skip(1).join('|')}',
+          2 || 4 || 5 => cells.join('|'),
           _ => throw const FormatException(
               'Mỗi dòng Excel cần một ô dữ liệu, hai cột proxy/tài khoản, '
               'hoặc các cột proxy, email, mật khẩu TikTok, mật khẩu email, trạng thái (không bắt buộc).',

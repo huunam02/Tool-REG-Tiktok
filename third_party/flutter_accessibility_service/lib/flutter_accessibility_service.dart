@@ -13,6 +13,27 @@ import 'gesture_description.dart';
 class FlutterAccessibilityService {
   FlutterAccessibilityService._();
 
+  static Future<void> signupCancelPaste() =>
+      _methodChannel.invokeMethod('signupCancelPaste');
+
+  static Future<bool> signupDismissKeyboard() async =>
+      await _methodChannel.invokeMethod<bool>('signupDismissKeyboard') ?? false;
+
+  /// Redacted on-demand snapshot of the host app's visible WebView.
+  static Future<Map<String, dynamic>> signupSnapshot() async =>
+      Map<String, dynamic>.from(await _methodChannel
+              .invokeMapMethod<String, dynamic>('signupSnapshot') ??
+          {});
+
+  /// Clipboard staging and ACTION_PASTE are performed by AccessibilityService.
+  /// Existing drafts are preserved; no ACTION_SET_TEXT or InputConnection fallback.
+  static Future<Map<String, dynamic>> signupPasteFocused(
+          String text, String field) async =>
+      Map<String, dynamic>.from(await _methodChannel
+              .invokeMapMethod<String, dynamic>(
+                  'signupPasteFocused', {'text': text, 'field': field}) ??
+          {'ok': false});
+
   static const MethodChannel _methodChannel =
       MethodChannel('x-slayer/accessibility_channel');
   static const EventChannel _eventChannel =

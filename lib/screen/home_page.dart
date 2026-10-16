@@ -4,6 +4,8 @@ import '../core/otp_settings_store.dart';
 import '../core/nurture_data.dart';
 import '../core/proxy_store.dart';
 import '../core/app_action_theme.dart';
+import '../core/tiktok_flow_result.dart';
+import '../core/app_configuration.dart';
 import 'proxy_management_page.dart';
 import 'settings_page.dart';
 import 'widgets/proxy_widgets.dart';
@@ -52,16 +54,43 @@ class _HomeView extends StatelessWidget {
     ),
   );
 
-  Future<void> _openTikTok(BuildContext context, TikTokLaunchAction action) =>
-      logic.openTikTok(
-        action,
-        (configuration, action) => Navigator.of(context).push<void>(
-          MaterialPageRoute(
-            builder: (_) =>
-                TikTokPage(configuration: configuration, launchAction: action),
+  Future<void> _openTikTok(
+    BuildContext context,
+    TikTokLaunchAction action,
+  ) async {
+    TikTokFlowResult? result;
+    AppConfiguration? signupConfiguration;
+    await logic.openTikTok(action, (configuration, action) async {
+      result = await Navigator.of(context).push<TikTokFlowResult>(
+        MaterialPageRoute<TikTokFlowResult>(
+          builder: (_) => TikTokPage(
+            configuration: configuration,
+            launchAction: action,
+            proxyStore: logic.proxyStore,
           ),
         ),
       );
+      if (result == TikTokFlowResult.signupLoggedOut) {
+        signupConfiguration = configuration;
+      }
+    });
+    if (!context.mounted || !logic.active) return;
+    final registered = signupConfiguration;
+    if (registered != null) {
+      logic.scheduleLoginAfterSignup(registered, () async {
+        if (!context.mounted || ModalRoute.of(context)?.isCurrent != true) {
+          return;
+        }
+        await _openTikTok(context, TikTokLaunchAction.login);
+      });
+    }
+    if (result == TikTokFlowResult.nurtureCompleted && context.mounted) {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.clearSnackBars();
+      messenger.removeCurrentSnackBar();
+      logic.notify('Đã nuôi xong. Tài khoản vẫn đang đăng nhập.');
+    }
+  }
 
   Future<void> _openSettings(BuildContext context) =>
       Navigator.of(context).push<void>(
@@ -236,41 +265,63 @@ class _HomeView extends StatelessWidget {
       ),
       body: SafeArea(
         bottom: false,
-        child: AbsorbPointer(
-          absorbing: logic.busy,
-          child: TabBarView(
-            controller: logic.tabs,
-            children: [
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final wide = constraints.maxWidth >= 760;
-                  return _homeContent(wide, [
-                    if (logic.preferencesLoadFailed) ...[
-                      const Text('Chưa tải được cài đặt đã lưu.'),
-                      TextButton(
-                        onPressed: logic.restorePreferences,
-                        child: const Text('Tải lại cài đặt'),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    _pair(
-                      _proxySection(context),
-                      Column(
-                        children: [
-                          _commentsSection(),
-                          const SizedBox(height: 16),
-                          _keywordsSection(),
-                        ],
-                      ),
-                      wide,
-                    ),
-                    const SizedBox(height: 18),
-                  ]);
-                },
+        child: Column(
+          children: [
+            if (logic.waitingForAutoLogin)
+              Material(
+                color: const Color(0xFF123136),
+                child: ListTile(
+                  key: const Key('waitingForAutoLogin'),
+                  title: const Text(
+                    'Đã đăng xuất. Chờ 2–3 phút để tự đăng nhập và nuôi acc.',
+                  ),
+                  subtitle: Text(logic.currentProxy?.account?.email ?? ''),
+                  trailing: TextButton(
+                    key: const Key('cancelScheduledLogin'),
+                    onPressed: logic.cancelScheduledLogin,
+                    child: const Text('Hủy'),
+                  ),
+                ),
               ),
-              _nurtureContent(),
-            ],
-          ),
+            Expanded(
+              child: AbsorbPointer(
+                absorbing: logic.busy,
+                child: TabBarView(
+                  controller: logic.tabs,
+                  children: [
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final wide = constraints.maxWidth >= 760;
+                        return _homeContent(wide, [
+                          if (logic.preferencesLoadFailed) ...[
+                            const Text('Chưa tải được cài đặt đã lưu.'),
+                            TextButton(
+                              onPressed: logic.restorePreferences,
+                              child: const Text('Tải lại cài đặt'),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          _pair(
+                            _proxySection(context),
+                            Column(
+                              children: [
+                                _commentsSection(),
+                                const SizedBox(height: 16),
+                                _keywordsSection(),
+                              ],
+                            ),
+                            wide,
+                          ),
+                          const SizedBox(height: 18),
+                        ]);
+                      },
+                    ),
+                    _nurtureContent(),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
       bottomNavigationBar: logic.tabIndex == 0 ? _actionBar(context) : null,
@@ -470,7 +521,7 @@ class _HomeView extends StatelessWidget {
                         : () => _openTikTok(context, logic.accountAction),
                     child: Text(
                       logic.accountAction == TikTokLaunchAction.login
-                          ? 'Đăng nhập tài khoản'
+                          ? 'Đăng nhập và nuôi Account'
                           : 'Đăng ký tài khoản',
                       textAlign: TextAlign.center,
                     ),

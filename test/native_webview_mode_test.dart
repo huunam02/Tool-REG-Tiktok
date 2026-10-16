@@ -296,9 +296,14 @@ void main() {
             'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
         const channel = MethodChannel('test_tiktok/webview_identity');
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(channel, (call) {
+            .setMockMethodCallHandler(channel, (call) async {
+              if (call.method == 'configureSignupViewport') {
+                expect(action, TikTokLaunchAction.signup);
+                return true;
+              }
               expect(call.method, 'configureEngine');
-              expect(call.arguments.keys, ['id']);
+              expect(call.arguments.keys, action == TikTokLaunchAction.signup
+                  ? ['id', 'fixedSignupViewport'] : ['id']);
               return gate.future;
             });
         addTearDown(
@@ -321,10 +326,13 @@ void main() {
         await created;
         expect(logic.effectiveUserAgent, agent);
         expect(controller.loads.single.url.toString(), tiktokHomeUrl);
-        expect(
-          controller.handlers,
-          containsAll(['FlutterLoginSendCode', 'FlutterSignupSendCode']),
-        );
+        if (action == TikTokLaunchAction.signup) {
+          expect(controller.handlers, isNot(contains('FlutterSignupSendCode')));
+          expect(controller.handlers, isNot(contains('FlutterSignupPaste')));
+        } else {
+          expect(controller.handlers,
+            containsAll(['FlutterLoginSendCode', 'FlutterSignupSendCode']));
+        }
         await logic.handlePageLoadComplete(WebUri(tiktokHomeUrl));
         logic.onLoadStart(wrapped, WebUri(tiktokHomeUrl));
         await logic.handlePageLoadComplete(WebUri(tiktokHomeUrl));

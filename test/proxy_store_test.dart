@@ -35,6 +35,71 @@ void main() {
   });
 
   test(
+    'signup marks only the opened configuration and survives reopening',
+    () async {
+      const account = AccountCredentials(
+        email: 'signup@example.com',
+        password: 'tiktok-password',
+        mailboxPassword: 'mail-password',
+      );
+      final id = await store.save(
+        name: 'Signup',
+        proxy: null,
+        account: account,
+        userAgent: 'signup-agent',
+      );
+      final otherId = await store.save(
+        name: 'Other',
+        proxy: WebViewProxy.parse('192.0.2.8:8080'),
+        account: account,
+      );
+      await store.useSaved(id);
+      expect(await store.markRegistered(id, account.email), isTrue);
+      expect(
+        (await store.getCurrentProfile())!.statusAccount,
+        AccountStatus.registered,
+      );
+      await store.useSaved(otherId);
+      expect(await store.markRegistered(id, account.email), isTrue);
+      await store.close();
+      store = openStore();
+      final rows = await store.list();
+      final registered = rows.singleWhere((row) => row.id == id);
+      expect(registered.statusAccount, AccountStatus.registered);
+      expect(registered.name, 'Signup');
+      expect(registered.userAgent, 'signup-agent');
+      expect(sameAccount(registered.account, account), isTrue);
+      final current = (await store.getCurrentProfile())!;
+      expect(current.configurationId, otherId);
+      expect(current.statusAccount, AccountStatus.unregistered);
+    },
+  );
+
+  test(
+    'signup cannot register a deleted configuration or a changed email',
+    () async {
+      final id = await store.save(
+        name: 'Changed',
+        proxy: null,
+        account: const AccountCredentials(
+          email: 'new@example.com',
+          password: 'password',
+          mailboxPassword: 'mail',
+        ),
+      );
+      expect(await store.markRegistered(id, 'old@example.com'), isFalse);
+      expect(await store.markRegistered(id, ''), isFalse);
+      expect(
+        (await store.list()).single.statusAccount,
+        AccountStatus.unregistered,
+      );
+      await store.delete(id);
+      expect(await store.markRegistered(id, 'new@example.com'), isFalse);
+      expect(await store.list(), isEmpty);
+    },
+  );
+
+  test(
     'timezone survives batch save, selection, edits and reopening',
     () async {
       final proxy = WebViewProxy.parse('192.0.2.7:8080')!;
@@ -242,8 +307,8 @@ void main() {
 
   test('saves all imported drafts and rolls back a failed batch', () async {
     final records = ImportedConfiguration.parseMany(
-      '192.0.2.7:8080:user:pass first@example.com|tiktok|mail|1\n'
-      '192.0.2.8:8080:user:pass second@example.com|tiktok|mail',
+      '192.0.2.7:8080:user:pass|first@example.com|tiktok|mail|1\n'
+      '192.0.2.8:8080:user:pass|second@example.com|tiktok|mail',
     );
     final drafts = [
       for (final row in records)

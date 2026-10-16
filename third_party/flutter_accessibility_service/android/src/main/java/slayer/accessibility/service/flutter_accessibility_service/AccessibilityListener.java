@@ -59,6 +59,8 @@ public class AccessibilityListener extends AccessibilityService {
         return nodeMap.get(id);
     }
 
+    static AccessibilityListener currentInstance() { return instance; }
+
     @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
     public void onAccessibilityEvent(AccessibilityEvent accessibilityEvent) {
@@ -76,6 +78,9 @@ public class AccessibilityListener extends AccessibilityService {
             }
             String nodeId = generateNodeId(parentNodeInfo);
             String packageName = parentNodeInfo.getPackageName().toString();
+            // Host WebView is read on demand through a redacted snapshot.
+            // Never persist its editable fields in the legacy event mailbox.
+            if (getPackageName().equals(packageName)) return;
             storeNode(nodeId, parentNodeInfo);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 windowInfo = parentNodeInfo.getWindow();
@@ -321,7 +326,7 @@ public class AccessibilityListener extends AccessibilityService {
 
 
     private String generateNodeId(AccessibilityNodeInfo node) {
-        return node.getWindowId() + "_" + node.getClassName() + "_" + node.getText() + "_" + node.getContentDescription(); //UUID.randomUUID().toString();
+        return node.getWindowId() + "_" + node.hashCode();
     }
 
     private void storeNode(String uuid, AccessibilityNodeInfo node) {

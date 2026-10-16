@@ -36,6 +36,7 @@ const String autoWatchStartScript = r'''
   let comment = null;
   let commentAttemptCount = 0;
   let running = true;
+  let liveInvite = null;
   // One choice per post, retained when this document's watcher is restarted.
   const watchPlans = window.__flutterWatchPlans ||= new Map();
   // One random delay per actual UI action; do not redraw it every 250ms tick.
@@ -77,6 +78,45 @@ const String autoWatchStartScript = r'''
         (!allowTransparent && Number(style.opacity) === 0)) return 0;
     return Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) *
       Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+  };
+  const dismissLiveInvite = () => {
+    const selector = 'button, [role="button"], a, div, span';
+    const label = element => (element.textContent ||
+      element.getAttribute?.('aria-label') || '').trim();
+    const enabled = element => !element.disabled &&
+      element.getAttribute?.('aria-disabled') !== 'true' && visibleArea(element) > 0;
+    const controls = Array.from(document.querySelectorAll(selector));
+    for (const button of controls.reverse()) {
+      if (!/^not now$/i.test(label(button)) || !enabled(button)) continue;
+      // Only dismiss a LIVE invitation containing both controls. Other dialogs
+      // can also say Not now (notifications, account settings, etc.).
+      let parent = button.parentElement;
+      let invitation = false;
+      for (let depth = 0; parent && depth < 5; depth++, parent = parent.parentElement) {
+        if (['BODY', 'HTML', 'ARTICLE'].includes(parent.tagName)) break;
+        if (Array.from(parent.querySelectorAll(selector)).some(candidate =>
+            /^watch live$/i.test(label(candidate)) && enabled(candidate))) {
+          invitation = true;
+          break;
+        }
+      }
+      if (!invitation) continue;
+      const rect = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        (Math.max(0, rect.left) + Math.min(innerWidth, rect.right)) / 2,
+        (Math.max(0, rect.top) + Math.min(innerHeight, rect.bottom)) / 2);
+      if (!hit || !(hit === button || button.contains?.(hit))) continue;
+      if (liveInvite?.button !== button) {
+        liveInvite = { button, readyAt: Date.now() + actionDelayMs(), clicked: false };
+      }
+      if (!liveInvite.clicked && Date.now() >= liveInvite.readyAt) {
+        liveInvite.clicked = true;
+        button.click();
+      }
+      return true;
+    }
+    liveInvite = null;
+    return false;
   };
   const findActiveCard = () => Array.from(document.querySelectorAll(
     'article[data-e2e="recommend-list-item-container"]'
@@ -471,6 +511,10 @@ const String autoWatchStartScript = r'''
     goToNextVideo(pendingAdvance.element);
   };
   const finishVideo = () => {
+    if (running && !document.hidden && dismissLiveInvite()) {
+      resetPlaybackSample();
+      return;
+    }
     if (!activeVideo || completed || document.hidden ||
         findActiveVideo() !== activeVideo ||
         (activeVideo.currentSrc || activeVideo.src) !== activeSource) return;
@@ -492,6 +536,10 @@ const String autoWatchStartScript = r'''
   };
   const tick = () => {
     if (!running || document.hidden) return;
+    if (dismissLiveInvite()) {
+      resetPlaybackSample();
+      return;
+    }
     samplePlayback();
     if (comment) {
       processComment();

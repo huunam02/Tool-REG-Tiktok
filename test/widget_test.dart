@@ -661,11 +661,20 @@ void main() {
         await tester.tap(find.byKey(const Key('autoWatch')));
         await tester.pumpAndSettle();
       }
-      if (action == TikTokLaunchAction.signup) {
-        expect(find.text('Hủy chờ'), findsOneWidget);
-        await tester.tap(find.text('Hủy chờ'));
-        await tester.pump();
+      if (action != TikTokLaunchAction.login) {
         expect(find.text('Hủy chờ'), findsNothing);
+        expect(
+          find.byTooltip('Đăng nhập tự động thành công để bật Auto nuôi'),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key('autoWatch')))
+              .onPressed,
+          isNull,
+        );
+        expect(tester.takeException(), isNull);
+        return;
       }
       expect(
         find.byTooltip('Bật tự động xem video và bình luận'),

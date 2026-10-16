@@ -36,6 +36,10 @@ String buildAutoSignupScript({
 
   bool useAccessibilityUsernameSkip = false,
 
+  bool manualAccessibilityButtons = false,
+
+  bool manualFieldInput = false,
+
 }) =>
 
     '''
@@ -73,6 +77,10 @@ String buildAutoSignupScript({
           'passwordSubmitDelayMs': passwordSubmitDelayMs,
 
           'useAccessibilityUsernameSkip': useAccessibilityUsernameSkip,
+
+          'manualAccessibilityButtons': manualAccessibilityButtons,
+
+          'manualFieldInput': manualFieldInput,
 
         })}, $allowSubmit, ($openHomeAccountModalScript));
 
@@ -187,6 +195,8 @@ const String autoSignupStepScript = r'''
 
   const usernameStep = usernameScreen && (previousState?.passwordSubmitted ||
 
+    config.manualAccessibilityButtons && previousState?.otpRequestedAt != null ||
+
     config.allowPasswordSubmit === false || previousState?.submitted && previousState?.otpSubmitted ||
 
     !allowSubmit && config.allowOtpSubmit === false);
@@ -217,12 +227,11 @@ const String autoSignupStepScript = r'''
 
   }
 
-  const otp = (config.otp || '').trim();
-
   const enteredOtp = findVerificationInputs().map(el => el.value || '').join('');
+  const otp = config.manualFieldInput ? enteredOtp.trim() : (config.otp || '').trim();
   const pastingOwnOtp = previousState?.pending?.field === 'otp' &&
     previousState.pending.text === otp;
-  if (verification && enteredOtp.trim() && enteredOtp !== otp && !pastingOwnOtp) {
+  if (!config.manualFieldInput && verification && enteredOtp.trim() && enteredOtp !== otp && !pastingOwnOtp) {
 
     return 'verification-required';
 
@@ -271,7 +280,7 @@ const String autoSignupStepScript = r'''
 
   if (passwordStep && (config.allowPasswordSubmit === false || previousState?.passwordSubmitted)) return 'waiting-result';
 
-  if (!allowSubmit && !passwordStep && !usernameStep && (!verification || !otp && !config.waitForOtpApi || config.allowOtpSubmit === false)) return 'waiting-result';
+  if (!allowSubmit && !passwordStep && !usernameStep && (!verification || !otp && !config.waitForOtpApi && !config.manualFieldInput || config.allowOtpSubmit === false)) return 'waiting-result';
 
 
 
@@ -305,7 +314,7 @@ const String autoSignupStepScript = r'''
 
         const p = this.pending;
 
-        return this.active && !document.hidden &&
+        return !config.manualFieldInput && this.active && !document.hidden &&
 
           location.origin === 'https://www.tiktok.com' &&
 
@@ -480,6 +489,8 @@ const String autoSignupStepScript = r'''
 
     }
 
+    if (config.manualAccessibilityButtons) return 'waiting-manual-username-skip';
+
     if (Date.now() - state.usernameSkipReadyAt < 2000) return 'waiting-username-skip';
 
     state.usernameSkipped = true;
@@ -543,7 +554,8 @@ const String autoSignupStepScript = r'''
       !state.pending && !findPhone() && !findVerification() &&
       !findForm('input[name="email"], input[type="email"], input[autocomplete="email"]') &&
       !!editor && editor === state.passwordEditor && !editor.disabled && !editor.readOnly &&
-      editor.value === config.password && !!request && !request.failed &&
+      (config.manualFieldInput ? editor.value === request?.value && editor.value.length >= 8
+        : editor.value === config.password) && !!request && !request.failed &&
       request.control?.isConnected !== false && codeControls().includes(request.control) &&
       enabled(request.control) && /^(sign\s*up|register|đăng ký)$/i.test(controlText(request.control));
   };
@@ -551,13 +563,7 @@ const String autoSignupStepScript = r'''
   state.getPasswordSubmitTarget = (attempt) => state.canSubmitPasswordWithAccessibility(attempt)
     ? nativeButtonTarget(state.passwordRequest.control, 'signup/submit-password') : null;
 
-  const codeRequestResult = () => {
-
-    const request = state.codeRequest;
-
-    if (request.failed) return 'send-code-accessibility-failed';
-
-    const acknowledged = codeControls().some(el =>
+  const codeAcknowledged = () => codeControls().some(el =>
 
       /^(resend( code)?|send (code )?again|gửi lại( mã)?)(\b|\s|\()/i.test(controlText(el)) ||
 
@@ -567,7 +573,20 @@ const String autoSignupStepScript = r'''
 
         !codeControls().some(el => sendCodePattern.test(controlText(el)));
 
-    if (acknowledged) {
+  // A manual tap must be acknowledged by TikTok before fetching an API OTP.
+  // Waiting for the user does not start the automatic gesture's 15s timeout.
+  if (config.manualAccessibilityButtons && state.otpRequestedAt == null && codeAcknowledged()) {
+    state.otpRequestedAt = Date.now();
+    return 'verification-requested';
+  }
+
+  const codeRequestResult = () => {
+
+    const request = state.codeRequest;
+
+    if (request.failed) return 'send-code-accessibility-failed';
+
+    if (codeAcknowledged()) {
 
       state.otpRequestedAt = request.at;
 
@@ -640,7 +659,7 @@ const String autoSignupStepScript = r'''
 
   // be visually hidden; its visible label identifies this specific option.
 
-  if (emailInput && !phoneInput && state.otpRequestedAt == null) {
+  if (!config.manualFieldInput && emailInput && !phoneInput && state.otpRequestedAt == null) {
 
     const newsletterLabel = Array.from((dialog() || document).querySelectorAll('label')).find(el =>
 
@@ -676,7 +695,13 @@ const String autoSignupStepScript = r'''
 
   )).filter(visible);
 
-  if (fields.length === 3 && state.otpRequestedAt == null) {
+  if (config.manualFieldInput && fields.length === 3 && state.otpRequestedAt == null &&
+      !emailInput && !passwordInput && !phoneInput) {
+    const next = button(/^(next|continue|tiếp|tiếp theo|tiếp tục)$/i);
+    return clickOnce(next, 'birthday-next') ? 'next-submitted' : 'waiting-manual-birthday';
+  }
+
+  if (!config.manualFieldInput && fields.length === 3 && state.otpRequestedAt == null) {
 
     const values = [config.month, config.day, config.year];
 
@@ -796,6 +821,31 @@ const String autoSignupStepScript = r'''
 
   const paste = (editor, field, text) => {
 
+    // Manual mode only observes values. Do not focus, select, blur, dispatch
+    // input events or call the native typing/clipboard bridge.
+    if (config.manualFieldInput) {
+      const value = editor.value || '';
+      if (!value || editor.checkValidity?.() === false ||
+          field === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) ||
+          field === 'password' && (value.length < 8 || value.length > 20) ||
+          field === 'otp' && !/^\d{6}$/.test(value)) {
+        if (field === 'email') {
+          state.manualEmailValue = null;
+          state.sendCodePreparation = null;
+        }
+        if (field === 'password') {
+          state.passwordReadyValue = null;
+          state.passwordReadyAt = null;
+        }
+        return `waiting-manual-${field}`;
+      }
+      if (field === 'email' && state.manualEmailValue !== value) {
+        state.manualEmailValue = value;
+        state.sendCodePreparation = null;
+      }
+      return null;
+    }
+
     const previousPaste = state.pasted.get(editor);
 
     if (previousPaste?.failed) return 'paste-failed';
@@ -877,7 +927,7 @@ const String autoSignupStepScript = r'''
 
     if (state.passwordSubmitted) return 'waiting-result';
 
-    if (passwordInput.value && passwordInput.value !== config.password) return 'draft-exists';
+    if (!config.manualFieldInput && passwordInput.value && passwordInput.value !== config.password) return 'draft-exists';
 
     // Let the post-OTP screen settle before pasting, then give validation
 
@@ -910,11 +960,15 @@ const String autoSignupStepScript = r'''
 
     }
 
-    if (state.passwordSubmitButton !== submit) {
+    if (state.passwordSubmitButton !== submit ||
+        config.manualFieldInput && state.passwordReadyValue !== passwordInput.value) {
       state.passwordSubmitButton = submit;
+      state.passwordReadyValue = passwordInput.value;
       state.passwordReadyAt = Date.now();
     }
     state.passwordReadyAt ??= Date.now();
+
+    if (config.manualAccessibilityButtons) return 'waiting-manual-password-submit';
 
     const submitDelayMs = Number.isFinite(config.passwordSubmitDelayMs)
       ? Math.max(0, config.passwordSubmitDelayMs) : 10000;
@@ -927,7 +981,8 @@ const String autoSignupStepScript = r'''
     if (config.useAccessibilityPasswordSubmit) {
       // Latch before dispatch, so navigation cannot submit the final form again.
       state.actions.add('submit-password');
-      const current = state.passwordRequest = { control: submit, at: Date.now(), failed: false };
+      const current = state.passwordRequest = { control: submit, at: Date.now(), failed: false,
+        value: config.manualFieldInput ? passwordInput.value : undefined };
       try {
         const request = window.flutter_inappwebview?.callHandler('FlutterSignupPasswordSubmit', config.attempt);
         if (!request?.then) current.failed = true;
@@ -954,7 +1009,7 @@ const String autoSignupStepScript = r'''
 
   if (verification && state.otpRequestedAt == null && !sendCodeControl) {
 
-    if (!otp && !config.waitForOtpApi) return 'verification-required';
+    if (!otp && !config.waitForOtpApi && !config.manualFieldInput) return 'verification-required';
 
     state.otpRequestedAt = Date.now();
 
@@ -962,6 +1017,7 @@ const String autoSignupStepScript = r'''
 
   if (state.otpRequestedAt != null) {
 
+    if (config.manualFieldInput && !/^\d{6}$/.test(otp)) return 'waiting-manual-otp';
     if (!otp) return config.waitForOtpApi ? 'otp-required' : 'waiting-result';
 
     if (config.allowOtpSubmit === false) return 'waiting-result';
@@ -974,7 +1030,7 @@ const String autoSignupStepScript = r'''
 
     if (result) return result === 'waiting-paste' ? 'waiting-otp-paste' : result;
 
-    if (splitCodeComplete && otpInputs.includes(document.activeElement)) {
+    if (!config.manualFieldInput && splitCodeComplete && otpInputs.includes(document.activeElement)) {
       document.activeElement.blur?.();
     }
 
@@ -1013,6 +1069,8 @@ const String autoSignupStepScript = r'''
   // Activate once and wait for TikTok's countdown before starting the OTP API.
 
   if (sendCode) {
+
+    if (config.manualAccessibilityButtons) return 'waiting-manual-send-code';
 
     if (!state.actions.has('send-code')) {
       if (!state.sendCodePreparation || state.sendCodePreparation.control !== sendCode) {

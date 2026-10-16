@@ -597,6 +597,19 @@ class ProxyStore {
     });
   }
 
+  /// Update only the account that was opened, without changing selection or
+  /// overwriting any other configuration fields.
+  Future<bool> markRegistered(int id, String email) async {
+    if (email.trim().isEmpty) return false;
+    return await (await _database).update(
+          'configurations',
+          {'statusAccount': AccountStatus.registered.name},
+          where: 'id = ? AND account_email = ?',
+          whereArgs: [id, email.trim()],
+        ) ==
+        1;
+  }
+
   Future<void> setUsed(int id, bool used) async {
     final changed = await (await _database).update(
       'configurations',

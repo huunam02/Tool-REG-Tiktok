@@ -47,8 +47,10 @@ tương ứng, chỉ hiển thị khi đã chọn cấu hình và chỉ bật kh
 Nút **Mở TikTok** phía dưới mở TikTok bằng bộ dữ liệu đang chọn.
 
 Form tạo/sửa có switch **Đã đăng ký**. Bật lưu `statusAccount = registered`,
-tắt lưu `statusAccount = unregistered` (mặc định). Đây là trạng thái do người
-sử dụng đặt; độc lập với nhãn đã dùng proxy. Sửa trạng thái của cấu hình đang
+tắt lưu `statusAccount = unregistered` (mặc định). Khi đăng ký và bấm **Skip**
+thành công, app tự lưu **Đã đăng ký** cho đúng cấu hình đang chạy; Home cập nhật
+khi quay lại và chuyển nút sang **Đăng nhập tài khoản**. Trạng thái này độc lập
+với nhãn đã dùng proxy. Sửa trạng thái của cấu hình đang
 chọn cũng cập nhật phần xem trước sau khi quay về Home.
 Form mới tự tạo mật khẩu TikTok dài 9–13 ký tự, chữ đầu viết hoa, các chữ
 tiếp theo viết thường và hai chữ số cuối. Nút đổi mật khẩu tạo giá trị khác.
@@ -74,7 +76,9 @@ CPU/RAM/GPU lấy từ thiết bị, không chèn profile Pixel ở chế độ 
 Proxy được áp dụng trước khi tạo WebView; múi giờ đã lưu vẫn dùng cho các luồng
 thông thường. Ngôn ngữ tiếng Anh hiện không bị ép.
 
-Viewport desktop rộng 980 CSS px, thu vừa bề ngang WebView và cho phép zoom.
+Viewport desktop rộng 980 CSS px, thu vừa bề ngang WebView và cho phép zoom
+ở luồng thông thường. Luồng đăng ký Android dùng vùng WebView tỷ lệ 1:2,
+design size 400×800 qua `flutter_screenutil`, khóa zoom để phát lại tọa độ.
 Kích thước màn hình, DPR và khả năng cảm ứng giữ theo thiết bị. Client Hints dùng
 `Google Chrome`/`Chromium`, Linux/x86/64 bit, `mobile=false`,
 `formFactors=["Desktop"]`, model trống; `navigator.platform=Linux x86_64`.
@@ -126,8 +130,9 @@ HTTP status, `error_code`/`status_code` và thông báo lỗi trong **Response**
 HTTP 200 vẫn có thể chứa mã lỗi nghiệp vụ. Khi chia sẻ kết quả, chỉ gửi các
 trường trên; không gửi cookie, token, email, mật khẩu, OTP hay HAR chưa lọc.
 Cấu hình engine mặc định đã vượt qua bước region và đến màn nhập OTP trong
-lần kiểm tra thủ công trên emulator (Chrome/WebView 134). Chưa xác nhận hoàn tất
-đăng ký hoặc đăng nhập tự động với tài khoản thật. Phản hồi region HTTP 200 kèm
+lần kiểm tra thủ công trên emulator (Chrome/WebView 134). Luồng Accessibility
+mới đã hoàn tất một lượt ghi mẫu tài khoản thật qua Sign up → Skip → Messages/Profile;
+chưa xác minh phát lại toàn bộ không can thiệp. Phản hồi region HTTP 200 kèm
 `error_code=7` không chỉ rõ lý do từ chối; cấu hình này không bảo đảm xóa giới hạn
 phía TikTok. App không tự thử lại, xóa phiên hoặc đổi cấu hình khi gặp lỗi này.
 Kết nối trực tiếp cũng giữ User-Agent qua các lần mở app. Sửa tên hoặc cấu
@@ -159,10 +164,11 @@ Nút **Import data** trên màn tạo mở bottom sheet có hai mục:
 **Từ file** (Excel `.xlsx`, `.xls` hoặc `.txt`) và **Dán từ clipboard**.
 TXT và clipboard nhận nhiều cấu hình,
 mỗi cấu hình một dòng theo định dạng:
-`host:port:username:password email|mật_khẩu_TikTok|mật_khẩu_email_OTP[|0/1]`.
+`host:port:username:password|email|mật_khẩu_TikTok|mật_khẩu_email_OTP[|0/1]`.
 Thêm `|1` ở cuối để đặt **Đã đăng ký**; `|0` hoặc không thêm trạng thái đặt
 **Chưa đăng ký**, kể cả khi công tắc đang bật. Giá trị khác báo lỗi import.
-Proxy và tài khoản cách nhau một dấu cách. Dòng trống được bỏ qua. Nếu có dòng
+Thứ tự bốn trường là **Proxy | Email | Password | Mail Password**, ngăn cách bằng
+dấu `|`. Phần proxy vẫn dùng `host:port:username:password`. Dòng trống được bỏ qua. Nếu có dòng
 lỗi, app báo số dòng và giữ nguyên dữ liệu trước đó để sửa rồi import lại.
 Mỗi dòng hiển thị một mục **Thông tin cấu hình** riêng, có proxy, tài khoản,
 trạng thái và User-Agent độc lập, chỉnh sửa riêng trước khi lưu.
@@ -260,11 +266,27 @@ muốn bật lại toàn bộ cần khôi phục cả cấu hình locale native.
 
 ## OTP API
 
+**Đăng ký Android hiện tại:** toàn bộ thao tác UI dùng
+`flutter_accessibility_service` và profile tọa độ đã ghi, gồm điều hướng,
+chọn ngày sinh, dán email/OTP/mật khẩu và gửi biểu mẫu. Email/mật khẩu dùng
+`ACTION_PASTE`; OTP dùng nhấn giữ → menu Paste bằng gesture vì paste trực tiếp
+không điền được sáu ô ở lượt thử. App tự chọn năm → tháng → ngày theo cấu hình
+hoặc ngày ngẫu nhiên 1960–2004. Với dropdown HTML không lộ các mục qua
+Accessibility, app chỉ đọc nhãn/vị trí từ DOM rồi bấm/cuộn bằng Accessibility.
+Đã kiểm chứng riêng bước này trên giả lập với **28/10/1967**. App đọc lại giá
+trị ngày sinh trước khi gửi mã. Xem
+[tài liệu ghi mẫu Android](docs/android-signup-coordinate-calibration.md).
+Lượt ghi mẫu thật đã thành công; phát lại hoàn toàn tự động và gọi API OTP
+chưa được xác minh. Hai cờ `_pauseSignupGestures`/`_pauseSignupFieldInput`
+chỉ còn tác động luồng đăng ký JavaScript cũ.
+
 Luồng đăng ký và đăng nhập dùng tài khoản và mật khẩu hộp thư của
 cấu hình đang chọn. Tạo hoặc sửa dữ liệu qua **Quản lý cấu hình** trên
 màn **Home**, rồi chọn cấu hình để sử dụng.
 
-Khi chạy đăng ký, app tự tạo ngày sinh ngẫu nhiên trong khoảng 1960–2004,
+Các mô tả thao tác JavaScript bên dưới thuộc luồng cũ và đăng nhập;
+luồng đăng ký Android dùng profile Accessibility nêu trên.
+Ở luồng đăng ký cũ, app tự tạo ngày sinh ngẫu nhiên trong khoảng 1960–2004,
 bao gồm ngày hợp lệ theo số ngày của từng tháng và năm nhuận.
 Luồng **Tự động đăng ký** mở trang chủ TikTok → xem video → bấm tim → mở dialog Login
 → bấm Sign up → Use phone or email → Use Email, rồi tiếp tục điền ngày sinh,
@@ -275,19 +297,32 @@ Sau khi gửi OTP và mật khẩu, nếu xuất hiện màn **Create username**
 dùng, kể cả khi tên gợi ý không khả dụng. Trên Android, nút Skip dùng
 `dispatchGesture()` tại tọa độ hiện tại trong WebView. App tiếp tục chờ xác nhận đăng ký
 thành công; nút **Dừng** vẫn hủy được thao tác trong thời gian chờ.
-Sau khi TikTok xác nhận đăng ký thành công, app giữ màn hiện tại và chờ ngẫu nhiên
-2–3 phút rồi tự nuôi 10 phút. Overlay hiển thị đang chờ và nút **Hủy chờ**.
-Tải lại trang không chọn lại khoảng chờ; nếu đang ở nền khi hết chờ, app bắt đầu
-nuôi khi quay lại. Đóng màn hoặc hủy chờ sẽ hủy lịch. Bấm Auto nuôi trong lúc chờ
-sẽ bắt đầu sớm, vẫn tự tắt sau 10 phút.
+Sau khi TikTok xác nhận đăng ký thành công, app lưu **Đã đăng ký**, giữ màn hiện
+tại và chờ ngẫu nhiên **2–4 phút**, rồi mở menu TikTok để **đăng xuất**. Chỉ khi
+hai lần kiểm tra liên tiếp xác nhận đã đăng xuất, app mới quay về **Home**.
+Home chờ ngẫu nhiên **2–3 phút** rồi mở lại đúng cấu hình để chạy đăng nhập tự động.
+Cả hai màn chờ đều có nút hủy. Lịch chỉ tiếp tục khi app ở foreground; quay lại
+không bốc thăm lại thời gian. Đóng màn hoặc hủy lịch sẽ dừng chuỗi tự động.
+Nếu đăng xuất không thành công hoặc cấu hình thay đổi, app dừng và báo lỗi,
+không đăng nhập tài khoản khác. **Auto nuôi** chỉ bật sau khi luồng đăng nhập
+tự động xác nhận thành công.
 
 Luồng **Tự động đăng nhập** mở trang chủ TikTok → xem video → bấm tim → mở dialog Login
 → Use phone or email → Username or Email, rồi tiếp tục nhập tài khoản, mật khẩu
 và xử lý OTP như trước, kể cả khi dialog giữ nguyên URL trang chủ.
-Khi TikTok xác nhận đăng nhập thành công (hoặc tài khoản đã đăng nhập), app tự
-bật Auto nuôi và tự tắt sau 10 phút tính từ lần xác nhận đó. Tải lại trang hoặc
+Khi luồng đăng nhập tự động xác nhận thành công (hoặc tài khoản đã đăng nhập), app tự
+bật Auto nuôi trong **10 phút** tính từ lần xác nhận đó. Khi hết thời gian, app
+dừng nuôi, tự quay về **Home** và báo **Đã nuôi xong**; giữ nguyên phiên đăng nhập,
+không đăng xuất và không xóa cookie. Tải lại trang hoặc
 đưa app ra nền rồi quay lại không đặt lại thời hạn. Có thể bấm nút dừng nuôi
 để kết thúc sớm; đóng màn TikTok sẽ hủy phiên nuôi và bộ hẹn giờ.
+
+Nhận diện đăng nhập hỗ trợ cả `nav-messages` của bố cục desktop mới khi
+`profile-icon` bị ẩn. App chưa báo thành công nếu còn form đăng nhập/xác minh
+hoặc CAPTCHA; avatar của tác giả video và liên kết Profile không đủ để xác nhận.
+Nếu luồng tự động dừng để người dùng xử lý OTP/CAPTCHA hoặc nhập thủ công,
+app không theo dõi để tự bật Auto nuôi. Cần chạy lại luồng đăng nhập tự động
+và được xác nhận thành công mới bật nuôi.
 
 Auto nuôi bốc thăm độc lập cho mỗi video: 50% xem đến hết, 50% lướt sớm sau
 khoảng 2–5 giây phát thực tế (clip ngắn hơn sẽ lướt trước khi hết). Không ép

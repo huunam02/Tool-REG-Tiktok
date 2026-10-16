@@ -8,6 +8,8 @@ const source = readFileSync(
   new URL('../lib/core/scripts/auto_login_script.dart', `file://${__filename}`), 'utf8',
 );
 const step = source.match(/autoLoginStepScript = r'''([\s\S]*?)''';/)[1];
+const authSource = readFileSync(new URL('../lib/core/scripts/authenticated_session_script.dart', `file://${__filename}`), 'utf8');
+const authStep = authSource.match(/authenticatedSessionScript = r'''([\s\S]*?)''';/)[1];
 const homeSource = readFileSync(
   new URL('../lib/core/scripts/home_account_modal_script.dart', `file://${__filename}`), 'utf8',
 );
@@ -70,7 +72,7 @@ function setup({ autoPaste = true, pasteResult = true, sendCodeAcknowledged = tr
       },
     },
   };
-  const execute = runInNewContext(`((config, allowSubmit) => (${step})(config, allowSubmit, (${homeStep})))`, {
+  const execute = runInNewContext(`((config, allowSubmit) => (${step})(config, allowSubmit, (${homeStep}), (${authStep})))`, {
     window, location, document, innerWidth: 400, innerHeight: 800,
     Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
     Date: class extends Date { static now() { return time; } },
@@ -665,6 +667,7 @@ test('selects Email in the foreground identity dialog and waits for OTP feedback
   assert.equal(identity.verify.clicks, 1);
   assert.equal(env.requests.length, 3);
   identity.modal.hidden = flow.modal.hidden = true;
+  env.submit.hidden = true;
   env.add('[data-e2e="profile-icon"]');
   assert.equal(env.run(false), 'login-success');
 });
@@ -983,10 +986,48 @@ test('reports a login error without retrying credentials', () => {
 
 test('requires a visible account avatar to report a logged-in session', () => {
   const env = setup();
+  env.location.pathname = '/';
+  env.submit.hidden = true;
   env.add('[data-e2e="profile-icon"]');
   assert.equal(env.run(), 'already-logged-in');
   assert.equal(env.run(false), 'login-success');
   assert.equal(env.submit.clicks, 0);
+});
+
+test('recognizes current signed-in navigation when the legacy profile icon is hidden', () => {
+  const env = setup();
+  env.location.pathname = '/';
+  env.submit.hidden = true;
+  env.add('[data-e2e="profile-icon"]').hidden = true;
+  env.add('[data-e2e="nav-messages"]');
+  assert.equal(env.run(), 'already-logged-in');
+  assert.equal(env.run(false), 'login-success');
+  assert.equal(env.requests.length, 0);
+});
+
+test('does not infer authentication from a profile link or video author avatar', () => {
+  const env = setup();
+  env.location.pathname = '/';
+  env.submit.hidden = true;
+  env.add('[data-e2e="nav-profile"]');
+  env.add('[data-e2e="video-author-avatar"]');
+  assert.notEqual(env.run(false), 'login-success');
+});
+
+test('signed-in navigation behind CAPTCHA or a login form is not success', () => {
+  for (const blockedBy of ['captcha', 'modal', 'login-button']) {
+    const env = setup();
+    env.location.pathname = '/';
+    env.submit.hidden = true;
+    env.add('[data-e2e="nav-messages"]');
+    if (blockedBy === 'captcha') env.add('#captcha-verify-container');
+    if (blockedBy === 'modal') {
+      const title = env.add('h2', 'Verify your email');
+      env.add('[role="dialog"]').querySelectorAll = () => [title];
+    }
+    if (blockedBy === 'login-button') env.add('[data-e2e="top-login-button"]');
+    assert.notEqual(env.run(false), 'login-success');
+  }
 });
 
 test('requests a code once and pastes OTP as soon as it is ready', async () => {

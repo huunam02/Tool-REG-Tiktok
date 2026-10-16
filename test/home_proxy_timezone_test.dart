@@ -83,6 +83,33 @@ void main() {
     });
   });
 
+  test(
+    'returning after signup refreshes status and changes the account action',
+    () async {
+      final id = await home.store.save(
+        name: 'Signup',
+        proxy: null,
+        account: const AccountCredentials(
+          email: 'signup@example.com',
+          password: 'password',
+          mailboxPassword: 'mail',
+        ),
+      );
+      await home.store.useSaved(id);
+      await home.restoreProxy();
+      expect(home.accountAction, TikTokLaunchAction.signup);
+      await home.openTikTok(TikTokLaunchAction.signup, (
+        configuration,
+        _,
+      ) async {
+        expect(configuration.configurationId, id);
+        await home.store.markRegistered(id, configuration.signupEmail);
+      });
+      expect(home.currentProxy!.statusAccount, AccountStatus.registered);
+      expect(home.accountAction, TikTokLaunchAction.login);
+    },
+  );
+
   for (final action in TikTokLaunchAction.values) {
     test(
       '$action passes proxy timezone to WebView before navigation',

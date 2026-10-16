@@ -1,0 +1,186 @@
+package slayer.accessibility.service.flutter_accessibility_service;
+
+import android.app.Instrumentation;
+import android.app.UiAutomation;
+import android.accessibilityservice.GestureDescription;
+import android.graphics.Path;
+import android.graphics.Rect;
+import android.view.ViewGroup;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.view.accessibility.AccessibilityNodeInfo;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.rule.ActivityTestRule;
+import com.stalliondz.tool.tiktok.SignupFixtureActivity;
+import io.flutter.plugin.common.MethodChannel;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import static org.junit.Assert.*;
+
+/** Runs in a local HTML fixture; no network/mailbox/TikTok requests. */
+@SuppressWarnings({"deprecation", "unchecked"})
+@RunWith(AndroidJUnit4.class)
+public class SignupAccessibilityBridgeTest {
+    @Rule public ActivityTestRule<SignupFixtureActivity> activity = new ActivityTestRule<>(SignupFixtureActivity.class);
+    private WebView web;
+    private Instrumentation instrumentation() { return InstrumentationRegistry.getInstrumentation(); }
+
+    @Before public void setup() throws Exception {
+        // Instrumentation restarts the host process; reconnect its service and
+        // keep UiAutomation from suppressing real Accessibility services.
+        UiAutomation automation = instrumentation().getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES);
+        automation.executeShellCommand("settings put secure enabled_accessibility_services ''").close();
+        Thread.sleep(300);
+        automation.executeShellCommand("settings put secure enabled_accessibility_services com.stalliondz.tool.tiktok/slayer.accessibility.service.flutter_accessibility_service.AccessibilityListener").close();
+        CountDownLatch loaded = new CountDownLatch(1);
+        instrumentation().runOnMainSync(() -> {
+            web = new WebView(activity.getActivity());
+            web.getSettings().setJavaScriptEnabled(true);
+            web.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+            activity.getActivity().setContentView(web, new ViewGroup.LayoutParams(-1, -1));
+            web.setWebViewClient(new WebViewClient() {
+                @Override public void onPageFinished(WebView view, String url) { loaded.countDown(); }
+            });
+            web.loadDataWithBaseURL("https://www.tiktok.com/signup", "<html><head>" +
+                "<meta name='viewport' content='width=device-width,initial-scale=1'></head><body>" +
+                "<h1>Enter 6-digit code</h1><input id='email' type='email' placeholder='Email address'>" +
+                "<div style='margin-top:60px' id='slots'>" +
+                "<input maxlength='1' style='width:35px'><input maxlength='1' style='width:35px'>" +
+                "<input maxlength='1' style='width:35px'><input maxlength='1' style='width:35px'>" +
+                "<input maxlength='1' style='width:35px'><input maxlength='1' style='width:35px'></div>" +
+                "<select aria-label='Month'><option>Month</option><option>January</option><option>February</option></select>" +
+                "<script>slots.firstElementChild.addEventListener('paste',e=>{" +
+                "e.preventDefault();const code=e.clipboardData.getData('text/plain');" +
+                "Array.from(slots.children).forEach((el,i)=>el.value=code[i]||'');" +
+                "window.trustedPaste=e.isTrusted;});</script></body></html>", "text/html", "UTF-8", null);
+        });
+        assertTrue(loaded.await(10, TimeUnit.SECONDS));
+        long deadline = System.currentTimeMillis()+10000;
+        while (System.currentTimeMillis()<deadline) {
+            AtomicReference<Map<String,Object>> data = new AtomicReference<>();
+            instrumentation().runOnMainSync(() -> data.set(SignupAccessibilityBridge.snapshot()));
+            List<Map<String,Object>> nodes = (List<Map<String,Object>>) data.get().get("nodes");
+            if (nodes != null && nodes.stream().filter(n -> Boolean.TRUE.equals(n.get("editable"))).count() >= 7) return;
+            Thread.sleep(200);
+        }
+        fail("Accessibility service did not expose the fixture WebView");
+    }
+
+    private String evaluate(String script) throws Exception {
+        AtomicReference<String> value = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        instrumentation().runOnMainSync(() -> web.evaluateJavascript(script, result -> {
+            value.set(result); done.countDown();
+        }));
+        assertTrue(done.await(5, TimeUnit.SECONDS)); return value.get();
+    }
+
+    private Map<String,Object> paste(String text, String field) throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<Map<String,Object>> value = new AtomicReference<>();
+        instrumentation().runOnMainSync(() -> SignupAccessibilityBridge.paste(text, field, new MethodChannel.Result() {
+            @Override public void success(Object result) { value.set((Map<String,Object>)result); done.countDown(); }
+            @Override public void error(String code, String message, Object detail) { done.countDown(); }
+            @Override public void notImplemented() { done.countDown(); }
+        }));
+        assertTrue("Paste completed", done.await(10, TimeUnit.SECONDS)); return value.get();
+    }
+
+    @Test public void pastesThroughRealMenuIntoSixOtpSlots() throws Exception {
+        // Focus is fixture preparation. All paste input is the service's gesture/menu path.
+        instrumentation().runOnMainSync(() -> web.requestFocus());
+        evaluate("email.style.visibility='hidden';slots.firstElementChild.focus();true");
+        Thread.sleep(500);
+        tapFocusedEditor();
+        Thread.sleep(500);
+        Map<String,Object> result = paste("123456", "otp");
+        if (!Boolean.TRUE.equals(result.get("ok"))) {
+            android.graphics.Bitmap screenshot = instrumentation().getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
+            try (java.io.FileOutputStream file = new java.io.FileOutputStream(new java.io.File(activity.getActivity().getFilesDir(), "signup-test-menu.png"))) {
+                screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, file);
+            }
+        }
+        String windows = "";
+        if (!Boolean.TRUE.equals(result.get("ok"))) {
+            for (android.view.accessibility.AccessibilityWindowInfo window : AccessibilityListener.currentInstance().getWindows()) {
+                windows += "\nWINDOW " + window.getType() + fixtureTree(window.getRoot(),0);
+            }
+        }
+        assertEquals(result.toString() + windows, Boolean.TRUE, result.get("ok"));
+        assertEquals("\"123456\"", evaluate("Array.from(slots.children).map(el=>el.value).join('')"));
+        assertEquals("true", evaluate("window.trustedPaste"));
+    }
+
+    private void tapFocusedEditor() throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        instrumentation().runOnMainSync(() -> {
+            AccessibilityListener service = AccessibilityListener.currentInstance();
+            AccessibilityNodeInfo editor = SignupAccessibilityBridge.webRoot(service).findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            Rect bounds = new Rect(); editor.getBoundsInScreen(bounds);
+            Path path = new Path(); path.moveTo(bounds.exactCenterX(), bounds.exactCenterY());
+            service.dispatchGesture(new GestureDescription.Builder().addStroke(new GestureDescription.StrokeDescription(path,0,140)).build(),
+                new android.accessibilityservice.AccessibilityService.GestureResultCallback() {
+                    @Override public void onCompleted(GestureDescription gesture) { done.countDown(); }
+                }, null);
+        });
+        assertTrue(done.await(3, TimeUnit.SECONDS));
+    }
+
+    @Test public void exposesNativeBirthdayOptions() throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        instrumentation().runOnMainSync(() -> {
+            AccessibilityListener service = AccessibilityListener.currentInstance();
+            AccessibilityNodeInfo spinner = SignupAccessibilityBridge.webRoot(service)
+                .findAccessibilityNodeInfosByText("Month").stream()
+                .filter(n -> "android.widget.Spinner".contentEquals(n.getClassName())).findFirst().get();
+            Rect bounds = new Rect(); spinner.getBoundsInScreen(bounds);
+            Path path = new Path(); path.moveTo(bounds.exactCenterX(), bounds.exactCenterY());
+            service.dispatchGesture(new GestureDescription.Builder().addStroke(new GestureDescription.StrokeDescription(path,0,140)).build(),
+                new android.accessibilityservice.AccessibilityService.GestureResultCallback() {
+                    @Override public void onCompleted(GestureDescription gesture) { done.countDown(); }
+                }, null);
+        });
+        assertTrue(done.await(3, TimeUnit.SECONDS));
+        long deadline = System.currentTimeMillis()+5000;
+        while(System.currentTimeMillis()<deadline) {
+            AtomicReference<Map<String,Object>> data = new AtomicReference<>();
+            instrumentation().runOnMainSync(() -> data.set(SignupAccessibilityBridge.snapshot()));
+            List<Map<String,Object>> nodes = (List<Map<String,Object>>)data.get().get("nodes");
+            if(nodes != null && nodes.stream().anyMatch(n -> Boolean.TRUE.equals(n.get("picker")) && "February".equals(n.get("text")))) return;
+            Thread.sleep(200);
+        }
+        fail("Native birthday options were not exposed");
+    }
+
+    private String fixtureTree(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 15) return "";
+        String value = "\n" + node.getPackageName() + ":" + node.getClassName() + ":" + node.getText() + ":" + node.getContentDescription();
+        for (int i=0; i<node.getChildCount(); i++) value += fixtureTree(node.getChild(i), depth+1);
+        return value;
+    }
+
+    @Test public void pastesEmailAndPreservesDraft() throws Exception {
+        instrumentation().runOnMainSync(() -> web.requestFocus());
+        evaluate("email.focus();true");
+        Thread.sleep(500);
+        assertEquals(Boolean.TRUE, paste("fixture@example.org", "email").get("ok"));
+        assertEquals(Boolean.FALSE, paste("other@example.org", "email").get("ok"));
+        assertEquals("\"fixture@example.org\"", evaluate("email.value"));
+    }
+
+    @After public void cleanup() {
+        instrumentation().runOnMainSync(() -> {
+            SignupAccessibilityBridge.cancelPaste();
+            if (web != null) { ((ViewGroup)web.getParent()).removeView(web); web.destroy(); }
+        });
+    }
+}

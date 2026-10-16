@@ -57,7 +57,7 @@ void main() {
     () {
       for (final supplied in ['', '   ', ' Actual-pAss_12 ']) {
         final value = ImportedConfiguration.parse(
-          '192.0.2.7:8080:user:pass person@example.com|$supplied|mail|1',
+          '192.0.2.7:8080:user:pass|person@example.com|$supplied|mail|1',
         );
         if (supplied.trim().isEmpty) {
           expect(value.account.password, matches(format));

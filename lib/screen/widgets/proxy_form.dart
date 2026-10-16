@@ -539,7 +539,7 @@ class _ProxyFormView extends StatelessWidget {
                             decoration: InputDecoration(
                               hintText: 'Dán dữ liệu',
                               helperText:
-                                  'host:port:user:pass email|mật khẩu TikTok|mật khẩu email OTP[|0/1]\n'
+                                  'host:port:user:pass|email|mật khẩu TikTok|mật khẩu email OTP[|0/1]\n'
                                   'Mỗi dòng một cấu hình. 1: đã đăng ký; 0 hoặc bỏ qua: chưa đăng ký.',
                               helperMaxLines: 6,
                               errorText: logic.importError,

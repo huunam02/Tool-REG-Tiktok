@@ -8,8 +8,8 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/screen/widgets/proxy_form.dart';
 
 const records =
-    '192.0.2.7:8080:user:pass first@example.com|tiktok|mail\n'
-    '192.0.2.8:8080:user:pass second@example.com|tiktok|mail';
+    '192.0.2.7:8080:user:pass|first@example.com|tiktok|mail\n'
+    '192.0.2.8:8080:user:pass|second@example.com|tiktok|mail';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

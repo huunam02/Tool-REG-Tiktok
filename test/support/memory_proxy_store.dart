@@ -197,6 +197,23 @@ class MemoryProxyStore extends ProxyStore {
   }
 
   @override
+  Future<bool> markRegistered(int id, String email) async {
+    if (failWrites) throw StateError('Storage unavailable');
+    final matches = entries.where(
+      (entry) => entry.id == id && entry.account?.email == email.trim(),
+    );
+    if (email.trim().isEmpty || matches.isEmpty) return false;
+    final entry = matches.single;
+    await save(
+      id: id,
+      name: entry.name,
+      proxy: entry.proxy,
+      statusAccount: AccountStatus.registered,
+    );
+    return true;
+  }
+
+  @override
   Future<void> setUsed(int id, bool used) async {
     if (failWrites) throw StateError('Storage unavailable');
     final index = entries.indexWhere((entry) => entry.id == id);

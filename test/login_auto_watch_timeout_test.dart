@@ -6,6 +6,7 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/scripts/auto_login_script.dart';
 import 'package:test_tiktok/core/scripts/auto_signup_script.dart';
 import 'package:test_tiktok/core/scripts/auto_watch_script.dart';
+import 'package:test_tiktok/core/scripts/authenticated_session_script.dart';
 
 class _WatchView extends PlatformInAppWebViewController {
   _WatchView()
@@ -16,6 +17,8 @@ class _WatchView extends PlatformInAppWebViewController {
   String loginResult = 'login-success';
   String signupResult = 'signup-success';
   bool acceptsWatch = true;
+  bool authenticated = false;
+  int authChecks = 0;
   int starts = 0;
   int stops = 0;
 
@@ -29,6 +32,10 @@ class _WatchView extends PlatformInAppWebViewController {
   }) async {
     if (source.contains(autoLoginStepScript)) return loginResult;
     if (source.contains(autoSignupStepScript)) return signupResult;
+    if (source == checkAuthenticatedSessionScript) {
+      authChecks++;
+      return authenticated;
+    }
     if (source.contains(autoWatchStartScript)) {
       starts++;
       return acceptsWatch;
@@ -93,6 +100,7 @@ void main() {
       try {
         await session.login(tester);
         expect(session.logic.autoWatchEnabled, isTrue);
+        expect(session.logic.loginConfirmed, isTrue);
         expect(session.view.starts, 1);
         final stops = session.view.stops;
         await tester.pump(
@@ -102,7 +110,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 21));
         expect(session.logic.autoWatchEnabled, isFalse);
         expect(session.view.stops, stops + 1);
-        expect(session.notices.last, 'Đã tự tắt Auto nuôi sau 10 phút.');
+        expect(session.notices.last, 'Đã nuôi xong sau 10 phút.');
         session.logic.didChangeAppLifecycleState(AppLifecycleState.resumed);
         await tester.pump();
         expect(session.view.starts, 1);
@@ -146,7 +154,7 @@ void main() {
       await tester.pump();
       expect(session.logic.autoWatchEnabled, isFalse);
       expect(session.view.starts, 1);
-      expect(session.notices.last, 'Đã tự tắt Auto nuôi sau 10 phút.');
+      expect(session.notices.last, 'Đã nuôi xong sau 10 phút.');
     } finally {
       session.logic.onDelete();
     }
@@ -191,105 +199,114 @@ void main() {
     },
   );
 
-  testWidgets('signup waits 2–3 minutes, then watches for ten minutes', (
+  for (final result in ['signup-success', 'already-logged-in']) {
+    testWidgets('signup $result leaves watching under user control', (
+      tester,
+    ) async {
+      final session = _Session(tester)..view.signupResult = result;
+      try {
+        await session.signup(tester);
+        expect(session.logic.autoWatchEnabled, isFalse);
+        expect(session.view.starts, 0);
+        expect(
+          session.notices.single,
+          result == 'signup-success'
+              ? 'Đăng ký TikTok thành công.'
+              : 'Tài khoản TikTok đã đăng nhập.',
+        );
+        await tester.pump(const Duration(minutes: 15));
+        expect(session.logic.autoWatchEnabled, isFalse);
+        expect(session.view.starts, 0);
+      } finally {
+        session.logic.onDelete();
+      }
+    });
+  }
+
+  for (final result in [
+    'verification-required',
+    'verification-requested',
+    'draft-exists',
+    'paste-failed',
+    'login-error',
+  ]) {
+    testWidgets('manual completion after $result never starts watching', (
+      tester,
+    ) async {
+      final session = _Session(tester)..view.loginResult = result;
+      await session.login(tester);
+      expect(session.logic.autoLoginBusy, isFalse);
+      session.view.authenticated = true;
+      await tester.pump(const Duration(seconds: 5));
+      session.logic.didChangeAppLifecycleState(AppLifecycleState.paused);
+      session.logic.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await tester.pump(const Duration(minutes: 15));
+      await session.logic.toggleAutoWatch();
+      expect(session.logic.loginConfirmed, isFalse);
+      expect(session.logic.autoWatchEnabled, isFalse);
+      expect(session.view.authChecks, 0);
+      expect(session.view.starts, 0);
+
+      // A successful new automatic attempt is required to enable watching.
+      session.view.loginResult = 'login-success';
+      await session.login(tester);
+      expect(session.logic.loginConfirmed, isTrue);
+      expect(session.logic.autoWatchEnabled, isTrue);
+      expect(session.view.starts, 1);
+      session.logic.onDelete();
+    });
+  }
+
+  testWidgets('signup does not start watching after reload or app resume', (
     tester,
   ) async {
     final session = _Session(tester);
     try {
       await session.signup(tester);
-      expect(session.logic.waitingToAutoWatch, isTrue);
-      expect(session.logic.autoWatchEnabled, isFalse);
+      await session.logic.startAutoWatch();
+      session.logic.didChangeAppLifecycleState(AppLifecycleState.paused);
+      await tester.pump(const Duration(minutes: 4));
+      session.logic.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await tester.pump(const Duration(minutes: 15));
       expect(session.view.starts, 0);
-      final wait = session.logic.autoWatchStartsAt!.difference(
-        tester.binding.clock.now(),
-      );
-      expect(
-        wait,
-        greaterThanOrEqualTo(
-          const Duration(minutes: 2) - const Duration(milliseconds: 20),
-        ),
-      );
-      expect(wait, lessThanOrEqualTo(const Duration(minutes: 3)));
-      await tester.pump(wait - const Duration(milliseconds: 1));
-      expect(session.view.starts, 0);
-      await tester.pump(const Duration(milliseconds: 1));
-      expect(session.logic.waitingToAutoWatch, isFalse);
-      expect(session.logic.autoWatchEnabled, isTrue);
-      expect(session.view.starts, 1);
-      await tester.pump(const Duration(minutes: 9, seconds: 59));
-      expect(session.logic.autoWatchEnabled, isTrue);
-      await tester.pump(const Duration(seconds: 1));
       expect(session.logic.autoWatchEnabled, isFalse);
     } finally {
       session.logic.onDelete();
     }
   });
 
-  testWidgets(
-    'signup hold survives reload and begins only when back in the app',
-    (tester) async {
-      final session = _Session(tester);
-      try {
-        await session.signup(tester);
-        final startsAt = session.logic.autoWatchStartsAt;
-        await tester.pump(const Duration(minutes: 1));
-        await session.logic.startAutoWatch();
-        expect(session.logic.autoWatchStartsAt, startsAt);
-        session.logic.didChangeAppLifecycleState(AppLifecycleState.paused);
-        await tester.pump(const Duration(minutes: 4));
-        expect(session.view.starts, 0);
-        expect(session.logic.waitingToAutoWatch, isTrue);
-        session.logic.didChangeAppLifecycleState(AppLifecycleState.resumed);
-        await tester.pump();
-        expect(session.view.starts, 1);
-        expect(session.logic.autoWatchEnabled, isTrue);
-        await tester.pump(const Duration(minutes: 10));
-        expect(session.logic.autoWatchEnabled, isFalse);
-      } finally {
-        session.logic.onDelete();
-      }
-    },
-  );
-
-  testWidgets(
-    'cancelling or closing a signup hold prevents its scheduled watcher',
-    (tester) async {
-      for (final close in [false, true]) {
-        final session = _Session(tester);
-        try {
-          await session.signup(tester);
-          if (close) {
-            session.logic.onDelete();
-          } else {
-            session.logic.cancelAutoWatchHold();
-          }
-          await tester.pump(const Duration(minutes: 15));
-          expect(session.view.starts, 0);
-          expect(session.logic.waitingToAutoWatch, isFalse);
-        } finally {
-          session.logic.onDelete();
-        }
-      }
-    },
-  );
-
-  testWidgets('starting during the signup hold still stops after ten minutes', (
+  testWidgets('watching is blocked after signup until login succeeds', (
     tester,
   ) async {
     final session = _Session(tester);
     try {
       await session.signup(tester);
       await session.logic.toggleAutoWatch();
-      expect(session.logic.waitingToAutoWatch, isFalse);
-      expect(session.view.starts, 1);
-      await tester.pump(const Duration(minutes: 3));
+      expect(session.view.starts, 0);
+      expect(session.logic.autoWatchEnabled, isFalse);
+      expect(session.logic.loginConfirmed, isFalse);
+      await session.login(tester);
       expect(session.view.starts, 1);
       expect(session.logic.autoWatchEnabled, isTrue);
-      await tester.pump(const Duration(minutes: 7));
-      expect(session.logic.autoWatchEnabled, isFalse);
     } finally {
       session.logic.onDelete();
     }
+  });
+
+  testWidgets('watching is blocked before login and after a new signup', (
+    tester,
+  ) async {
+    final session = _Session(tester);
+    await session.logic.toggleAutoWatch();
+    expect(session.view.starts, 0);
+    await session.login(tester);
+    expect(session.logic.loginConfirmed, isTrue);
+    await session.signup(tester);
+    expect(session.logic.loginConfirmed, isFalse);
+    await session.logic.toggleAutoWatch();
+    await tester.pump(const Duration(minutes: 15));
+    expect(session.view.starts, 1);
+    expect(session.logic.autoWatchEnabled, isFalse);
   });
 
   testWidgets('a failed signup never schedules automatic watching', (
@@ -298,7 +315,6 @@ void main() {
     final session = _Session(tester)..view.signupResult = 'signup-error';
     try {
       await session.signup(tester);
-      expect(session.logic.waitingToAutoWatch, isFalse);
       await tester.pump(const Duration(minutes: 15));
       expect(session.view.starts, 0);
     } finally {

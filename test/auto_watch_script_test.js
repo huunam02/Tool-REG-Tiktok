@@ -117,6 +117,113 @@ function setup() {
   };
 }
 
+function attachLiveInvite(env) {
+  const control = (textContent, top) => ({
+    textContent, hidden: false, clicks: 0,
+    getAttribute: () => null,
+    getBoundingClientRect: () => ({left:100,right:300,top,bottom:top+40}),
+    click() { this.clicks++; },
+  });
+  const watch = control('Watch LIVE', 350);
+  const dismiss = control('Not now', 400);
+  const parent = {parentElement:null,querySelectorAll:()=>[watch,dismiss]};
+  dismiss.parentElement = parent;
+  env.buttons.push(watch,dismiss);
+  const originalHit = env.document.elementFromPoint;
+  env.document.elementFromPoint = () => dismiss.hidden ? originalHit() : dismiss;
+  return {watch,dismiss,hide() {watch.hidden=true;dismiss.hidden=true;}};
+}
+
+test('dismisses a LIVE invitation once after the action delay and resumes watching', () => {
+  const env = setup();
+  const video = env.addVideo();
+  const prompt = attachLiveInvite(env);
+  env.start();
+  assert.equal(video.plays,0);
+  assert.equal(prompt.dismiss.clicks,0);
+  env.elapse(2999);
+  env.tick();
+  assert.equal(prompt.dismiss.clicks,0);
+  env.elapse(1);
+  env.tick();
+  assert.equal(prompt.dismiss.clicks,1);
+  env.elapse(10000);
+  env.tick();
+  assert.equal(prompt.dismiss.clicks,1);
+  assert.equal(prompt.watch.clicks,0);
+  assert.equal(env.scrolls.length,0);
+  prompt.hide();
+  env.tick();
+  assert.equal(video.plays,1);
+});
+
+test('ignores Not now in an unrelated dialog or when Watch LIVE is hidden', () => {
+  for (const hidden of [false,true]) {
+    const env = setup();
+    env.addVideo();
+    const prompt = attachLiveInvite(env);
+    if (hidden) prompt.watch.hidden = true;
+    else prompt.watch.textContent = 'Allow notifications';
+    env.start();
+    env.elapse(10000);
+    env.tick();
+    assert.equal(prompt.dismiss.clicks,0);
+    assert.equal(prompt.watch.clicks,0);
+  }
+});
+
+test('does not dismiss while hidden or stopped and handles a later LIVE invitation', () => {
+  const env = setup();
+  env.addVideo();
+  const prompt = attachLiveInvite(env);
+  env.start();
+  env.document.hidden = true;
+  env.elapse(3000);
+  env.tick();
+  assert.equal(prompt.dismiss.clicks,0);
+  env.document.hidden = false;
+  env.tick();
+  assert.equal(prompt.dismiss.clicks,1);
+  prompt.hide();
+  env.tick();
+  prompt.watch.hidden=false;
+  prompt.dismiss.hidden=false;
+  env.tick();
+  env.elapse(3000);
+  env.tick();
+  assert.equal(prompt.dismiss.clicks,2);
+  env.stop();
+  env.elapse(10000);
+  env.tick();
+  assert.equal(prompt.dismiss.clicks,2);
+});
+
+test('does not match Watch LIVE elsewhere on the page to an unrelated Not now', () => {
+  const env = setup();
+  env.addVideo();
+  const prompt = attachLiveInvite(env);
+  const body = {tagName:'BODY',querySelectorAll:()=>[prompt.watch,prompt.dismiss]};
+  prompt.dismiss.parentElement = {parentElement:body,querySelectorAll:()=>[prompt.dismiss]};
+  env.start();
+  env.elapse(10000);
+  env.tick();
+  assert.equal(prompt.dismiss.clicks,0);
+});
+
+test('an ended event cannot advance the feed while a LIVE invitation is waiting', () => {
+  const env = setup();
+  const video = env.addVideo();
+  env.addVideo(800);
+  env.start();
+  const prompt = attachLiveInvite(env);
+  video.finish();
+  assert.equal(env.scrolls.length,0);
+  env.elapse(3000);
+  env.tick();
+  assert.equal(prompt.dismiss.clicks,1);
+  assert.equal(env.scrolls.length,0);
+});
+
 test('watches the full video, then advances once and plays the next video', () => {
   const env = setup();
   const first = env.addVideo();

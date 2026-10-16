@@ -2,6 +2,12 @@ package com.stalliondz.tool.tiktok
 
 import android.view.View
 import android.view.ViewGroup
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.os.Build
 import android.webkit.WebView
 import org.json.JSONObject
 import com.pichillilorenzo.flutter_inappwebview_android.InAppWebViewFlutterPlugin
@@ -10,8 +16,54 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: FlutterActivity() {
+    private var signupCalibration: MethodChannel? = null
+    private var calibrationReceiver: BroadcastReceiver? = null
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleCalibrationIntent(intent)
+    }
+
+    private fun handleCalibrationIntent(intent: Intent) {
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+        val action = intent.getStringExtra("signupCalibration") ?: return
+        val requestId = intent.getStringExtra("requestId") ?: return
+        if (!requestId.matches(Regex("[a-f0-9]{32}"))) return
+        if (action !in listOf("snapshot", "select-birthday", "paste-email", "paste-password", "paste-otp", "paste-user-otp", "back", "tap")) return
+        signupCalibration?.invokeMethod("calibrate", mapOf(
+            "action" to action,
+            "userOtp" to intent.getStringExtra("userOtp"),
+            "x" to (intent.getStringExtra("x")?.toDoubleOrNull() ?: Double.NaN),
+            "y" to (intent.getStringExtra("y")?.toDoubleOrNull() ?: Double.NaN)
+        ), object : MethodChannel.Result {
+            override fun success(value: Any?) {
+                if (value is Map<*, *>) {
+                    val document = JSONObject(value)
+                    document.put("requestId", requestId)
+                    java.io.File(filesDir, "signup-calibration-$requestId.json").writeText(document.toString())
+                    android.util.Log.i("SignupCalibration", "Completed: $action")
+                }
+            }
+            override fun error(code: String, message: String?, details: Any?) {
+                android.util.Log.i("SignupCalibration", "Failed: $action ($code)")
+            }
+            override fun notImplemented() { }
+        })
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        signupCalibration = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/signup_calibration")
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            calibrationReceiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) { handleCalibrationIntent(intent) }
+            }
+            val filter = IntentFilter("$packageName.SIGNUP_CALIBRATE")
+            // Shell-only debug control; does not relaunch the Activity or hide IME.
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(calibrationReceiver, filter, "android.permission.DUMP", null, Context.RECEIVER_EXPORTED)
+            } else registerReceiver(calibrationReceiver, filter, "android.permission.DUMP", null)
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/send_code_target")
             .setMethodCallHandler { call, result ->
                 if (call.method != "getTarget" && call.method != "invalidateTarget") {
@@ -42,7 +94,7 @@ class MainActivity: FlutterActivity() {
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/webview_identity")
             .setMethodCallHandler { call, result ->
-                if (call.method != "configure" && call.method != "configureEngine") {
+                if (call.method !in listOf("configure", "configureEngine", "configureSignupViewport")) {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
@@ -61,15 +113,26 @@ class MainActivity: FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 try {
+                    if (call.method == "configureSignupViewport") {
+                        webView.settings.setSupportZoom(false)
+                        webView.settings.builtInZoomControls = false
+                        webView.settings.displayZoomControls = false
+                        webView.settings.textZoom = 100
+                        webView.setInitialScale(0)
+                        result.success(true)
+                        return@setMethodCallHandler
+                    }
                     if (call.method == "configureEngine") {
-                        result.success(DesktopChromeIdentity.configure(webView, emulateHardware = false))
+                        result.success(DesktopChromeIdentity.configure(webView, emulateHardware = false,
+                            fixedSignupViewport = call.argument<Boolean>("fixedSignupViewport") == true))
                         return@setMethodCallHandler
                     }
                     val userAgent = call.argument<String>("userAgent")
                         ?: error("Thiếu User-Agent Chrome desktop.")
                     val fullVersion = call.argument<String>("chromeFullVersion")
                         ?: error("Thiếu phiên bản Chrome cho Client Hints.")
-                    result.success(DesktopChromeIdentity.configure(webView, userAgent, fullVersion))
+                    result.success(DesktopChromeIdentity.configure(webView, userAgent, fullVersion,
+                        fixedSignupViewport = call.argument<Boolean>("fixedSignupViewport") == true))
                 } catch (error: Exception) {
                     result.error("identity_unsupported", error.message, null)
                 }
@@ -118,6 +181,12 @@ class MainActivity: FlutterActivity() {
                     NativeKeyboardInput.typeText(webView, text, guardScript) { result.success(it) }
                 }
             }
+    }
+
+    override fun onDestroy() {
+        calibrationReceiver?.let { unregisterReceiver(it) }
+        calibrationReceiver = null
+        super.onDestroy()
     }
 
     private fun findWebView(view: View): WebView? {

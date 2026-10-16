@@ -47,6 +47,7 @@ dependencies:
   # Compatible with the project's Android Gradle plugin 8.6.1.
   file_picker: 11.0.3
   excel_community: ^2.6.0
+  flutter_screenutil: ^5.9.3
 
 
 flutter_launcher_icons:

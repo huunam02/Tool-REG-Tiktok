@@ -10,7 +10,11 @@ import 'package:flutter_accessibility_service/flutter_accessibility_service.dart
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../core/scripts/auto_login_script.dart';
+import '../core/scripts/auto_logout_script.dart';
 import '../core/send_code_accessibility.dart';
+import '../core/signup_accessibility.dart';
+import '../core/signup_birthday_menu.dart';
+import '../core/signup_coordinate_runner.dart';
 import '../core/scripts/auto_cookie_script.dart';
 import '../core/scripts/auto_interest_script.dart';
 import '../core/scripts/auto_signup_script.dart';
@@ -25,9 +29,11 @@ import '../core/webview_user_agent.dart';
 import '../core/webview_timezone.dart';
 import '../core/app_configuration.dart';
 import '../core/otp_api.dart';
+import '../core/proxy_store.dart';
 import '../core/webview_failure.dart';
 import '../core/webview_locale.dart';
 import '../core/tiktok_launch_action.dart';
+import '../core/tiktok_flow_result.dart';
 import '../core/tiktok_account_failure.dart';
 import 'app_controller.dart';
 
@@ -43,14 +49,170 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     this.nurtureRepository,
     this.otpReaderFactory,
     this.onReturnToConfiguration,
+    this.onFlowFinished,
+    Random? workflowRandom,
+    ProxyStore? proxyStore,
     bool? useAccessibility,
     DateTime Function()? now,
   }) : useNativeWebView = useNativeWebView || manualViewingPlan != null,
+       proxyStore = proxyStore ?? ProxyStore.instance,
+       _workflowRandom = workflowRandom ?? Random(),
        _now = now ?? DateTime.now,
        _accessibilityOverride = useAccessibility,
        browserCheckOpen = startWithBrowserCheck || startWithIpCheck;
 
   final AppConfiguration configuration;
+  final ProxyStore proxyStore;
+  final ValueChanged<TikTokFlowResult>? onFlowFinished;
+  final Random _workflowRandom;
+  Timer? _signupLogoutTimer;
+  DateTime? signupLogoutAt;
+  bool logoutBusy = false;
+  bool get waitingToLogout => signupLogoutAt != null;
+  bool _signupHandoffStarted = false;
+  bool _flowFinished = false;
+  bool _watchCompletionPending = false;
+  bool _finishingWatch = false;
+  int _workflowGeneration = 0;
+
+  void _scheduleLogoutAfterSignup() {
+    // A route owns the handoff to Home and the subsequent login schedule.
+    if (onFlowFinished == null ||
+        _signupHandoffStarted ||
+        !active ||
+        (configuration.configurationId != null && !_registrationSaved)) {
+      return;
+    }
+    _signupHandoffStarted = true;
+    final hold = Duration(seconds: 120 + _workflowRandom.nextInt(121));
+    mutate(() => signupLogoutAt = _now().add(hold));
+    _signupLogoutTimer = Timer(hold, _continueSignupLogout);
+  }
+
+  void cancelSignupHandoff() {
+    _workflowGeneration++;
+    _signupLogoutTimer?.cancel();
+    _signupLogoutTimer = null;
+    signupLogoutAt = null;
+    logoutBusy = false;
+    mutate(() {});
+  }
+
+  void _continueSignupLogout() {
+    if (!active ||
+        !appActive ||
+        logoutBusy ||
+        !waitingToLogout ||
+        _now().isBefore(signupLogoutAt!) ||
+        autoSignupBusy ||
+        autoLoginBusy ||
+        pageFailure != null ||
+        accountFailure != null ||
+        browserCheckOpen) {
+      return;
+    }
+    unawaited(_logoutAfterSignup());
+  }
+
+  Future<void> _logoutAfterSignup() async {
+    final generation = _workflowGeneration;
+    bool current() =>
+        active && generation == _workflowGeneration && waitingToLogout;
+    mutate(() => logoutBusy = true);
+    final deadline = _now().add(const Duration(seconds: 45));
+    var confirmations = 0;
+    try {
+      await stopAutoWatch();
+      while (current() && appActive && _now().isBefore(deadline)) {
+        final url = await webViewController?.getUrl();
+        if (!current() || !appActive) return;
+        if (url == null) {
+          await Future<void>.delayed(const Duration(milliseconds: 700));
+          continue;
+        }
+        if (url.scheme != 'https' || url.host != 'www.tiktok.com') {
+          throw StateError('Logout left TikTok');
+        }
+        dynamic result;
+        try {
+          result = await webViewController?.evaluateJavascript(
+            source: buildAutoLogoutScript(generation),
+          );
+        } catch (_) {
+          // Logout can replace the page and briefly destroy its JS context.
+          await Future<void>.delayed(const Duration(milliseconds: 700));
+          continue;
+        }
+        if (!current() || !appActive) return;
+        if (result == 'wrong-origin' || result == 'verification-required') {
+          throw StateError('Logout requires attention');
+        }
+        confirmations = result == 'logged-out' ? confirmations + 1 : 0;
+        if (confirmations >= 2) {
+          _signupLogoutTimer?.cancel();
+          _signupLogoutTimer = null;
+          mutate(() {
+            signupLogoutAt = null;
+            logoutBusy = false;
+            loginConfirmed = false;
+          });
+          if (!_flowFinished) {
+            _flowFinished = true;
+            onFlowFinished?.call(TikTokFlowResult.signupLoggedOut);
+          }
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+      }
+      if (current() && appActive) {
+        throw StateError('Logout confirmation timed out');
+      }
+    } catch (_) {
+      if (current()) {
+        cancelSignupHandoff();
+        notify(
+          'Chưa xác nhận được đăng xuất TikTok. Đã dừng lịch đăng nhập lại; hãy kiểm tra màn hiện tại.',
+        );
+      }
+    } finally {
+      if (current()) mutate(() => logoutBusy = false);
+    }
+  }
+
+  bool _registrationSaved = false;
+  Future<void>? _registrationWrite;
+
+  Future<void> _markConfigurationRegistered() async {
+    final id = configuration.configurationId;
+    if (id == null || _registrationSaved) return;
+    final pending = _registrationWrite;
+    if (pending != null) return pending;
+    final write = _saveRegisteredConfiguration(id);
+    _registrationWrite = write;
+    try {
+      await write;
+    } finally {
+      _registrationWrite = null;
+    }
+  }
+
+  Future<void> _saveRegisteredConfiguration(int id) async {
+    try {
+      final saved = await proxyStore.markRegistered(
+        id,
+        configuration.signupEmail,
+      );
+      if (!saved) throw StateError('Signup configuration changed or removed');
+      _registrationSaved = true;
+    } catch (_) {
+      if (active) {
+        notify(
+          'Đã đăng ký nhưng chưa lưu được trạng thái cấu hình. Hãy bật Đã đăng ký trong Quản lý cấu hình.',
+        );
+      }
+    }
+  }
+
   final TikTokLaunchAction launchAction;
   final bool startWithBrowserCheck;
   final bool startWithIpCheck;
@@ -89,6 +251,23 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   static const commentInputChannel = MethodChannel('test_tiktok/comment_input');
   bool get _usesKeyboardInput =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  bool get usesCoordinateSignup =>
+      _usesKeyboardInput &&
+      launchAction == TikTokLaunchAction.signup &&
+      !useNativeWebView;
+  final signupAccessibility = SignupAccessibility();
+  SignupCoordinateRunner? _signupCoordinateRunner;
+  static const _signupCalibrationChannel = MethodChannel(
+    'test_tiktok/signup_calibration',
+  );
+  // Android investigation: restore button gestures and enter fields manually.
+  static const _pauseSignupGestures = false;
+  bool get _manualSignupButtonTaps =>
+      _pauseSignupGestures && _usesKeyboardInput;
+  // Set to false to restore native field input and signup OTP API handling.
+  static const _pauseSignupFieldInput = true;
+  bool get _manualSignupFieldInput =>
+      _pauseSignupFieldInput && _usesKeyboardInput;
   // Randomize the login/signup JS evaluation cadence, not API timeouts.
   // Most normal interactions wait 3-6s, while all waits remain inside 2-10s.
   static final Random _actionRandom = Random();
@@ -142,6 +321,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   bool initialActionStarted = false;
   bool initialPageLoaded = false;
   bool autoLoginBusy = false;
+  // Set only when autoLogin confirms a successful authenticated session.
+  bool loginConfirmed = false;
   SendCodeAccessibility? _sendCodeAccessibility;
   final Map<String, int> _accountTapAttempts = {};
   bool _requestingAccessibility = false;
@@ -171,10 +352,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   static const autoWatchAfterLoginDuration = Duration(minutes: 10);
   Timer? _autoWatchStopTimer;
   DateTime? _autoWatchStopsAt;
-  Timer? _autoWatchStartTimer;
-  DateTime? _autoWatchStartsAt;
-  DateTime? get autoWatchStartsAt => _autoWatchStartsAt;
-  bool get waitingToAutoWatch => _autoWatchStartsAt != null;
   bool appActive = true;
   late final List<String> comments;
   bool inputBusy = false;
@@ -203,7 +380,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   @override
   void onClose() {
+    if (usesCoordinateSignup) {
+      _signupCalibrationChannel.setMethodCallHandler(null);
+    }
     unawaited(closeManualViewing());
+    cancelSignupHandoff();
     _cancelAutoWatchTimers();
     unawaited(_sendCodeAccessibility?.dispose());
     _ipChecker?.cancel();
@@ -224,11 +405,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     if (!appActive && autoLoginBusy) cancelAutoLogin();
     if (!appActive && autoSignupBusy) cancelAutoSignup();
     if (appActive) {
-      unawaited(runInitialAction());
-      if (waitingToAutoWatch) {
-        _startPendingAutoWatchIfReady();
+      if (_watchCompletionPending) {
+        unawaited(_returnAfterNurture());
         return;
       }
+      _continueSignupLogout();
+      unawaited(runInitialAction());
     }
     if (autoWatchEnabled && appActive) {
       unawaited(startAutoWatch());
@@ -245,6 +427,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       return;
     }
     if (!active ||
+        !loginConfirmed ||
         browserCheckOpen ||
         !autoWatchEnabled ||
         !appActive ||
@@ -269,58 +452,40 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   void _cancelAutoWatchTimers() {
-    _autoWatchStartTimer?.cancel();
-    _autoWatchStartTimer = null;
-    _autoWatchStartsAt = null;
     _autoWatchStopTimer?.cancel();
     _autoWatchStopTimer = null;
     _autoWatchStopsAt = null;
-  }
-
-  void _scheduleAutoWatchAfterSignup() {
-    _cancelAutoWatchTimers();
-    final hold = Duration(seconds: 120 + _actionRandom.nextInt(61));
-    mutate(() {
-      autoWatchEnabled = false;
-      _autoWatchStartsAt = _now().add(hold);
-    });
-    _autoWatchStartTimer = Timer(hold, () {
-      _autoWatchStartTimer = null;
-      _startPendingAutoWatchIfReady();
-    });
-  }
-
-  void _startPendingAutoWatchIfReady() {
-    final startsAt = _autoWatchStartsAt;
-    if (startsAt == null ||
-        _now().isBefore(startsAt) ||
-        !active ||
-        !appActive ||
-        browserCheckOpen ||
-        pageFailure != null ||
-        accountFailure != null ||
-        autoLoginBusy ||
-        autoSignupBusy) {
-      return;
-    }
-    unawaited(_startTimedAutoWatch());
-  }
-
-  void cancelAutoWatchHold() {
-    if (!waitingToAutoWatch) return;
-    _cancelAutoWatchTimers();
-    mutate(() {});
   }
 
   void _finishTimedAutoWatch() {
     _cancelAutoWatchTimers();
     if (!active || !autoWatchEnabled) return;
     mutate(() => autoWatchEnabled = false);
-    unawaited(stopAutoWatch());
-    notify('Đã tự tắt Auto nuôi sau 10 phút.');
+    _watchCompletionPending = true;
+    unawaited(_returnAfterNurture());
+  }
+
+  Future<void> _returnAfterNurture() async {
+    if (_finishingWatch || !active || !_watchCompletionPending) return;
+    _finishingWatch = true;
+    try {
+      // Stop page automation, retaining TikTok cookies and the login session.
+      await stopAutoWatch();
+      if (!active || !appActive) return;
+      _watchCompletionPending = false;
+      if (onFlowFinished != null && !_flowFinished) {
+        _flowFinished = true;
+        onFlowFinished!(TikTokFlowResult.nurtureCompleted);
+      } else {
+        notify('Đã nuôi xong sau 10 phút.');
+      }
+    } finally {
+      _finishingWatch = false;
+    }
   }
 
   Future<void> _startTimedAutoWatch() async {
+    if (!loginConfirmed) return;
     _cancelAutoWatchTimers();
     // Keep one deadline across document reloads and app background/resume.
     _autoWatchStopsAt = _now().add(autoWatchAfterLoginDuration);
@@ -404,10 +569,17 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   Future<void> toggleAutoWatch() async {
     if (useNativeWebView) return;
     if (browserCheckOpen ||
+        waitingToLogout ||
+        logoutBusy ||
+        _flowFinished ||
         autoWatchBusy ||
         autoLoginBusy ||
         autoSignupBusy ||
         webViewController == null) {
+      return;
+    }
+    if (!autoWatchEnabled && !loginConfirmed) {
+      notify('Hãy đăng nhập tự động thành công trước khi bật Auto nuôi.');
       return;
     }
     if (!autoWatchEnabled && comments.isEmpty) {
@@ -415,18 +587,13 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       return;
     }
     if (!active || autoLoginBusy || autoSignupBusy) return;
-    final timedStart = waitingToAutoWatch;
     _cancelAutoWatchTimers();
     mutate(() {
       autoWatchBusy = true;
       autoWatchEnabled = !autoWatchEnabled;
     });
     if (autoWatchEnabled) {
-      if (timedStart) {
-        await _startTimedAutoWatch();
-      } else {
-        await startAutoWatch();
-      }
+      await startAutoWatch();
     } else {
       await stopAutoWatch();
     }
@@ -453,7 +620,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> stopAutoSignup(int attempt) async {
-    if (useNativeWebView) return;
+    if (useNativeWebView || usesCoordinateSignup) return;
     try {
       await webViewController?.evaluateJavascript(
         source: buildAutoSignupStopScript(attempt),
@@ -464,6 +631,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   void cancelAutoSignup({bool updateUi = true}) {
+    _signupCoordinateRunner?.cancel();
     signupOtpRequest?.cancel();
     signupOtpRequest = null;
     final attempt = autoSignupAttempt++;
@@ -507,6 +675,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     required bool signup,
     String action = 'send-code',
   }) async {
+    // Also block late/stale JavaScript bridge calls while manual tapping is on.
+    if (signup && _manualSignupButtonTaps) return false;
     final controller = webViewController;
     final accessibility = _sendCodeAccessibility;
     final attempt = signup ? autoSignupAttempt : autoLoginAttempt;
@@ -589,6 +759,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         }
       }
       debugPrint('[$buttonLabel] $context gesture completed: $completed.');
+      if (completed && signup && action == 'skip-username' && isActive()) {
+        await _markConfigurationRegistered();
+      }
       return completed;
     } catch (_) {
       return false;
@@ -599,6 +772,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     List<dynamic> args, {
     required bool signup,
   }) async {
+    // Block native typing/paste even if an old page calls the signup bridge.
+    if (signup && _manualSignupFieldInput) return false;
     final controller = webViewController;
     final attempt = signup ? autoSignupAttempt : autoLoginAttempt;
     final accountContext = signup ? 'signup' : 'login';
@@ -739,8 +914,132 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     return true;
   }
 
+  Future<Map<String, dynamic>> _handleSignupCalibration(MethodCall call) async {
+    if (!kDebugMode ||
+        !usesCoordinateSignup ||
+        call.method != 'calibrate' ||
+        !active) {
+      return {'ok': false, 'reason': 'not-in-signup'};
+    }
+    final args = Map<String, dynamic>.from(call.arguments as Map);
+    final action = args['action'];
+    final url = await webViewController?.getUrl();
+    if (url?.scheme != 'https' || url?.host != 'www.tiktok.com') {
+      return {'ok': false, 'reason': 'wrong-origin'};
+    }
+    Map<String, dynamic> result = {'ok': true, 'action': action};
+    if (action == 'snapshot') {
+      result = await FlutterAccessibilityService.signupSnapshot();
+    } else if (action == 'select-birthday') {
+      result = await calibrateSignupBirthday();
+    } else if (action == 'back') {
+      await signupAccessibility.dismissKeyboard();
+    } else if (action == 'tap') {
+      final snapshot = await signupAccessibility.snapshot();
+      if (!snapshot.ready) return {'ok': false, 'reason': 'no-webview'};
+      await signupAccessibility.tap(
+        snapshot.viewport,
+        Offset((args['x'] as num).toDouble(), (args['y'] as num).toDouble()),
+      );
+    } else if (action == 'paste-email' || action == 'paste-password') {
+      final field = action == 'paste-email' ? 'email' : 'password';
+      result = await signupAccessibility.paste(
+        field == 'email'
+            ? configuration.signupEmail.trim()
+            : configuration.signupPassword,
+        field,
+      );
+    } else if (action == 'paste-user-otp') {
+      final code = '${args['userOtp'] ?? ''}';
+      final snapshot = await signupAccessibility.snapshot();
+      if (!RegExp(r'^\d{6}$').hasMatch(code) ||
+          !snapshot.contains(
+            RegExp(r'^Enter 6-digit code$', caseSensitive: false),
+          )) {
+        return {'ok': false, 'reason': 'invalid-otp-screen'};
+      }
+      result = await signupAccessibility.paste(code, 'otp');
+    } else if (action == 'paste-otp') {
+      final api = configuration.otpApi;
+      if (api == null) return {'ok': false, 'reason': 'missing-otp-api'};
+      final reader = OtpApiClient(api, logOutput: (_) {});
+      try {
+        final otp = await reader.fetchCode(
+          email: configuration.signupEmail.trim(),
+          password: configuration.signupMailboxPassword,
+        );
+        if (!active) return {'ok': false, 'reason': 'page-closed'};
+        final currentUrl = await webViewController?.getUrl();
+        if (currentUrl?.host != 'www.tiktok.com' ||
+            currentUrl?.scheme != 'https') {
+          return {'ok': false, 'reason': 'wrong-origin'};
+        }
+        result = await signupAccessibility.paste(otp, 'otp');
+      } finally {
+        reader.close();
+      }
+    } else {
+      return {'ok': false, 'reason': 'unknown-action'};
+    }
+    return {
+      ...result,
+      'action': action,
+      'configurationId': configuration.configurationId,
+    };
+  }
+
+  /// Debug-only verification of birthday selection on the current form.
+  Future<Map<String, dynamic>> calibrateSignupBirthday() async {
+    if (!kDebugMode ||
+        !usesCoordinateSignup ||
+        !active ||
+        !appActive ||
+        autoSignupBusy) {
+      return {'ok': false, 'reason': 'signup-unavailable'};
+    }
+    final runner = SignupCoordinateRunner(
+      profile: await SignupCoordinateProfile.load(),
+      accessibility: signupAccessibility,
+      configuration: configuration,
+      isActive: () => active && appActive && !autoSignupBusy,
+      isTikTok: () async {
+        final url = await webViewController?.getUrl();
+        return url?.scheme == 'https' && url?.host == 'www.tiktok.com';
+      },
+      getOtp: () async => throw StateError('Birthday calibration only'),
+      onStatus: (status) {
+        if (active) mutate(() => signupStatus = status);
+      },
+      readBirthdayMenu: _readSignupBirthdayMenu,
+    );
+    try {
+      await runner.selectBirthday();
+      return {
+        'ok': true,
+        'birthday': AppConfiguration.formatBirthday(runner.birthday),
+      };
+    } on StateError catch (error) {
+      return {'ok': false, 'reason': error.message.toString()};
+    } on SignupCancelled {
+      return {'ok': false, 'reason': 'cancelled'};
+    }
+  }
+
+  Future<SignupBirthdayMenu?> _readSignupBirthdayMenu(String field) async {
+    // Read geometry only. Selecting and scrolling still use real gestures.
+    final result = await webViewController?.evaluateJavascript(
+      source: buildReadSignupBirthdayMenuScript(field),
+    );
+    return SignupBirthdayMenu.fromResult(result);
+  }
+
   Future<void> autoSignup() async {
     if (useNativeWebView) return;
+    if (waitingToLogout || logoutBusy || _flowFinished) return;
+    if (usesCoordinateSignup) {
+      await _runCoordinateSignup();
+      return;
+    }
     if (autoSignupBusy) {
       cancelAutoSignup();
       return;
@@ -753,18 +1052,22 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         accountFailure != null) {
       return;
     }
-    if (configuration.signupEmail.trim().isEmpty ||
-        configuration.signupPassword.isEmpty) {
+    if (!_manualSignupFieldInput &&
+        (configuration.signupEmail.trim().isEmpty ||
+            configuration.signupPassword.isEmpty)) {
       notify('Hãy nhập email và mật khẩu đăng ký ở màn Cấu hình.');
       return;
     }
-    if (!validateOtpMailbox(signup: true)) return;
-    if (!await ensureAccountAccessibility()) return;
+    if (!_manualSignupFieldInput && !validateOtpMailbox(signup: true)) return;
+    if (!_manualSignupButtonTaps && !await ensureAccountAccessibility()) return;
     _cancelAutoWatchTimers();
-    activeSignupOtp = configuration.signupOtp.trim();
+    activeSignupOtp = _manualSignupFieldInput
+        ? ''
+        : configuration.signupOtp.trim();
     final attempt = ++autoSignupAttempt;
     mutate(() {
       autoSignupBusy = true;
+      loginConfirmed = false;
       signupStatus = 'Đang đăng ký tự động…';
       autoWatchEnabled = false;
     });
@@ -825,8 +1128,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
               otpRequestedAt: otpRequestedAt,
               allowOtpSubmit: !otpSubmitted,
               allowPasswordSubmit: !passwordSubmitted,
+              manualAccessibilityButtons: _manualSignupButtonTaps,
+              manualFieldInput: _manualSignupFieldInput,
               waitForOtpApi:
-                  configuration.otpApi != null && activeSignupOtp.isEmpty,
+                  !_manualSignupFieldInput &&
+                  configuration.otpApi != null &&
+                  activeSignupOtp.isEmpty,
               useAccessibilitySendCode: _usesAccessibility,
               useAccessibilityPasswordSubmit: _usesAccessibility,
               useAccessibilityUsernameSkip: _usesAccessibility,
@@ -844,6 +1151,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           continue;
         }
         if (!isActive()) return;
+        // Native Skip is persisted only after the gesture acknowledges success.
+        if (result == 'username-skipped' && !_usesAccessibility) {
+          await _markConfigurationRegistered();
+          if (!isActive()) return;
+        }
         if (result == 'waiting-otp-paste' || result == 'otp-submitted') {
           awaitingOtpTransition = true;
         } else if (result == 'waiting-password-screen' ||
@@ -881,6 +1193,14 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           'home-video-liked' => 'Đã bấm tim, đang chờ hộp đăng nhập…',
           'waiting-login-modal' => 'Mạng chậm, đang chờ hộp đăng nhập…',
           'waiting-send-code' => 'Đang chờ 5 giây trước khi bấm Send code…',
+          'waiting-manual-send-code' => 'Hãy bấm Send code trên TikTok.',
+          'waiting-manual-password-submit' =>
+            'Đã nhập mật khẩu. Hãy bấm Sign up trên TikTok.',
+          'waiting-manual-username-skip' => 'Hãy bấm Skip trên TikTok.',
+          'waiting-manual-email' => 'Hãy nhập email trên TikTok.',
+          'waiting-manual-password' => 'Hãy nhập mật khẩu trên TikTok.',
+          'waiting-manual-otp' => 'Hãy nhập đủ 6 số OTP trên TikTok.',
+          'waiting-manual-birthday' => 'Hãy chọn ngày sinh trên TikTok.',
           'requesting-verification' => 'Đang chờ TikTok xác nhận gửi mã…',
           'verification-requested' => 'TikTok đã tiếp nhận yêu cầu gửi mã…',
           'waiting-otp' => 'Đang chờ ô nhập OTP đăng ký…',
@@ -900,6 +1220,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           mutate(() => signupStatus = status);
         }
         if ((result == 'verification-requested' || result == 'otp-required') &&
+            !_manualSignupFieldInput &&
             activeSignupOtp.isEmpty &&
             configuration.otpApi != null &&
             otpRequest == null) {
@@ -928,6 +1249,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
               'Hãy kiểm tra trên TikTok.';
         } else if (result == 'already-logged-in' ||
             result == 'signup-success') {
+          await _markConfigurationRegistered();
           signupSucceeded = true;
           message = result == 'already-logged-in'
               ? 'Tài khoản TikTok đã đăng nhập.'
@@ -940,6 +1262,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           break;
         } else if (result == 'verification-requested') {
           otpRequestedAt ??= DateTime.now().millisecondsSinceEpoch;
+          if (_manualSignupFieldInput) {
+            message = 'Đã gửi mã. Hãy nhập OTP trực tiếp trên TikTok.';
+            continue;
+          }
           if (activeSignupOtp.isEmpty && otpRequest == null) {
             message =
                 'Đã gửi mã. Hãy nhập OTP trên trang đăng ký, '
@@ -1022,15 +1348,117 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         if (message != null) {
           notify(message);
         }
-        if (signupSucceeded && appActive && pageFailure == null) {
-          _scheduleAutoWatchAfterSignup();
-        }
+        if (signupSucceeded) _scheduleLogoutAfterSignup();
       }
+    }
+  }
+
+  Future<void> _runCoordinateSignup() async {
+    if (autoSignupBusy) {
+      cancelAutoSignup();
+      return;
+    }
+    if (webViewController == null ||
+        !active ||
+        !appActive ||
+        accountFailure != null ||
+        autoLoginBusy ||
+        autoWatchBusy) {
+      return;
+    }
+    if (configuration.signupEmail.trim().isEmpty ||
+        configuration.signupPassword.isEmpty) {
+      notify('Hãy chọn cấu hình có email và mật khẩu TikTok.');
+      return;
+    }
+    if (!validateOtpMailbox(signup: true) ||
+        !await ensureAccountAccessibility() ||
+        !active) {
+      return;
+    }
+    final attempt = ++autoSignupAttempt;
+    _cancelAutoWatchTimers();
+    mutate(() {
+      autoSignupBusy = true;
+      loginConfirmed = false;
+      autoWatchEnabled = false;
+      signupStatus = 'Đang chuẩn bị đăng ký bằng Accessibility…';
+    });
+    bool isActive() =>
+        active && appActive && autoSignupBusy && autoSignupAttempt == attempt;
+    OtpCodeRequest? coordinateOtpRequest;
+    SignupCoordinateRunner? coordinateRunner;
+    try {
+      await stopAutoWatch();
+      final profile = await SignupCoordinateProfile.load();
+      if (!isActive()) return;
+      final runner = SignupCoordinateRunner(
+        profile: profile,
+        accessibility: signupAccessibility,
+        configuration: configuration,
+        isActive: isActive,
+        onUsernameSkipped: _markConfigurationRegistered,
+        isPageReady: () => initialPageLoaded && pageFailure == null,
+        readBirthdayMenu: _readSignupBirthdayMenu,
+        isTikTok: () async {
+          final url = await webViewController?.getUrl();
+          return url?.scheme == 'https' && url?.host == 'www.tiktok.com';
+        },
+        getOtp: () async {
+          final configuredOtp = configuration.signupOtp.trim();
+          if (configuredOtp.isNotEmpty) return configuredOtp;
+          final request = requestOtp(signup: true);
+          coordinateOtpRequest = request;
+          signupOtpRequest = request;
+          while (isActive() && request.code == null && request.error == null) {
+            await Future<void>.delayed(const Duration(milliseconds: 250));
+          }
+          if (!isActive()) throw const SignupCancelled();
+          if (request.error != null) throw StateError(request.error!);
+          return request.code!;
+        },
+        onStatus: (status) {
+          if (isActive()) mutate(() => signupStatus = status);
+        },
+      );
+      _signupCoordinateRunner = runner;
+      coordinateRunner = runner;
+      await runner.run();
+      if (isActive()) {
+        await _markConfigurationRegistered();
+        notify(
+          runner.alreadyLoggedIn
+              ? 'Tài khoản TikTok đã đăng nhập.'
+              : 'Đăng ký TikTok thành công.',
+        );
+        _scheduleLogoutAfterSignup();
+      }
+    } on SignupCancelled {
+      // Cancellation keeps the current form without issuing another action.
+    } on StateError catch (error) {
+      if (isActive()) notify(error.message.toString());
+    } catch (error) {
+      debugPrint('Coordinate signup stopped (${error.runtimeType}).');
+      if (isActive()) {
+        notify(
+          'Chưa hoàn tất đăng ký bằng Accessibility. Hãy kiểm tra màn TikTok.',
+        );
+      }
+    } finally {
+      coordinateOtpRequest?.cancel();
+      if (identical(signupOtpRequest, coordinateOtpRequest)) {
+        signupOtpRequest = null;
+      }
+      if (identical(_signupCoordinateRunner, coordinateRunner)) {
+        _signupCoordinateRunner = null;
+      }
+      if (isActive()) mutate(() => autoSignupBusy = false);
     }
   }
 
   Future<void> autoLogin() async {
     if (useNativeWebView) return;
+    if (waitingToLogout || logoutBusy || _flowFinished) return;
     if (autoLoginBusy) {
       cancelAutoLogin();
       return;
@@ -1055,6 +1483,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     final attempt = ++autoLoginAttempt;
     mutate(() {
       autoLoginBusy = true;
+      loginConfirmed = false;
       autoWatchEnabled = false;
     });
     bool isActive() =>
@@ -1251,6 +1680,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         mutate(() => autoLoginBusy = false);
         notify(message);
         if (loginSucceeded && appActive && pageFailure == null) {
+          mutate(() => loginConfirmed = true);
           await _startTimedAutoWatch();
         }
       }
@@ -1278,7 +1708,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         'Chưa xác nhận được bình luận đã gửi. Đã dừng, không gửi lại để tránh trùng.',
     };
     _cancelAutoWatchTimers();
-    mutate(() => autoWatchEnabled = false);
+    mutate(() {
+      autoWatchEnabled = false;
+      if (message == 'login-required') loginConfirmed = false;
+    });
     unawaited(stopAutoWatch());
     notify(text);
   }
@@ -1307,7 +1740,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
   }
 
-  void cancelAutoActions() {
+  void cancelAutoActions({bool cancelHandoff = true}) {
+    if (cancelHandoff && (waitingToLogout || logoutBusy)) cancelSignupHandoff();
     initialActionStarted = true;
     if (autoLoginBusy) cancelAutoLogin();
     if (autoSignupBusy) cancelAutoSignup();
@@ -1321,6 +1755,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         url?.host == 'www.tiktok.com';
     await updateNavigationState();
     if (pageFailure != null || browserCheckOpen || useNativeWebView) return;
+    if (usesCoordinateSignup) {
+      unawaited(checkProxyIp());
+      await runInitialAction();
+      return;
+    }
     try {
       await webViewController?.evaluateJavascript(
         source: autoAcceptCookieScript,
@@ -1372,6 +1811,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   void showPageFailure(WebViewFailure failure) {
     if (!active) return;
+    cancelSignupHandoff();
     _cancelAutoWatchTimers();
     _ipChecker?.cancel();
     if (autoLoginBusy) cancelAutoLogin();
@@ -1463,6 +1903,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   Future<void> onWebViewCreated(InAppWebViewController controller) async {
     webViewController = controller;
+    if (usesCoordinateSignup && kDebugMode) {
+      _signupCalibrationChannel.setMethodCallHandler(_handleSignupCalibration);
+    }
     if (_manualSession != null) {
       controller.addJavaScriptHandler(
         handlerName: 'FlutterManualViewingStats',
@@ -1473,7 +1916,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         },
       );
     }
-    if (!useNativeWebView) {
+    if (!useNativeWebView && !usesCoordinateSignup) {
       controller.addJavaScriptHandler(
         handlerName: 'FlutterCommentPaste',
         callback: inputCommentText,
@@ -1529,7 +1972,15 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           controller,
           userAgent: configuration.userAgent,
           useInstalledEngine: usesEngineIdentity,
+          fixedSignupViewport: usesCoordinateSignup,
         );
+        if (usesCoordinateSignup) {
+          await const MethodChannel(
+            'test_tiktok/webview_identity',
+          ).invokeMethod<bool>('configureSignupViewport', {
+            'id': controller.platform.params.id,
+          });
+        }
         final timeZone = useNativeWebView
             ? null
             : configuration.webViewTimeZone;
@@ -1824,7 +2275,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   void reloadPage() {
-    cancelAutoActions();
+    cancelAutoActions(cancelHandoff: false);
     unawaited(webViewController?.reload());
   }
 

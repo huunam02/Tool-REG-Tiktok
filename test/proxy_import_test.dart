@@ -20,7 +20,7 @@ Future<String> _testTimeZone(WebViewProxy proxy, String userAgent) async =>
 void main() {
   const record = '192.0.2.7:9323:proxy-user:proxy-password';
   const combinedRecord =
-      '$record person@example.com|TikTok-password|Mailbox-password';
+      '$record|person@example.com|TikTok-password|Mailbox-password';
   String text(WidgetTester tester, String key) =>
       tester.widget<TextFormField>(find.byKey(Key(key))).controller!.text;
 
@@ -221,7 +221,7 @@ void main() {
       await tester.enterText(
         find.byKey(const Key('proxyImportData')),
         suffix == '|2'
-            ? 'other.example.com:8080:user:pass other@example.com|other|mail|2'
+            ? 'other.example.com:8080:user:pass|other@example.com|other|mail|2'
             : '$combinedRecord$suffix',
       );
       await tester.tap(find.byKey(const Key('applyProxyImportData')));
@@ -599,7 +599,7 @@ void main() {
       }
       await tester.enterText(
         find.byKey(const Key('proxyImportData')),
-        '192.0.2.7:99999:user:password person@example.com|tiktok|mailbox',
+        '192.0.2.7:99999:user:password|person@example.com|tiktok|mailbox',
       );
       await tester.tap(find.byKey(const Key('applyProxyImportData')));
       await tester.pumpAndSettle();

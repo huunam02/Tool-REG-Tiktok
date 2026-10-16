@@ -3,7 +3,7 @@ import 'package:test_tiktok/core/configuration_data.dart';
 
 void main() {
   const record =
-      '192.0.2.7:6149:proxy-user:proxy-pass person@example.com|TikTok-password|Mailbox-password';
+      '192.0.2.7:6149:proxy-user:proxy-pass|person@example.com|TikTok-password|Mailbox-password';
 
   test('imports proxy and all account credentials as one record', () {
     final data = ImportedConfiguration.parse(record);
@@ -31,7 +31,7 @@ void main() {
 
   test('preserves password characters and copied line endings', () {
     final data = ImportedConfiguration.parse(
-      '\r\n192.0.2.7:8080:user:pass:word person@example.com|  tiktok password  | mailbox password \r\n',
+      '\r\n192.0.2.7:8080:user:pass:word|person@example.com|  tiktok password  | mailbox password \r\n',
     );
     expect(data.proxy.password, 'pass:word');
     expect(data.account.password, '  tiktok password  ');
@@ -73,14 +73,15 @@ void main() {
   });
 
   test(
-    'rejects incomplete or multiple records and separators other than one space',
+    'rejects incomplete or multiple records and separators other than pipes',
     () {
       for (final invalid in [
         '',
         '192.0.2.7:8080:user:pass',
         'person@example.com|password|mailbox',
-        record.replaceFirst(' person', '  person'),
-        record.replaceFirst(' person', '\tperson'),
+        record.replaceFirst('|person', ' person'),
+        record.replaceFirst('|person', '\tperson'),
+        record.replaceAll('|', ';'),
         '$record\n$record',
         record.replaceFirst(':6149:', ':65536:'),
         record.replaceFirst('person@example.com', 'not-email'),

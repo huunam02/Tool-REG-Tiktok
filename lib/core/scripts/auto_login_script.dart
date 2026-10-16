@@ -1,11 +1,9 @@
 import 'dart:convert';
 
 import 'home_account_modal_script.dart';
-
-
+import 'authenticated_session_script.dart';
 
 String buildAutoLoginScript({
-
   required String email,
 
   required String password,
@@ -31,9 +29,7 @@ String buildAutoLoginScript({
   bool useAccessibilityEmailVerification = false,
 
   int emailVerificationDelayMs = 5000,
-
 }) =>
-
     '''
 
 (() => {
@@ -42,33 +38,7 @@ String buildAutoLoginScript({
 
   return ($autoLoginStepScript)(
 
-    ${jsonEncode({
-
-          'email': email,
-
-          'password': password,
-
-          'attempt': attempt,
-
-          'otp': otp.trim(),
-
-          'otpRequestedAt': otpRequestedAt,
-
-          'emailVerificationRequestedAt': emailVerificationRequestedAt,
-
-          'allowOtpSubmit': allowOtpSubmit,
-
-          'waitForOtpApi': waitForOtpApi,
-
-          'useAccessibilitySendCode': useAccessibilitySendCode,
-
-          'useAccessibilityContinue': useAccessibilityContinue,
-
-          'useAccessibilityEmailVerification': useAccessibilityEmailVerification,
-
-          'emailVerificationDelayMs': emailVerificationDelayMs,
-
-        })}, $allowSubmit, ($openHomeAccountModalScript)
+    ${jsonEncode({'email': email, 'password': password, 'attempt': attempt, 'otp': otp.trim(), 'otpRequestedAt': otpRequestedAt, 'emailVerificationRequestedAt': emailVerificationRequestedAt, 'allowOtpSubmit': allowOtpSubmit, 'waitForOtpApi': waitForOtpApi, 'useAccessibilitySendCode': useAccessibilitySendCode, 'useAccessibilityContinue': useAccessibilityContinue, 'useAccessibilityEmailVerification': useAccessibilityEmailVerification, 'emailVerificationDelayMs': emailVerificationDelayMs})}, $allowSubmit, ($openHomeAccountModalScript), ($authenticatedSessionScript)
 
   );
 
@@ -76,15 +46,13 @@ String buildAutoLoginScript({
 
 ''';
 
-
-
 // Polled by Flutter while the login action is active. Credentials stay local
 
 // to this call; Flutter pastes through the native editor and remembers submission.
 
 const String autoLoginStepScript = r'''
 
-(config, allowSubmit, openHomeAccountModal) => {
+(config, allowSubmit, openHomeAccountModal, isAuthenticated) => {
 
   if (location.origin !== 'https://www.tiktok.com') return 'wrong-origin';
 
@@ -176,7 +144,7 @@ const String autoLoginStepScript = r'''
 
 
 
-  if (find('[data-e2e="profile-icon"]')) {
+  if (isAuthenticated()) {
 
     return allowSubmit ? 'already-logged-in' : 'login-success';
 
@@ -830,9 +798,8 @@ const String autoLoginStepScript = r'''
 
 ''';
 
-
-
-String buildAutoLoginStopScript(int attempt) => '''
+String buildAutoLoginStopScript(int attempt) =>
+    '''
 
 (() => {
 

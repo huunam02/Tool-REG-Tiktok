@@ -2,6 +2,55 @@
 
 Cập nhật: 16/10/2026 (giờ Việt Nam).
 
+**Cập nhật mới nhất:** đã tách nhánh
+`experiment/android-signup-fixed-viewport-accessibility`, chuẩn hóa WebView
+400×800 (1:2), ghi tọa độ và triển khai bộ chạy đăng ký Android dùng hoàn toàn
+Accessibility cho thao tác UI. Một lượt ghi mẫu thật đã qua Sign up → Skip →
+trang đăng nhập thành công (Messages/Profile, không còn Log in). OTP do người
+dùng cung cấp; chưa xác minh phát lại toàn bộ tự động hoặc API OTP.
+Đã sửa dropdown ngày sinh HTML không lộ các mục qua Accessibility và kiểm
+chứng riêng bước tự chọn **28/10/1967** trên phiên giả lập đang mở.
+Chi tiết triển khai và giới hạn kiểm chứng ở
+[android-signup-coordinate-calibration.md](android-signup-coordinate-calibration.md).
+
+Các phần bên dưới ghi lại **lịch sử điều tra luồng cũ**. Hai cờ thử nghiệm
+nhập tay/bấm tự động không điều khiển nhánh đăng ký Android mới này.
+
+**Cập nhật triển khai:** người dùng đã thử tự nhập bằng app + bấm nút thủ công
+và báo vẫn gặp lỗi. Đã bật lại gesture Send code, Sign up sau OTP và Skip bằng
+`_pauseSignupGestures = false`. Hiện tạm tắt tự điền bằng
+`_pauseSignupFieldInput = true`: người dùng nhập/chọn email, OTP, mật khẩu và
+ngày sinh trực tiếp trên TikTok, app tiếp tục tự bấm các nút. Chế độ này không
+gọi OTP API hoặc helper tự nhập field. Bước chuẩn bị Send code vẫn focus nút.
+
+**Kết quả người dùng báo sau đó:** nhập field thủ công + app tự bấm vẫn không
+thành công, vẫn báo “Maximum number of attempts reached” sau Sign up.
+Lượt thành công là **bắt đầu lại từ đầu, tự nhập và bấm toàn bộ**; chưa phải
+thử bấm tay tiếp trên cùng màn/phiên tự động lỗi. Chưa xác nhận giữ nguyên email.
+
+**Log đối chiếu mới đọc từ emulator-5554:**
+
+- Lượt tự nhập + bấm tay: 19:12–19:14 có native input email, OTP và mật khẩu;
+  chờ bấm tay Send code/Sign up; 19:14:04 ghi nhận lỗi giới hạn.
+- Lượt nhập tay + tự bấm (PID 8240): 19:20:25 chờ nhập email; 19:21:06 gửi
+  đúng một gesture Send code, hoàn tất; 19:21:10 xác nhận đã gửi mã;
+  19:21:12 chờ nhập OTP; 19:22:53 sang màn mật khẩu; 19:22:54 chờ nhập mật khẩu.
+- 19:23:16.823 dispatch Sign up; 19:23:17.190 gesture hoàn tất;
+  19:23:18.741 ghi nhận lỗi giới hạn. Phần log hiện có chỉ có một yêu cầu
+  gesture Sign up ở lượt này; số request mạng chưa được đo.
+- Không thấy native input trong lượt PID 8240, cũng không thấy trạng thái
+  `otp-submitted` giữa chờ nhập OTP và màn mật khẩu. Chưa có bằng chứng nhánh
+  JavaScript xác nhận OTP đã được gọi ở lượt lỗi này.
+- Đây là mốc thời gian trong log thiết bị; không có dữ liệu mạng của lượt
+  tự động lỗi hoặc lượt hoàn toàn thủ công thành công để so sánh.
+
+**Giới hạn của hai phép thử:** chế độ bấm tay trước đây chỉ chặn ba gesture
+Send code/Sign up/Skip, không chặn toàn bộ JavaScript click trong luồng.
+Chế độ nhập tay hiện tại vẫn gọi JavaScript click cho xác nhận OTP, các bước
+điều hướng và Next; bước chuẩn bị Send code vẫn gọi `focus()` lên nút, có thể
+làm ô email mất focus. Vì vậy chưa thể loại trừ riêng bước nhập hoặc bước bấm,
+và chưa có bằng chứng xác định TikTok nhận diện tự động.
+
 ## Vấn đề cần xử lý
 
 Theo các lần thử của người dùng, đăng ký tự động đi qua OTP, nhập mật khẩu và bấm Sign up thì bị lỗi:
@@ -64,10 +113,10 @@ Mật khẩu đạt điều kiện trên UI; không có bằng chứng lỗi đ�
 
 ## Hướng kiểm tra tiếp
 
-1. Thêm chế độ chẩn đoán **dừng tự động trước Sign up**. Sau khi nhập xong mật khẩu, ngăn cả vòng lặp và bridge gửi gesture cuối; giữ nguyên màn để người dùng bấm tay. Chế độ này **chưa được triển khai**.
-2. Chạy luồng tự động đến điểm dừng rồi bấm tay ngay, tránh làm OTP hết hạn do chờ trao đổi. Ghi nhận cùng email, phiên và lần cấp OTP; không ghi giá trị bí mật vào log.
-3. Nếu tự động nhập + bấm tay thành công ổn định, tập trung điều tra bước bấm cuối: nút được chọn, tọa độ, trạng thái focus/validation/loading, số lần dispatch và số request thực tế.
-4. Nếu vẫn lỗi, đối chiếu các bước trước: nhập email, gửi mã, lấy đúng OTP mới nhất, xác nhận OTP, native nhập mật khẩu và `blur()`.
+1. Đã thử **nhập field thủ công + bấm nút tự động trên Android**, vẫn lỗi giới hạn sau Sign up. Phép thử cần tiếp theo là giữ nhập tay và các bước trước giống lượt này, nhưng dừng trước Sign up để bấm tay ngay trên cùng phiên; chế độ dừng riêng nút cuối chưa được thêm.
+2. Ghi nhận cùng email, phiên và lần cấp OTP; tránh chờ lâu làm OTP hết hạn. Không ghi giá trị bí mật vào log.
+3. Nếu nhập tay + tự bấm thành công ổn định, tập trung điều tra native input, paste OTP, focus và `blur()` của luồng tự điền. Kết quả riêng lẻ chưa đủ xác nhận nguyên nhân.
+4. Nếu vẫn lỗi, đối chiếu cả phiên/OTP, trạng thái validation/loading và thao tác nút: mục tiêu, tọa độ, số lần dispatch và số request thực tế.
 5. Bổ sung log chẩn đoán chỉ chứa mốc thời gian, attempt, bước, kết quả bridge, trạng thái validation và mã lỗi. Nếu cần quan sát mạng, chỉ lưu endpoint, mã trạng thái và mã lỗi đã lọc; không lưu mật khẩu, OTP, cookie, token hay thông tin hộp thư.
 6. Đánh giá từng thay đổi riêng dựa trên bằng chứng. Không coi việc ngẫu nhiên hóa thao tác hoặc đổi IP là cách sửa đã được xác nhận.
 
@@ -75,7 +124,7 @@ Mật khẩu đạt điều kiện trên UI; không có bằng chứng lỗi đ�
 
 - Đã sửa `lib/core/account_password.dart` và cập nhật kỳ vọng trong `test/account_password_test.dart` để mật khẩu random có ký tự đặc biệt.
 - `flutter test test/account_password_test.dart`: 3 kiểm thử đạt.
-- `node --test test/auto_signup_script_test.js`: 85 kiểm thử đạt.
+- `node --test test/auto_signup_script_test.js`: 90 kiểm thử đạt, gồm kiểm tra field nhập tay, OTP sáu ô, ngày sinh và gọi bridge tự bấm ba nút.
 - Các kiểm thử trên xác nhận logic ở mức kiểm thử, **không chứng minh TikTok thực tế chấp nhận đăng ký tự động**.
-- Chưa sửa luồng nhập liệu, OTP hoặc bấm Sign up để xử lý vấn đề này.
-- Chưa triển khai chế độ dừng trước Sign up hoặc thu thập phản hồi mạng cho lần điều tra tiếp theo.
+- Đã bật lại gesture đăng ký Android cho Send code, Sign up và Skip; tạm vô hiệu hóa tự nhập dữ liệu và OTP API đăng ký. Đây là thay đổi chẩn đoán, chưa xác nhận sửa được nguyên nhân gốc.
+- Chưa thu thập phản hồi mạng cho lần điều tra tiếp theo.

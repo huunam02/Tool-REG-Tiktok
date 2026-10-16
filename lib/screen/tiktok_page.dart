@@ -10,15 +10,18 @@ import '../core/scripts/auto_watch_script.dart';
 import '../core/app_configuration.dart';
 import '../core/app_action_theme.dart';
 import '../core/otp_api.dart';
+import '../core/proxy_store.dart';
 import '../core/nurture_data.dart';
 import '../core/nurture_store.dart';
 import '../core/tiktok_launch_action.dart';
+import '../core/tiktok_flow_result.dart';
 import '../core/webview_failure.dart';
 import '../core/webview_locale.dart';
 import '../core/webview_privacy.dart';
 import '../core/webview_user_agent.dart';
 import '../core/webview_timezone.dart';
 import 'widgets/controller_scope.dart';
+import 'widgets/signup_viewport.dart';
 
 export '../core/tiktok_launch_action.dart';
 
@@ -34,6 +37,7 @@ class TikTokPage extends StatelessWidget {
     this.manualViewingPlan,
     this.nurtureRepository,
     this.otpReaderFactory,
+    this.proxyStore,
   }) : useNativeWebView = useNativeWebView || manualViewingPlan != null;
 
   final AppConfiguration configuration;
@@ -45,6 +49,7 @@ class TikTokPage extends StatelessWidget {
   final NurturePlan? manualViewingPlan;
   final NurtureRepository? nurtureRepository;
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
+  final ProxyStore? proxyStore;
   String get initialUrl => startWithBrowserCheck
       ? TikTokController.browserCheckUrl
       : startWithIpCheck
@@ -64,6 +69,12 @@ class TikTokPage extends StatelessWidget {
       manualViewingPlan: manualViewingPlan,
       nurtureRepository: nurtureRepository,
       otpReaderFactory: otpReaderFactory,
+      proxyStore: proxyStore,
+      onFlowFinished: (result) {
+        if (context.mounted && ModalRoute.of(context)?.isCurrent == true) {
+          Navigator.of(context).pop<TikTokFlowResult>(result);
+        }
+      },
       onReturnToConfiguration: () {
         if (context.mounted) Navigator.of(context).maybePop();
       },
@@ -76,8 +87,14 @@ class _TikTokView extends StatelessWidget {
   const _TikTokView(this.logic);
   final TikTokController logic;
 
+  Widget _signupViewport(Widget child) =>
+      logic.usesCoordinateSignup ? StandardSignupViewport(child: child) : child;
+
   Widget _autoWatchButton() {
     final enabled =
+        !logic.waitingToLogout &&
+        !logic.logoutBusy &&
+        logic.loginConfirmed &&
         logic.webViewController != null &&
         !logic.autoWatchBusy &&
         !logic.autoLoginBusy &&
@@ -90,6 +107,8 @@ class _TikTokView extends StatelessWidget {
     return Tooltip(
       message: logic.autoWatchEnabled
           ? 'Dừng tự động xem video và bình luận'
+          : !logic.loginConfirmed
+          ? 'Đăng nhập tự động thành công để bật Auto nuôi'
           : 'Bật tự động xem video và bình luận',
       child: SizedBox(
         height: 36,
@@ -131,8 +150,7 @@ class _TikTokView extends StatelessWidget {
   Widget _autoControls() => Positioned(
     left: 12,
     right: 12,
-    top: logic.waitingToAutoWatch ? 12 : null,
-    bottom: logic.waitingToAutoWatch ? null : 12,
+    bottom: 12,
     child: SafeArea(
       top: false,
       child: Align(
@@ -150,8 +168,10 @@ class _TikTokView extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      logic.waitingToAutoWatch
-                          ? 'Đăng ký xong. Đang chờ trước khi nuôi 10 phút…'
+                      logic.logoutBusy
+                          ? 'Đang đăng xuất TikTok để quay về Home…'
+                          : logic.waitingToLogout
+                          ? 'Đăng ký thành công. Chờ 2–4 phút trước khi đăng xuất…'
                           : (logic.autoLoginBusy &&
                                     logic.loginOtpRequest != null &&
                                     logic.activeLoginOtp.isEmpty) ||
@@ -174,10 +194,8 @@ class _TikTokView extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    onPressed: logic.waitingToAutoWatch
-                        ? logic.cancelAutoWatchHold
-                        : logic.cancelAutoActions,
-                    child: Text(logic.waitingToAutoWatch ? 'Hủy chờ' : 'Dừng'),
+                    onPressed: logic.cancelAutoActions,
+                    child: const Text('Dừng'),
                   ),
                 ],
               ),
@@ -270,6 +288,7 @@ class _TikTokView extends StatelessWidget {
                       MaterialPageRoute<void>(
                         builder: (_) => TikTokPage(
                           configuration: logic.configuration,
+                          proxyStore: logic.proxyStore,
                           useNativeWebView: true,
                           useInstalledEngine: !logic.usesEngineIdentity,
                         ),
@@ -282,71 +301,74 @@ class _TikTokView extends StatelessWidget {
           body: Stack(
             fit: StackFit.expand,
             children: [
-              InAppWebView(
-                initialUrlRequest: logic.needsDesktopIdentity
-                    ? null
-                    : URLRequest(
-                        url: WebUri(logic.initialUrl),
-                        headers: logic.navigationHeaders,
-                      ),
-                initialUserScripts: UnmodifiableListView([
-                  if (!logic.useNativeWebView &&
-                      needsAndroidDesktopIdentity &&
-                      logic.configuration.webViewTimeZone != null)
-                    webViewTimeZoneUserScript(
-                      logic.configuration.webViewTimeZone!,
-                    ),
-                  if (!logic.usesEngineIdentity) pixelGpuInfoUserScript(),
-                  disableWebRtcUserScript(
-                    localIp: logic.configuration.webViewLocalIp,
-                  ),
-                  if (forceEnglishWebViewLocale && !logic.useNativeWebView)
-                    englishWebViewLocaleUserScript(),
-                  if (!logic.useNativeWebView)
-                    UserScript(
-                      source: inlineVideoScript,
-                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-                    ),
-                  if (!logic.useNativeWebView)
-                    UserScript(
-                      source: autoAcceptCookieScript,
-                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
-                      forMainFrameOnly: true,
-                    ),
-                  if (!logic.useNativeWebView)
-                    UserScript(
-                      source: autoSelectInterestScript,
-                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
-                      forMainFrameOnly: true,
-                    ),
-                ]),
-                initialSettings: InAppWebViewSettings(
-                  userAgent: logic.usesEngineIdentity
+              _signupViewport(
+                InAppWebView(
+                  initialUrlRequest: logic.needsDesktopIdentity
                       ? null
-                      : logic.configuration.userAgent,
-                  preferredContentMode: UserPreferredContentMode.DESKTOP,
-                  useWideViewPort: true,
-                  loadWithOverviewMode: true,
-                  initialScale: 0,
-                  supportZoom: true,
-                  builtInZoomControls: true,
-                  displayZoomControls: false,
-                  textZoom: 100,
-                  javaScriptEnabled: true,
-                  mediaPlaybackRequiresUserGesture: false,
-                  allowsInlineMediaPlayback: true,
-                  incognito: false,
-                  cacheEnabled: true,
+                      : URLRequest(
+                          url: WebUri(logic.initialUrl),
+                          headers: logic.navigationHeaders,
+                        ),
+                  initialUserScripts: UnmodifiableListView([
+                    if (!logic.useNativeWebView &&
+                        needsAndroidDesktopIdentity &&
+                        logic.configuration.webViewTimeZone != null)
+                      webViewTimeZoneUserScript(
+                        logic.configuration.webViewTimeZone!,
+                      ),
+                    if (!logic.usesEngineIdentity) pixelGpuInfoUserScript(),
+                    disableWebRtcUserScript(
+                      localIp: logic.configuration.webViewLocalIp,
+                    ),
+                    if (forceEnglishWebViewLocale && !logic.useNativeWebView)
+                      englishWebViewLocaleUserScript(),
+                    if (!logic.useNativeWebView && !logic.usesCoordinateSignup)
+                      UserScript(
+                        source: inlineVideoScript,
+                        injectionTime:
+                            UserScriptInjectionTime.AT_DOCUMENT_START,
+                      ),
+                    if (!logic.useNativeWebView && !logic.usesCoordinateSignup)
+                      UserScript(
+                        source: autoAcceptCookieScript,
+                        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+                        forMainFrameOnly: true,
+                      ),
+                    if (!logic.useNativeWebView && !logic.usesCoordinateSignup)
+                      UserScript(
+                        source: autoSelectInterestScript,
+                        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+                        forMainFrameOnly: true,
+                      ),
+                  ]),
+                  initialSettings: InAppWebViewSettings(
+                    userAgent: logic.usesEngineIdentity
+                        ? null
+                        : logic.configuration.userAgent,
+                    preferredContentMode: UserPreferredContentMode.DESKTOP,
+                    useWideViewPort: true,
+                    loadWithOverviewMode: true,
+                    initialScale: 0,
+                    supportZoom: !logic.usesCoordinateSignup,
+                    builtInZoomControls: !logic.usesCoordinateSignup,
+                    displayZoomControls: false,
+                    textZoom: 100,
+                    javaScriptEnabled: true,
+                    mediaPlaybackRequiresUserGesture: false,
+                    allowsInlineMediaPlayback: true,
+                    incognito: false,
+                    cacheEnabled: true,
+                  ),
+                  onWebViewCreated: logic.onWebViewCreated,
+                  onReceivedHttpAuthRequest: logic.onReceivedHttpAuthRequest,
+                  onLoadStart: logic.onLoadStart,
+                  onProgressChanged: logic.onProgressChanged,
+                  onLoadStop: logic.onLoadStop,
+                  onReceivedError: logic.onReceivedError,
+                  onReceivedHttpError: logic.onReceivedHttpError,
+                  onConsoleMessage: logic.onConsoleMessage,
+                  shouldOverrideUrlLoading: logic.shouldOverrideUrlLoading,
                 ),
-                onWebViewCreated: logic.onWebViewCreated,
-                onReceivedHttpAuthRequest: logic.onReceivedHttpAuthRequest,
-                onLoadStart: logic.onLoadStart,
-                onProgressChanged: logic.onProgressChanged,
-                onLoadStop: logic.onLoadStop,
-                onReceivedError: logic.onReceivedError,
-                onReceivedHttpError: logic.onReceivedHttpError,
-                onConsoleMessage: logic.onConsoleMessage,
-                shouldOverrideUrlLoading: logic.shouldOverrideUrlLoading,
               ),
               if (logic.loadingProgress < 100)
                 Positioned(
@@ -369,7 +391,8 @@ class _TikTokView extends StatelessWidget {
                 ),
               if (logic.autoLoginBusy ||
                   logic.autoSignupBusy ||
-                  logic.waitingToAutoWatch)
+                  logic.waitingToLogout ||
+                  logic.logoutBusy)
                 _autoControls(),
             ],
           ),

@@ -24,9 +24,9 @@ void main() {
             find.byType(GetBuilder<ProxyFormController>))
         .controller!;
     logic.importData.text =
-        '192.0.2.7:8080:user:pass first@example.com|tiktok|mail\n'
-        '192.0.2.8:8080:user:pass second@example.com|tiktok|mail\n'
-        '192.0.2.9:8080:user:pass third@example.com|tiktok|mail';
+        '192.0.2.7:8080:user:pass|first@example.com|tiktok|mail\n'
+        '192.0.2.8:8080:user:pass|second@example.com|tiktok|mail\n'
+        '192.0.2.9:8080:user:pass|third@example.com|tiktok|mail';
     logic.importProxy();
     await tester.pumpAndSettle();
     final discarded = logic.configurations.skip(1).toList();

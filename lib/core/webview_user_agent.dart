@@ -25,10 +25,14 @@ Future<String> configureAndroidDesktopIdentity(
   InAppWebViewController controller, {
   required String userAgent,
   bool useInstalledEngine = true,
+  bool fixedSignupViewport = false,
 }) async {
   if (!needsAndroidDesktopIdentity) return userAgent;
   if (useInstalledEngine) {
-    return configureAndroidEngineDesktopIdentity(controller);
+    return configureAndroidEngineDesktopIdentity(
+      controller,
+      fixedSignupViewport: fixedSignupViewport,
+    );
   }
   return await const MethodChannel(
         'test_tiktok/webview_identity',
@@ -36,17 +40,20 @@ Future<String> configureAndroidDesktopIdentity(
         'id': controller.platform.params.id,
         'userAgent': userAgent,
         'chromeFullVersion': chromeFullVersionForUserAgent(userAgent),
+        if (fixedSignupViewport) 'fixedSignupViewport': true,
       }) ??
       userAgent;
 }
 
 /// Use the installed engine's version without overriding CPU or memory.
 Future<String> configureAndroidEngineDesktopIdentity(
-  InAppWebViewController controller,
-) async {
+  InAppWebViewController controller, {
+  bool fixedSignupViewport = false,
+}) async {
   final agent = await const MethodChannel('test_tiktok/webview_identity')
       .invokeMethod<String>('configureEngine', {
         'id': controller.platform.params.id,
+        if (fixedSignupViewport) 'fixedSignupViewport': true,
       });
   if (agent == null || agent.isEmpty) {
     throw StateError('Không đọc được nhận diện WebView.');

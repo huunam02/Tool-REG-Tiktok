@@ -1,0 +1,14 @@
+{
+  "time": "2026-10-16T21:59:39.993116+07:00",
+  "device": "emulator-5554",
+  "visibleAuthMarker": "nav-messages",
+  "legacyProfileIconVisible": false,
+  "loginConfirmed": true,
+  "autoWatchEnabled": true,
+  "autoWatchDurationMinutes": 10,
+  "validation": {
+    "javascriptLoginTests": 65,
+    "dartLoginTests": 27,
+    "widgetSuiteSignupFailures": 16
+  }
+}

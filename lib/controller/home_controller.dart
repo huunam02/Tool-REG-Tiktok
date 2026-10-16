@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,19 +22,117 @@ import '../core/tiktok_launch_action.dart';
 import 'app_controller.dart';
 
 class HomeController extends AppController
-    with GetSingleTickerProviderStateMixin {
+    with GetSingleTickerProviderStateMixin, WidgetsBindingObserver {
   HomeController({
     required this.initialUserAgent,
     required this.initialOtpSettings,
     ProxyStore? store,
     OtpSettingsStore? otpSettingsStore,
+    DateTime Function()? now,
+    Random? workflowRandom,
   }) : store = store ?? ProxyStore.instance,
+       _now = now ?? DateTime.now,
+       _workflowRandom = workflowRandom ?? Random(),
        otpSettingsStore = otpSettingsStore ?? OtpSettingsStore.instance;
 
   final String initialUserAgent;
   final OtpApiSettings initialOtpSettings;
   final ProxyStore store;
   final OtpSettingsStore otpSettingsStore;
+  final DateTime Function() _now;
+  final Random _workflowRandom;
+  Timer? _scheduledLoginTimer;
+  DateTime? autoLoginStartsAt;
+  AppConfiguration? _scheduledConfiguration;
+  Future<void> Function()? _scheduledLogin;
+  bool _appActive = true;
+  bool _checkingScheduledLogin = false;
+  int _scheduleGeneration = 0;
+  bool get waitingForAutoLogin => autoLoginStartsAt != null;
+
+  void scheduleLoginAfterSignup(
+    AppConfiguration configuration,
+    Future<void> Function() login,
+  ) {
+    if (!active) return;
+    cancelScheduledLogin();
+    if (configuration.configurationId == null) {
+      notify('Không tìm thấy cấu hình vừa đăng ký để tự đăng nhập lại.');
+      return;
+    }
+    final hold = Duration(seconds: 120 + _workflowRandom.nextInt(61));
+    _scheduledConfiguration = configuration;
+    _scheduledLogin = login;
+    mutate(() => autoLoginStartsAt = _now().add(hold));
+    _scheduledLoginTimer = Timer(hold, () => unawaited(_runScheduledLogin()));
+  }
+
+  void cancelScheduledLogin() {
+    _scheduleGeneration++;
+    _scheduledLoginTimer?.cancel();
+    _scheduledLoginTimer = null;
+    _scheduledConfiguration = null;
+    _scheduledLogin = null;
+    autoLoginStartsAt = null;
+    mutate(() {});
+  }
+
+  Future<void> _runScheduledLogin() async {
+    final expected = _scheduledConfiguration;
+    final login = _scheduledLogin;
+    if (!active ||
+        !_appActive ||
+        _checkingScheduledLogin ||
+        expected == null ||
+        login == null ||
+        autoLoginStartsAt == null ||
+        _now().isBefore(autoLoginStartsAt!)) {
+      return;
+    }
+    final generation = _scheduleGeneration;
+    _checkingScheduledLogin = true;
+    try {
+      final selected = await store.getCurrentProfile();
+      if (!active || generation != _scheduleGeneration || !_appActive) return;
+      if (selected?.configurationId != expected.configurationId ||
+          selected?.account?.email != expected.signupEmail ||
+          selected?.account?.password != expected.signupPassword ||
+          selected?.account?.mailboxPassword !=
+              expected.signupMailboxPassword ||
+          !sameProxy(selected?.proxy, expected.proxy) ||
+          selected?.statusAccount != AccountStatus.registered) {
+        cancelScheduledLogin();
+        notify('Cấu hình đã thay đổi. Đã hủy lịch đăng nhập tự động.');
+        return;
+      }
+      await restoreProxy();
+      if (!active || generation != _scheduleGeneration || !_appActive) return;
+      if (proxyLoadFailed ||
+          currentProxy?.configurationId != expected.configurationId ||
+          currentProxy?.account?.email != expected.signupEmail) {
+        cancelScheduledLogin();
+        notify(
+          'Không thể mở lại đúng cấu hình vừa đăng ký. Đã hủy lịch đăng nhập.',
+        );
+        return;
+      }
+      cancelScheduledLogin();
+      await login();
+    } catch (_) {
+      if (active && generation == _scheduleGeneration) {
+        cancelScheduledLogin();
+        notify('Không thể mở lại cấu hình để đăng nhập tự động. Hãy thử lại.');
+      }
+    } finally {
+      _checkingScheduledLogin = false;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appActive = state == AppLifecycleState.resumed;
+    if (_appActive) unawaited(_runScheduledLogin());
+  }
 
   final formKey = GlobalKey<FormState>();
   late String userAgent;
@@ -59,7 +158,8 @@ class HomeController extends AppController
   bool managingProxies = false;
   ProxyGeolocationLookup? _timeZoneLookup;
   late final ProxyStore proxyStore;
-  bool get busy => opening || loadingProxy || managingProxies;
+  bool get busy =>
+      opening || loadingProxy || managingProxies || waitingForAutoLogin;
   TikTokLaunchAction get accountAction =>
       currentProxy?.statusAccount == AccountStatus.registered
       ? TikTokLaunchAction.login
@@ -68,6 +168,7 @@ class HomeController extends AppController
   @override
   void onInit() {
     super.onInit();
+    WidgetsBinding.instance.addObserver(this);
     userAgent = initialUserAgent;
     directUserAgent = initialUserAgent;
     otpSettings = initialOtpSettings;
@@ -245,6 +346,8 @@ class HomeController extends AppController
 
   @override
   void onClose() {
+    cancelScheduledLogin();
+    WidgetsBinding.instance.removeObserver(this);
     _timeZoneLookup?.cancel();
     unawaited(savePreferences());
     _preferencesTimer?.cancel();
@@ -346,6 +449,7 @@ class HomeController extends AppController
             : null,
       );
       await navigate(configuration, action);
+      if (active && action == TikTokLaunchAction.signup) await restoreProxy();
       if (active) await loadNurtureAccounts();
     } on FormatException catch (error) {
       if (!active) return;

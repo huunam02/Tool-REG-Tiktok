@@ -35,8 +35,8 @@ object DesktopChromeIdentity {
             const normalize = (element) => {
                 if (element.tagName === 'META' &&
                     (element.getAttribute('name') || '').toLowerCase() === 'viewport' &&
-                    element.getAttribute('content') !== 'width=980') {
-                    element.setAttribute('content', 'width=980');
+                    element.getAttribute('content') !== '__VIEWPORT_CONTENT__') {
+                    element.setAttribute('content', '__VIEWPORT_CONTENT__');
                 }
             };
             const scan = (node) => {
@@ -50,7 +50,7 @@ object DesktopChromeIdentity {
                 if (document.head && !document.querySelector('meta[name="viewport" i]')) {
                     const viewport = document.createElement('meta');
                     viewport.name = 'viewport';
-                    viewport.content = 'width=980';
+                    viewport.content = '__VIEWPORT_CONTENT__';
                     document.head.prepend(viewport);
                 }
             };
@@ -72,7 +72,8 @@ object DesktopChromeIdentity {
     @JvmOverloads
     fun configure(webView: WebView, requestedAgent: String? = null,
                   requestedFullVersion: String? = null,
-                  emulateHardware: Boolean = true): String {
+                  emulateHardware: Boolean = true,
+                  fixedSignupViewport: Boolean = false): String {
         check(WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             "WebView cần hỗ trợ cấu hình viewport trước khi tải trang. Hãy cập nhật Android System WebView."
         }
@@ -130,12 +131,20 @@ object DesktopChromeIdentity {
         settings.userAgentString = userAgent
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
-        settings.setSupportZoom(true)
-        settings.builtInZoomControls = true
+        settings.setSupportZoom(!fixedSignupViewport)
+        settings.builtInZoomControls = !fixedSignupViewport
         settings.displayZoomControls = false
         settings.textZoom = 100
         webView.setInitialScale(0)
-        val viewportScript = desktopViewportScript.replace("__EMULATE_HARDWARE__", emulateHardware.toString())
+        val metrics = webView.resources.displayMetrics
+        val physicalWidth = if (webView.width > 0) webView.width else metrics.widthPixels
+        val scale = physicalWidth.toDouble() / metrics.density / 980.0
+        val viewportContent = if (fixedSignupViewport)
+            "width=980, initial-scale=$scale, minimum-scale=$scale, maximum-scale=$scale, user-scalable=no"
+            else "width=980"
+        val viewportScript = desktopViewportScript
+            .replace("__VIEWPORT_CONTENT__", viewportContent)
+            .replace("__EMULATE_HARDWARE__", emulateHardware.toString())
         val identityScript = if (isWindows) viewportScript.replace("Linux x86_64", "Win32")
             else viewportScript
         WebViewCompat.addDocumentStartJavaScript(webView, identityScript, setOf("*"))

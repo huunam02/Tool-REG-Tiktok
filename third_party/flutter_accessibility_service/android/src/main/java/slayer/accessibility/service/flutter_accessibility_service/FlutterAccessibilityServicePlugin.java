@@ -160,6 +160,15 @@ public class FlutterAccessibilityServicePlugin implements FlutterPlugin, Activit
             } else {
                 result.success(false);
             }
+        } else if (call.method.equals("signupCancelPaste")) {
+            SignupAccessibilityBridge.cancelPaste();
+            result.success(true);
+        } else if (call.method.equals("signupDismissKeyboard")) {
+            SignupAccessibilityBridge.dismissKeyboard(result);
+        } else if (call.method.equals("signupSnapshot")) {
+            result.success(SignupAccessibilityBridge.snapshot());
+        } else if (call.method.equals("signupPasteFocused")) {
+            SignupAccessibilityBridge.paste(call.argument("text"), call.argument("field"), result);
         } else if (call.method.equals("performActionById")) {
             String nodeId = call.argument("nodeId");
             Integer action = (Integer) call.argument("nodeAction");
@@ -168,11 +177,10 @@ public class FlutterAccessibilityServicePlugin implements FlutterPlugin, Activit
             AccessibilityNodeInfo nodeInfo = AccessibilityListener.getNodeInfo(nodeId);
             if (nodeInfo != null) {
                 if (arguments == null) {
-                    nodeInfo.performAction(action);
+                    result.success(nodeInfo.performAction(action));
                 } else {
-                    nodeInfo.performAction(action, arguments);
+                    result.success(nodeInfo.performAction(action, arguments));
                 }
-                result.success(true);
             } else {
                 result.success(false);
             }

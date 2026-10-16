@@ -88,18 +88,17 @@ class ImportedConfiguration {
 
   static ImportedConfiguration parse(String input) {
     final line = input.replaceAll(RegExp(r'^[\r\n]+|[\r\n]+$'), '');
-    final separator = line.indexOf(' ');
+    final parts = line.split('|');
     if (line.contains('\r') ||
         line.contains('\n') ||
-        separator <= 0 ||
-        separator == line.length - 1 ||
-        RegExp(r'\s').hasMatch(line[separator + 1])) {
+        (parts.length != 4 && parts.length != 5)) {
       throw const FormatException(
-        'Nhập một dòng: host:port:user:pass email|mật khẩu TikTok|mật khẩu email OTP[|0/1]. '
-        'Proxy và tài khoản cách nhau một dấu cách.',
+        'Nhập một dòng: host:port:user:pass|email|mật khẩu TikTok|mật khẩu email OTP[|0/1]. '
+        'Các trường ngăn cách bằng dấu |.',
       );
     }
-    final accountParts = line.substring(separator + 1).split('|');
+    final proxy = parts.first;
+    final accountParts = parts.skip(1).toList();
     var statusAccount = AccountStatus.unregistered;
     if (accountParts.length == 4) {
       statusAccount = switch (accountParts.removeLast().trim()) {
@@ -114,7 +113,7 @@ class ImportedConfiguration {
       accountParts[1] = generateAccountPassword();
     }
     return ImportedConfiguration(
-      proxy: WebViewProxy.parseImport(line.substring(0, separator)),
+      proxy: WebViewProxy.parseImport(proxy),
       account: AccountCredentials.parseImport(accountParts.join('|')),
       statusAccount: statusAccount,
     );

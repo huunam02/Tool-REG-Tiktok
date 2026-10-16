@@ -128,5 +128,5 @@ const String emailSignup = '';
 const String passwordSignup = '';
 // API lấy OTP dùng chung cho đăng ký và đăng nhập.
 const String otpApiUrl =
-    'https://unfounded-roundup-eatable.ngrok-free.dev/api/code';
-const String otpApiToken = '37f9ff60089b017ea9f61e274cf3d0de';
+    'https://drainer-wager-uncheck.ngrok-free.dev/api/code';
+const String otpApiToken = 'c3247bbbf1e7b6913cbf314a4f0aa16e';

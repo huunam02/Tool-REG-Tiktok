@@ -7,6 +7,7 @@ import 'proxy_draft.dart';
 import 'desktop_user_agents.dart';
 import 'chrome_user_agent.dart';
 import 'proxy_time_zone.dart';
+import 'nurture_store.dart';
 
 class ProxyProfile {
   const ProxyProfile({
@@ -95,7 +96,11 @@ class ProxyStore {
   final Future<String> Function() _selectUserAgent;
   Future<Database>? _opening;
   Future<Database> get _database => _opening ??= _open();
-  Future<String> generateUserAgent() async => normalizeDesktopUserAgentForPlatform(await _selectUserAgent());
+  NurtureRepository? _nurture;
+  NurtureRepository get nurture =>
+      _nurture ??= SqliteNurtureRepository(() => _database);
+  Future<String> generateUserAgent() async =>
+      normalizeDesktopUserAgentForPlatform(await _selectUserAgent());
 
   static Future<void> _createSchema(Database db) async {
     await db.execute('''CREATE TABLE configurations (
@@ -119,6 +124,7 @@ class ProxyStore {
       'CREATE UNIQUE INDEX one_current_configuration '
       'ON configurations(is_current) WHERE is_current = 1',
     );
+    await SqliteNurtureRepository.createSchema(db);
   }
 
   Future<Database> _open() async {
@@ -131,7 +137,14 @@ class ProxyStore {
       db = await factory.openDatabase(
         filename,
         options: OpenDatabaseOptions(
-          version: 9,
+          version: 10,
+          onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
+          onOpen: (db) async {
+            await db.update('nurture_sessions', {
+              'phase': 'stopped',
+              'updated_at': DateTime.now().millisecondsSinceEpoch,
+            }, where: "phase IN ('waiting','running','paused')");
+          },
           onCreate: (db, _) => _createSchema(db),
           onUpgrade: (db, oldVersion, _) async {
             if (oldVersion < 5) {
@@ -176,6 +189,7 @@ class ProxyStore {
                 );
               }
             }
+            if (oldVersion < 10) await SqliteNurtureRepository.createSchema(db);
           },
         ),
       );
@@ -195,7 +209,9 @@ class ProxyStore {
       final agent = (row['user_agent'] as String?) ?? '';
       await db.insert('configurations', {
         ...row,
-        'user_agent': agent.isEmpty ? normalizeDesktopUserAgentForPlatform(await _selectUserAgent()) : agent,
+        'user_agent': agent.isEmpty
+            ? normalizeDesktopUserAgentForPlatform(await _selectUserAgent())
+            : agent,
         'account_email': row['account_email'] ?? '',
         'account_password': row['account_password'] ?? '',
         'mailbox_password': row['mailbox_password'] ?? '',
@@ -230,7 +246,9 @@ class ProxyStore {
         id = await db.insert('configurations', {
           ..._values(proxy),
           'name': row['name'] ?? proxyLabel(proxy),
-          'user_agent': agent.isEmpty ? normalizeDesktopUserAgentForPlatform(await _selectUserAgent()) : agent,
+          'user_agent': agent.isEmpty
+              ? normalizeDesktopUserAgentForPlatform(await _selectUserAgent())
+              : agent,
           'account_email': row['account_email'] ?? '',
           'account_password': row['account_password'] ?? '',
           'mailbox_password': row['mailbox_password'] ?? '',
@@ -352,7 +370,9 @@ class ProxyStore {
       final id = await txn.insert('configurations', {
         ..._values(proxy),
         'name': '',
-        'user_agent': normalizeDesktopUserAgentForPlatform(await _selectUserAgent()),
+        'user_agent': normalizeDesktopUserAgentForPlatform(
+          await _selectUserAgent(),
+        ),
         'listed': 0,
       });
       await _applyCurrent(txn, id);
@@ -453,7 +473,9 @@ class ProxyStore {
     final requestedTimeZone = timeZoneId == null
         ? null
         : normalizeProxyTimeZone(timeZoneId);
-    final requestedAgent = userAgent == null ? null : normalizeDesktopUserAgentForPlatform(userAgent.trim());
+    final requestedAgent = userAgent == null
+        ? null
+        : normalizeDesktopUserAgentForPlatform(userAgent.trim());
     if (requestedAgent != null &&
         (requestedAgent.isEmpty ||
             RegExp(r'[\r\n]').hasMatch(requestedAgent))) {

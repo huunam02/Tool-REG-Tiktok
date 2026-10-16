@@ -10,6 +10,8 @@ import '../core/scripts/auto_watch_script.dart';
 import '../core/app_configuration.dart';
 import '../core/app_action_theme.dart';
 import '../core/otp_api.dart';
+import '../core/nurture_data.dart';
+import '../core/nurture_store.dart';
 import '../core/tiktok_launch_action.dart';
 import '../core/webview_failure.dart';
 import '../core/webview_locale.dart';
@@ -27,19 +29,27 @@ class TikTokPage extends StatelessWidget {
     this.launchAction = TikTokLaunchAction.browse,
     this.startWithBrowserCheck = false,
     this.startWithIpCheck = false,
+    bool useNativeWebView = false,
+    this.useInstalledEngine = true,
+    this.manualViewingPlan,
+    this.nurtureRepository,
     this.otpReaderFactory,
-  });
+  }) : useNativeWebView = useNativeWebView || manualViewingPlan != null;
 
   final AppConfiguration configuration;
   final TikTokLaunchAction launchAction;
   final bool startWithBrowserCheck;
   final bool startWithIpCheck;
+  final bool useNativeWebView;
+  final bool useInstalledEngine;
+  final NurturePlan? manualViewingPlan;
+  final NurtureRepository? nurtureRepository;
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
-    String get initialUrl => startWithBrowserCheck
+  String get initialUrl => startWithBrowserCheck
       ? TikTokController.browserCheckUrl
       : startWithIpCheck
       ? TikTokController.ipCheckUrl
-      : launchAction.initialUrl;
+      : manualViewingPlan?.initialUrl ?? launchAction.initialUrl;
 
   @override
   Widget build(BuildContext context) => ControllerScope<TikTokController>(
@@ -49,6 +59,10 @@ class TikTokPage extends StatelessWidget {
       launchAction: launchAction,
       startWithBrowserCheck: startWithBrowserCheck,
       startWithIpCheck: startWithIpCheck,
+      useNativeWebView: useNativeWebView,
+      useInstalledEngine: useInstalledEngine,
+      manualViewingPlan: manualViewingPlan,
+      nurtureRepository: nurtureRepository,
       otpReaderFactory: otpReaderFactory,
       onReturnToConfiguration: () {
         if (context.mounted) Navigator.of(context).maybePop();
@@ -117,7 +131,8 @@ class _TikTokView extends StatelessWidget {
   Widget _autoControls() => Positioned(
     left: 12,
     right: 12,
-    bottom: 12,
+    top: logic.waitingToAutoWatch ? 12 : null,
+    bottom: logic.waitingToAutoWatch ? null : 12,
     child: SafeArea(
       top: false,
       child: Align(
@@ -135,12 +150,14 @@ class _TikTokView extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      (logic.autoLoginBusy &&
-                                  logic.loginOtpRequest != null &&
-                                  logic.activeLoginOtp.isEmpty) ||
-                              (logic.autoSignupBusy &&
-                                  logic.signupOtpRequest != null &&
-                                  logic.activeSignupOtp.isEmpty)
+                      logic.waitingToAutoWatch
+                          ? 'Đăng ký xong. Đang chờ trước khi nuôi 10 phút…'
+                          : (logic.autoLoginBusy &&
+                                    logic.loginOtpRequest != null &&
+                                    logic.activeLoginOtp.isEmpty) ||
+                                (logic.autoSignupBusy &&
+                                    logic.signupOtpRequest != null &&
+                                    logic.activeSignupOtp.isEmpty)
                           ? 'Đang chờ API lấy OTP… (tối đa ${logic.configuration.otpApi?.waitSeconds ?? 180} giây)'
                           : logic.autoLoginBusy
                           ? 'Đang đăng nhập tự động…'
@@ -157,8 +174,10 @@ class _TikTokView extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    onPressed: logic.cancelAutoActions,
-                    child: const Text('Dừng'),
+                    onPressed: logic.waitingToAutoWatch
+                        ? logic.cancelAutoWatchHold
+                        : logic.cancelAutoActions,
+                    child: Text(logic.waitingToAutoWatch ? 'Hủy chờ' : 'Dừng'),
                   ),
                 ],
               ),
@@ -171,131 +190,189 @@ class _TikTokView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: AppActionTheme.apply(Theme.of(context)),
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          iconTheme: const IconThemeData(color: Colors.black),
-          titleSpacing: 16,
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                logic.browserCheckOpen ? 'Kiểm tra trình duyệt' : 'TikTok',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
-                ),
-              ),
-              if (logic.detectedIp != null)
+    return PopScope(
+      canPop: logic.manualViewingPlan == null || logic.manualViewingClosed,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop || logic.manualViewingClosed || logic.manualViewingClosing) {
+          return;
+        }
+        await logic.closeManualViewing();
+        if (context.mounted) Navigator.of(context).pop();
+      },
+      child: Theme(
+        data: AppActionTheme.apply(Theme.of(context)),
+        child: Scaffold(
+          resizeToAvoidBottomInset: logic.useNativeWebView,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            iconTheme: const IconThemeData(color: Colors.black),
+            titleSpacing: 16,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  'IP: ${logic.detectedIp}',
+                  logic.browserCheckOpen
+                      ? 'Kiểm tra trình duyệt'
+                      : logic.useNativeWebView
+                      ? 'TikTok · Tương thích'
+                      : 'TikTok',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.black54,
-                    fontWeight: FontWeight.w400,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
                   ),
+                ),
+                if (logic.detectedIp != null)
+                  Text(
+                    'IP: ${logic.detectedIp}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.black54,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                if (logic.manualViewingPlan != null)
+                  Text(
+                    '${logic.manualViewingPlan!.mode.label}${logic.manualViewingPlan!.keyword.isEmpty ? '' : ' · ${logic.manualViewingPlan!.keyword}'} · xem thủ công',
+                    key: const Key('manualViewingStatus'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: Colors.black54),
+                  ),
+              ],
+            ),
+            actionsPadding: const EdgeInsets.only(right: 8),
+            actions: [
+              if (!logic.browserCheckOpen && !logic.useNativeWebView)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: _autoWatchButton(),
+                ),
+              IconButton(
+                tooltip: 'Tải lại',
+                onPressed: logic.reloadPage,
+                icon: const Icon(Icons.refresh, color: Colors.black),
+              ),
+              if (needsAndroidDesktopIdentity &&
+                  logic.manualViewingPlan == null)
+                IconButton(
+                  key: const Key('nativeWebView'),
+                  tooltip: logic.usesEngineIdentity
+                      ? 'Dùng User-Agent đã chọn (thủ công)'
+                      : 'Desktop theo WebView (thủ công)',
+                  icon: const Icon(Icons.web, color: Colors.black),
+                  onPressed: () {
+                    logic.cancelAutoActions();
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute<void>(
+                        builder: (_) => TikTokPage(
+                          configuration: logic.configuration,
+                          useNativeWebView: true,
+                          useInstalledEngine: !logic.usesEngineIdentity,
+                        ),
+                      ),
+                    );
+                  },
                 ),
             ],
           ),
-          actionsPadding: const EdgeInsets.only(right: 8),
-          actions: [
-            if (!logic.browserCheckOpen)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: _autoWatchButton(),
-              ),
-            IconButton(
-              tooltip: 'Tải lại',
-              onPressed: logic.reloadPage,
-              icon: const Icon(Icons.refresh, color: Colors.black),
-            ),
-          ],
-        ),
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            InAppWebView(
-              initialUrlRequest: needsAndroidDesktopIdentity
-                  ? null
-                  : URLRequest(
-                      url: WebUri(logic.initialUrl),
-                      headers: englishWebViewHeaders,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              InAppWebView(
+                initialUrlRequest: logic.needsDesktopIdentity
+                    ? null
+                    : URLRequest(
+                        url: WebUri(logic.initialUrl),
+                        headers: logic.navigationHeaders,
+                      ),
+                initialUserScripts: UnmodifiableListView([
+                  if (!logic.useNativeWebView &&
+                      needsAndroidDesktopIdentity &&
+                      logic.configuration.webViewTimeZone != null)
+                    webViewTimeZoneUserScript(
+                      logic.configuration.webViewTimeZone!,
                     ),
-              initialUserScripts: UnmodifiableListView([
-                if (needsAndroidDesktopIdentity &&
-                    logic.configuration.webViewTimeZone != null)
-                  webViewTimeZoneUserScript(
-                    logic.configuration.webViewTimeZone!,
+                  if (!logic.usesEngineIdentity) pixelGpuInfoUserScript(),
+                  disableWebRtcUserScript(
+                    localIp: logic.configuration.webViewLocalIp,
                   ),
-                hideGpuInfoUserScript(),
-                disableWebRtcUserScript(),
-                englishWebViewLocaleUserScript(),
-                UserScript(
-                  source: inlineVideoScript,
-                  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                  if (forceEnglishWebViewLocale && !logic.useNativeWebView)
+                    englishWebViewLocaleUserScript(),
+                  if (!logic.useNativeWebView)
+                    UserScript(
+                      source: inlineVideoScript,
+                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                    ),
+                  if (!logic.useNativeWebView)
+                    UserScript(
+                      source: autoAcceptCookieScript,
+                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+                      forMainFrameOnly: true,
+                    ),
+                  if (!logic.useNativeWebView)
+                    UserScript(
+                      source: autoSelectInterestScript,
+                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+                      forMainFrameOnly: true,
+                    ),
+                ]),
+                initialSettings: InAppWebViewSettings(
+                  userAgent: logic.usesEngineIdentity
+                      ? null
+                      : logic.configuration.userAgent,
+                  preferredContentMode: UserPreferredContentMode.DESKTOP,
+                  useWideViewPort: true,
+                  loadWithOverviewMode: true,
+                  initialScale: 0,
+                  supportZoom: true,
+                  builtInZoomControls: true,
+                  displayZoomControls: false,
+                  textZoom: 100,
+                  javaScriptEnabled: true,
+                  mediaPlaybackRequiresUserGesture: false,
+                  allowsInlineMediaPlayback: true,
+                  incognito: false,
+                  cacheEnabled: true,
                 ),
-                UserScript(
-                  source: autoAcceptCookieScript,
-                  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
-                  forMainFrameOnly: true,
-                ),
-                UserScript(
-                  source: autoSelectInterestScript,
-                  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
-                  forMainFrameOnly: true,
-                ),
-              ]),
-              initialSettings: InAppWebViewSettings(
-                userAgent: logic.configuration.userAgent,
-                preferredContentMode: UserPreferredContentMode.DESKTOP,
-                useWideViewPort: true,
-                loadWithOverviewMode: true,
-                initialScale: 0,
-                supportZoom: true,
-                builtInZoomControls: true,
-                displayZoomControls: false,
-                textZoom: 100,
-                javaScriptEnabled: true,
-                mediaPlaybackRequiresUserGesture: false,
-                allowsInlineMediaPlayback: true,
-                incognito: false,
-                cacheEnabled: true,
+                onWebViewCreated: logic.onWebViewCreated,
+                onReceivedHttpAuthRequest: logic.onReceivedHttpAuthRequest,
+                onLoadStart: logic.onLoadStart,
+                onProgressChanged: logic.onProgressChanged,
+                onLoadStop: logic.onLoadStop,
+                onReceivedError: logic.onReceivedError,
+                onReceivedHttpError: logic.onReceivedHttpError,
+                onConsoleMessage: logic.onConsoleMessage,
+                shouldOverrideUrlLoading: logic.shouldOverrideUrlLoading,
               ),
-              onWebViewCreated: logic.onWebViewCreated,
-              onReceivedHttpAuthRequest: logic.onReceivedHttpAuthRequest,
-              onLoadStart: logic.onLoadStart,
-              onProgressChanged: logic.onProgressChanged,
-              onLoadStop: logic.onLoadStop,
-              onReceivedError: logic.onReceivedError,
-              onReceivedHttpError: logic.onReceivedHttpError,
-              onConsoleMessage: logic.onConsoleMessage,
-              shouldOverrideUrlLoading: logic.shouldOverrideUrlLoading,
-            ),
-            if (logic.loadingProgress < 100)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: IgnorePointer(
-                  child: LinearProgressIndicator(
-                    value: logic.loadingProgress / 100,
-                    minHeight: 2,
-                    backgroundColor: Colors.white12,
-                    color: AppActionTheme.primary,
+              if (logic.loadingProgress < 100)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: LinearProgressIndicator(
+                      value: logic.loadingProgress / 100,
+                      minHeight: 2,
+                      backgroundColor: Colors.white12,
+                      color: AppActionTheme.primary,
+                    ),
                   ),
                 ),
-              ),
-            if (logic.pageFailure != null)
-              _ErrorView(failure: logic.pageFailure!, onRetry: logic.retryPage),
-            if (logic.autoLoginBusy || logic.autoSignupBusy) _autoControls(),
-          ],
+              if (logic.pageFailure != null)
+                _ErrorView(
+                  failure: logic.pageFailure!,
+                  onRetry: logic.retryPage,
+                ),
+              if (logic.autoLoginBusy ||
+                  logic.autoSignupBusy ||
+                  logic.waitingToAutoWatch)
+                _autoControls(),
+            ],
+          ),
         ),
       ),
     );

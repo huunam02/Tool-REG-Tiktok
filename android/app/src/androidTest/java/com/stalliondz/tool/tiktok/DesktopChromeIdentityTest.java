@@ -58,11 +58,39 @@ public class DesktopChromeIdentityTest {
         assertDesktopIdentity(null, "151.0.7922.173");
     }
 
+    private static final String MIUI_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/135.0.7049.79 Safari/537.36 XiaoMi/MiuiBrowser/14.65.0-gn";
+
+    @Test public void miuiHasDesktopIdentityAndLayoutFromFirstRequest() throws Exception {
+        assertDesktopIdentity(null, "135.0.7049.79", true);
+    }
+
+    @Test public void windowsChromeHasMatchingHeadersJavaScriptAndDesktopLayout() throws Exception {
+        assertDesktopIdentity(null, "155.0.8059.79", false, true);
+    }
+
+    @Test public void engineCompatibilityUsesInstalledVersionAndNativeHardware() throws Exception {
+        assertDesktopIdentity(null, null, false, false, false);
+    }
+
     private void assertDesktopIdentity(String configuredAgent) throws Exception {
         assertDesktopIdentity(configuredAgent, null);
     }
 
     private void assertDesktopIdentity(String configuredAgent, String requestedFullVersion) throws Exception {
+        assertDesktopIdentity(configuredAgent, requestedFullVersion, false);
+    }
+
+    private void assertDesktopIdentity(String configuredAgent, String requestedFullVersion, boolean isMiui) throws Exception {
+        assertDesktopIdentity(configuredAgent, requestedFullVersion, isMiui, false);
+    }
+
+    private void assertDesktopIdentity(String configuredAgent, String requestedFullVersion, boolean isMiui, boolean isWindows) throws Exception {
+        assertDesktopIdentity(configuredAgent, requestedFullVersion, isMiui, isWindows, true);
+    }
+
+    private void assertDesktopIdentity(String configuredAgent, String requestedFullVersion, boolean isMiui, boolean isWindows, boolean emulateHardware) throws Exception {
+        String platformToken = isWindows ? "Windows NT 10.0; Win64; x64" : "X11; Linux x86_64";
         assumeTrue(WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA));
         assertTrue("Updated WebView supports desktop form factors", WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA_FORM_FACTORS));
         Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
@@ -87,8 +115,8 @@ public class DesktopChromeIdentityTest {
                 }
                 headers.set(received);
                 byte[] body = ("<!doctype html><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>" +
-                    "<script>window.firstDesktopMetrics={width:innerWidth,dpr:devicePixelRatio,screenWidth:screen.width,touch:navigator.maxTouchPoints};</script>" +
-                    "<title>Desktop identity test</title><p>Local fixture</p>" +
+                    "<script>window.firstDesktopMetrics={width:innerWidth,dpr:devicePixelRatio,screenWidth:screen.width,touch:navigator.maxTouchPoints,cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory};</script>" +
+                    "<title>Desktop identity test</title><p>Local fixture</p><iframe srcdoc=\"<script>window.firstPixel={cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory,touch:navigator.maxTouchPoints};</script>\"></iframe>" +
                     "<script>document.querySelector('meta').content='width=device-width,initial-scale=1';" +
                     "const replacement=document.createElement('meta');replacement.name='viewport';" +
                     "replacement.content='width=device-width,maximum-scale=1,user-scalable=no';" +
@@ -120,11 +148,11 @@ public class DesktopChromeIdentityTest {
                 if (configuredAgent != null) webView.getSettings().setUserAgentString(configuredAgent);
                 if (requestedFullVersion != null) {
                     userAgent.set(DesktopChromeIdentity.INSTANCE.configure(webView,
-                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+                        isMiui ? MIUI_AGENT : "Mozilla/5.0 (" + platformToken + ") AppleWebKit/537.36 " +
                         "(KHTML, like Gecko) Chrome/" + requestedFullVersion.split("\\.")[0] +
                         ".0.0.0 Safari/537.36", requestedFullVersion));
                 } else {
-                    userAgent.set(DesktopChromeIdentity.INSTANCE.configure(webView));
+                    userAgent.set(DesktopChromeIdentity.INSTANCE.configure(webView, null, null, emulateHardware));
                 }
                 webView.loadUrl("http://127.0.0.1:" + server.getLocalPort() + "/");
             });
@@ -136,13 +164,13 @@ public class DesktopChromeIdentityTest {
                 .matcher(WebSettings.getDefaultUserAgent(activity.getActivity()));
             assertTrue(nativeVersion.find());
             String expectedVersion = requestedFullVersion != null ? requestedFullVersion : nativeVersion.group(1);
-            assertEquals("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+            assertEquals(isMiui ? MIUI_AGENT : "Mozilla/5.0 (" + platformToken + ") AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/" + expectedVersion.split("\\.")[0] +
                 ".0.0.0 Safari/537.36", userAgent.get());
             assertEquals(userAgent.get(), request.get("user-agent"));
             assertEquals("?0", request.get("sec-ch-ua-mobile"));
-            assertEquals("\"Linux\"", request.get("sec-ch-ua-platform"));
-            assertTrue(request.get("sec-ch-ua").contains("\"Google Chrome\""));
+            assertEquals(isWindows ? "\"Windows\"" : "\"Linux\"", request.get("sec-ch-ua-platform"));
+            assertTrue(request.get("sec-ch-ua").contains(isMiui ? "\"Miui Browser\"" : "\"Google Chrome\""));
             assertFalse(request.get("sec-ch-ua").contains("Android WebView"));
             Matcher major = Pattern.compile("Chrome/(\\d+)\\.").matcher(userAgent.get());
             assertTrue(major.find());
@@ -151,21 +179,34 @@ public class DesktopChromeIdentityTest {
             CountDownLatch evaluated = new CountDownLatch(1);
             AtomicReference<String> snapshot = new AtomicReference<>();
             instrumentation.runOnMainSync(() -> view.get().evaluateJavascript(
-                "JSON.stringify({ua:navigator.userAgent,platform:navigator.platform,data:navigator.userAgentData.toJSON(),touch:navigator.maxTouchPoints,width:innerWidth,dpr:devicePixelRatio,scale:visualViewport.scale,visualWidth:visualViewport.width,first:firstDesktopMetrics,desktopLayout:matchMedia('(min-width: 900px)').matches,viewport:document.querySelector('meta[name=viewport]').content})",
+                "JSON.stringify({ua:navigator.userAgent,platform:navigator.platform,data:navigator.userAgentData.toJSON(),cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory,frame:document.querySelector('iframe').contentWindow.firstPixel,touch:navigator.maxTouchPoints,width:innerWidth,dpr:devicePixelRatio,scale:visualViewport.scale,visualWidth:visualViewport.width,first:firstDesktopMetrics,desktopLayout:matchMedia('(min-width: 900px)').matches,viewport:document.querySelector('meta[name=viewport]').content})",
                 result -> { snapshot.set(result); evaluated.countDown(); }));
             assertTrue(evaluated.await(5, TimeUnit.SECONDS));
             JSONObject identity = new JSONObject(new JSONArray("[" + snapshot.get() + "]").getString(0));
             assertEquals(userAgent.get(), identity.getString("ua"));
-            assertEquals("Linux x86_64", identity.getString("platform"));
-            assertEquals("Linux", identity.getJSONObject("data").getString("platform"));
+            assertEquals(isWindows ? "Win32" : "Linux x86_64", identity.getString("platform"));
+            assertEquals(isWindows ? "Windows" : "Linux", identity.getJSONObject("data").getString("platform"));
             assertFalse(identity.getJSONObject("data").getBoolean("mobile"));
-            assertTrue("Phone touch remains available", identity.getInt("touch") > 0);
+            if (emulateHardware) {
+                assertEquals("Pixel CPU cores", 8, identity.getInt("cpu"));
+                assertEquals("Android Chrome memory bucket", 8, identity.getInt("memory"));
+            } else {
+                assertTrue("Native CPU remains available", identity.getInt("cpu") > 0);
+                assertTrue("Native memory remains available", identity.getInt("memory") > 0);
+            }
+            assertTrue("Native phone touch points are retained", identity.getInt("touch") > 0);
+            JSONObject frame = identity.getJSONObject("frame");
+            assertEquals("Iframe hardware matches the page", identity.getInt("cpu"), frame.getInt("cpu"));
+            assertEquals(identity.getInt("memory"), frame.getInt("memory"));
+            assertEquals(identity.getInt("touch"), frame.getInt("touch"));
             double density = activity.getActivity().getResources().getDisplayMetrics().density;
             assertEquals("Phone DPR is native, not a fixed desktop value", density, identity.getDouble("dpr"), 0.01);
             JSONObject first = identity.getJSONObject("first");
             assertTrue("First website script already uses desktop layout", first.getInt("width") >= 980);
             assertEquals("First script has native DPR", density, first.getDouble("dpr"), 0.01);
-            assertTrue("First script retains phone touch", first.getInt("touch") > 0);
+            assertEquals("First script sees consistent CPU", identity.getInt("cpu"), first.getInt("cpu"));
+            assertEquals("First script sees consistent memory", identity.getInt("memory"), first.getInt("memory"));
+            assertEquals("First script retains native touch", identity.getInt("touch"), first.getInt("touch"));
             double viewWidth = view.get().getWidth() / density;
             assertTrue("Initial overview shows the whole desktop viewport", identity.getDouble("visualWidth") >= 978);
             assertEquals("Initial scale fits desktop layout to phone width", viewWidth / identity.getDouble("width"),
@@ -182,7 +223,7 @@ public class DesktopChromeIdentityTest {
             assertEquals("x86", hints.getString("architecture"));
             assertEquals("64", hints.getString("bitness"));
             assertEquals("", hints.getString("model"));
-            assertEquals("", hints.getString("platformVersion"));
+            assertEquals(isWindows ? "10.0.0" : "", hints.getString("platformVersion"));
             assertTrue("Full Client Hints version matches the requested identity",
                 hints.getJSONArray("fullVersionList").toString().contains(expectedVersion));
             assertEquals("[\"Desktop\"]", hints.getJSONArray("formFactors").toString());

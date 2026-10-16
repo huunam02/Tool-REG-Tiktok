@@ -106,7 +106,7 @@ void main() {
       expect(selected.timeZoneId, isEmpty);
       await store.close();
       final migrated = await databaseFactoryFfi.openDatabase(filename);
-      expect(await migrated.getVersion(), 9);
+      expect(await migrated.getVersion(), 10);
       expect(
         (await migrated.rawQuery(
           'PRAGMA table_info(configurations)',
@@ -217,7 +217,7 @@ void main() {
       await previous.close();
       store = openStore();
       final selected = (await store.getCurrentProfile())!;
-      final expected = chromeDesktopUserAgent(desktopChromePlatform);
+      final expected = windowsChromeUserAgent;
       expect(selected.configurationId, id);
       expect(selected.userAgent, expected);
       expect(selected.account!.email, account.email);
@@ -329,7 +329,15 @@ void main() {
         where:
             "type = 'table' AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata'",
       );
-      expect(tables.map((e) => e['name']), ['configurations']);
+      expect(
+        tables.map((e) => e['name']),
+        unorderedEquals([
+          'configurations',
+          'nurture_accounts',
+          'nurture_sessions',
+          'app_settings',
+        ]),
+      );
       final columns = await db.rawQuery('PRAGMA table_info(configurations)');
       expect(columns.map((e) => e['name']), contains('statusAccount'));
       expect(columns.map((e) => e['name']), isNot(contains('statusaccount')));

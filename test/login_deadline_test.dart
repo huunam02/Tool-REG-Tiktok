@@ -66,6 +66,7 @@ void main() {
         expect(reader.requests, hasLength(1));
         expect(reader.closed, isTrue);
         expect(webView.sources.last, contains('"allowOtpSubmit":false'));
+        logic.onClose();
       },
     );
   }
@@ -121,6 +122,7 @@ void main() {
 
     expect(logic.autoWatchEnabled, isTrue);
     expect(webView.watchStarted, isTrue);
+    logic.onClose();
   });
 }
 

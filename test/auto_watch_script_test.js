@@ -22,6 +22,7 @@ function setup() {
   const responses = [];
   let focusedEditor;
   let randomValue = 0;
+  const randomValues = [];
   let pasteBehavior = text => { focusedEditor.textContent = text; return true; };
   const fetch = () => new Promise((resolve) => responses.push(resolve));
   let now = 0;
@@ -51,7 +52,8 @@ function setup() {
   };
   const context = {
     KeyboardEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
-    Math: { random: () => randomValue, floor: Math.floor, min: Math.min, max: Math.max },
+    Math: { random: () => randomValues.length ? randomValues.shift() : randomValue,
+      floor: Math.floor, min: Math.min, max: Math.max },
     document, window, URL, location: {href: 'https://www.tiktok.com/'}, innerWidth: 400, innerHeight: 800,
     Date: { now: () => now },
     getComputedStyle: (element) => ({
@@ -99,6 +101,7 @@ function setup() {
     focus: (editor) => { focusedEditor = editor; document.activeElement = editor; },
     paste: (callback) => { pasteBehavior = callback; },
     random: (value) => { randomValue = value; },
+    randomSequence: (...values) => { randomValues.push(...values); },
     configure: (comments) => {
       window.__flutterAutoWatchConfig = {comments};
     },
@@ -266,13 +269,13 @@ test('retries a next button that did not change the video using scrolling', () =
   env.start();
   video.finish();
   assert.equal(env.scrolls.length, 0);
-  env.elapse(1500);
+  env.elapse(3000);
   env.tick();
   assert.equal(env.scrolls.length, 1);
   // Do not immediately skip another item or spin forever at the end of a feed.
   env.tick();
   assert.equal(env.scrolls.length, 1);
-  for (let i = 0; i < 10; i++) { env.elapse(1500); env.tick(); }
+  for (let i = 0; i < 10; i++) { env.elapse(3000); env.tick(); }
   assert.equal(env.scrolls.length, 3);
 });
 
@@ -306,7 +309,7 @@ test('accepts caption overlays outside the media section but inside the article'
   const env = setup();
   const video = env.addVideo();
   const overlay = {};
-  const article = { contains: (element) => element === overlay };
+  const article = { contains: (element) => element === overlay, querySelector: () => null };
   const mediaSection = { contains: () => false };
   video.closest = (selector) => selector === 'article' ? article : mediaSection;
   env.document.elementFromPoint = () => overlay;
@@ -371,11 +374,16 @@ function attachComments(env, video) {
 }
 
 async function beginComment(env, video, settlePaste = true) {
-  video.currentTime = 2;
-  env.elapse(2000);
+  const target = env.window.__flutterAutoWatch.getStatus().commentAtSeconds;
+  assert.ok(target >= 5 && target <= video.duration * 0.7);
+  const preparation = target - 2;
+  video.currentTime = preparation;
+  env.elapse(preparation * 1000);
   env.tick(); // Open the panel.
   env.tick(); // Request native clipboard paste.
   if (settlePaste) await new Promise(setImmediate);
+  video.currentTime = target;
+  env.elapse(2000);
   env.tick(); // Verify the pasted text and submit once.
 }
 
@@ -415,20 +423,19 @@ test('randomly selects user comments, confirms saving and watches to the end', a
   assert.equal(env.messages.filter(m=>m.message === 'comment-sent').length, 3);
 });
 
-test('waits for a comment on a short video before advancing', async () => {
+test('a short clip without a 5s–70% window advances without commenting', async () => {
   const env = setup();
   env.configure(['Hello']);
   const video = env.addVideo();
+  video.duration = 6;
   const ui = attachComments(env, video);
   env.start();
   video.finish();
   env.tick();
   await new Promise(setImmediate);
   env.tick();
-  assert.equal(ui.submit.clicks, 1);
-  assert.equal(env.scrolls.length, 0);
-  await env.respond(saved('Hello'));
-  env.tick();
+  assert.equal(ui.submit.clicks, 0);
+  assert.equal(env.messages.filter(m => m.handler === 'FlutterCommentPaste').length, 0);
   assert.equal(env.scrolls.length, 1);
 });
 
@@ -461,8 +468,8 @@ test('does not overwrite a comment draft', () => {
   ui.editor.textContent = 'My unfinished draft';
   env.editors.push(ui.editor);
   env.start();
-  video.currentTime = 2;
-  env.elapse(2000);
+  video.currentTime = 3;
+  env.elapse(3000);
   env.tick();
   assert.equal(ui.editor.textContent, 'My unfinished draft');
   assert.equal(ui.submit.clicks, 0);
@@ -505,8 +512,8 @@ test('stopping before submission cancels it and restores the page fetch', () => 
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
-  video.currentTime = 2;
-  env.elapse(2000);
+  video.currentTime = 3;
+  env.elapse(3000);
   env.tick(); env.tick();
   env.stop();
   env.tick();
@@ -521,8 +528,8 @@ test('does not fill or submit a comment while the page is hidden', () => {
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
-  video.currentTime = 2;
-  env.elapse(2000);
+  video.currentTime = 3;
+  env.elapse(3000);
   env.tick();
   env.document.hidden = true;
   env.tick(); env.tick();
@@ -536,8 +543,8 @@ test('stops if the video source changes before submitting', () => {
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
-  video.currentTime = 2;
-  env.elapse(2000);
+  video.currentTime = 3;
+  env.elapse(3000);
   env.tick();
   video.currentSrc = 'another-post';
   env.tick();
@@ -551,8 +558,8 @@ test('stops for the TikTok login dialog before typing or submitting', () => {
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
-  video.currentTime = 2;
-  env.elapse(2000);
+  video.currentTime = 3;
+  env.elapse(3000);
   env.tick();
   env.dialogs.push({
     innerText: 'Log in to TikTok',
@@ -575,6 +582,7 @@ test('avoids consecutive repeated comments across script restarts', async () => 
   env.tick();
   env.stop();
   video.currentSrc = 'new-source';
+  video.currentTime = 0;
   ui = attachComments(env, video);
   env.start();
   await beginComment(env, video);
@@ -586,6 +594,7 @@ test('uses the random value to choose from the array rather than sequential orde
   const env = setup();
   env.configure(['First', 'Second', 'Third', 'Fourth']);
   env.random(0.99);
+  env.randomSequence(0); // Keep this post in the full-watch branch.
   const video = env.addVideo();
   const ui = attachComments(env, video);
   env.start();
@@ -722,13 +731,254 @@ test('tries the accessible Enter action once when the comment click is ignored',
   const ui = attachComments(env, video);
   ui.control.querySelector = () => ({getAttribute: () => null, click: () => {}});
   env.start();
-  video.currentTime = 2;
-  env.elapse(2000); env.tick();
+  video.currentTime = 3;
+  env.elapse(3000); env.tick();
   assert.equal(env.editors.length, 0);
   env.elapse(2000); env.tick();
   env.tick();
   await new Promise(setImmediate);
+  video.currentTime = 5;
   env.tick();
   assert.equal(ui.submit.clicks, 1);
   assert.equal(env.editors.length, 1);
+});
+
+for (const [randomValue, expectedMode] of [[0.1, 'full'], [0.9, 'skip']]) {
+  test(`independent choices can produce three consecutive ${expectedMode} videos`, () => {
+    const env = setup();
+    env.random(randomValue);
+    const videos = [env.addVideo(), env.addVideo(800), env.addVideo(1600)];
+    env.start();
+    for (const video of videos) {
+      const status = env.window.__flutterAutoWatch.getStatus();
+      assert.equal(status.watchMode, expectedMode);
+      if (expectedMode === 'full') video.finish();
+      else { video.currentTime = status.skipAfterSeconds; env.tick(); }
+      env.tick();
+    }
+    assert.equal(env.scrolls.length, 3);
+  });
+}
+
+test('an early-skip video scrolls at its sampled playback time without opening comments', () => {
+  const env = setup();
+  env.configure(['Hello']);
+  env.random(0.75);
+  const video = env.addVideo();
+  const ui = attachComments(env, video);
+  env.addVideo(800);
+  env.start();
+  const threshold = env.window.__flutterAutoWatch.getStatus().skipAfterSeconds;
+  assert.ok(threshold >= 2 && threshold <= 5);
+  env.elapse(60000); env.tick(); // Buffering at position zero must not count.
+  assert.equal(env.scrolls.length, 0);
+  video.currentTime = threshold - 0.001;
+  env.tick();
+  assert.equal(env.scrolls.length, 0);
+  video.currentTime = threshold;
+  env.tick();
+  assert.equal(env.scrolls.length, 1);
+  assert.equal(video.ended, false);
+  assert.equal(ui.control.querySelector().clicks, 0);
+  assert.equal(ui.submit.clicks, 0);
+  assert.equal(env.messages.filter(m => m.handler === 'FlutterCommentPaste').length, 0);
+});
+
+test('a very short skip video advances before its end', () => {
+  const env = setup();
+  env.random(0.9);
+  const video = env.addVideo();
+  video.duration = 2;
+  env.start();
+  const threshold = env.window.__flutterAutoWatch.getStatus().skipAfterSeconds;
+  assert.ok(threshold > 0 && threshold < video.duration);
+  video.currentTime = threshold;
+  env.tick();
+  assert.equal(env.scrolls.length, 1);
+  assert.equal(video.ended, false);
+});
+
+test('full-watch comment publication waits for the sampled playback time in the 5s–70% range', async () => {
+  const env = setup();
+  env.configure(['Hello']);
+  env.randomSequence(0.1, 0.5);
+  const video = env.addVideo();
+  video.duration = 60;
+  const ui = attachComments(env, video);
+  env.start();
+  const target = env.window.__flutterAutoWatch.getStatus().commentAtSeconds;
+  assert.ok(target > 5 && target < video.duration * 0.7);
+  video.currentTime = target - 2;
+  env.tick(); env.tick();
+  await new Promise(setImmediate);
+  video.paused = true;
+  env.elapse(3000); env.tick();
+  assert.equal(ui.submit.clicks, 0);
+  video.paused = false;
+  video.currentTime = target - 0.001;
+  env.tick();
+  assert.equal(ui.submit.clicks, 0);
+  video.currentTime = target;
+  env.tick();
+  assert.equal(ui.submit.clicks, 1);
+  assert.ok(video.currentTime >= 5 && video.currentTime <= video.duration * 0.7);
+  assert.equal(env.scrolls.length, 0); // Full-watch posts still wait for the end.
+  await env.respond(saved('Hello'));
+  env.tick();
+  video.finish();
+  assert.equal(env.scrolls.length, 1);
+});
+
+for (const randomValue of [0, 0.25, 0.5, 0.999]) {
+  test(`comment time stays in range and is sampled once (random=${randomValue})`, () => {
+    const env = setup();
+    env.randomSequence(0, randomValue);
+    const video = env.addVideo();
+    video.duration = 120;
+    env.start();
+    const target = env.window.__flutterAutoWatch.getStatus().commentAtSeconds;
+    assert.ok(target >= 5 && target <= video.duration * 0.7);
+    env.random(0.95);
+    for (let tick = 0; tick < 20; tick++) env.tick();
+    assert.equal(env.window.__flutterAutoWatch.getStatus().commentAtSeconds, target);
+    assert.equal(env.window.__flutterAutoWatch.getStatus().watchMode, 'full');
+  });
+}
+
+test('late metadata defers the comment schedule until a finite duration is known', () => {
+  const env = setup();
+  env.configure(['Hello']);
+  const video = env.addVideo();
+  const ui = attachComments(env, video);
+  video.duration = NaN;
+  env.start();
+  env.elapse(20000); env.tick();
+  assert.equal(env.window.__flutterAutoWatch.getStatus().commentAtSeconds, null);
+  assert.equal(ui.submit.clicks, 0);
+  video.duration = 60;
+  env.tick();
+  assert.equal(env.window.__flutterAutoWatch.getStatus().commentAtSeconds, 5);
+  assert.equal(env.messages.filter(m => m.handler === 'FlutterCommentPaste').length, 0);
+});
+
+test('a skipped comment window leaves the full-watch video running without posting', () => {
+  const env = setup();
+  env.configure(['Hello']);
+  const video = env.addVideo();
+  const ui = attachComments(env, video);
+  env.start();
+  video.currentTime = 8;
+  env.tick();
+  assert.equal(ui.submit.clicks, 0);
+  assert.equal(env.intervals.size, 1);
+  assert.equal(env.messages.filter(m => m.handler === 'FlutterCommentPaste').length, 0);
+  video.finish();
+  assert.equal(env.scrolls.length, 1);
+});
+
+test('a delayed native draft is never published after the 70% boundary', async () => {
+  const env = setup();
+  env.configure(['Hello']);
+  const video = env.addVideo();
+  const ui = attachComments(env, video);
+  env.start();
+  video.currentTime = 3;
+  env.tick(); env.tick();
+  await new Promise(setImmediate);
+  assert.equal(ui.editor.textContent, 'Hello');
+  video.currentTime = 8;
+  env.tick();
+  assert.equal(ui.submit.clicks, 0);
+  assert.equal(ui.editor.textContent, 'Hello');
+  assert.equal(env.intervals.size, 0);
+  assert.equal(env.messages.at(-1).message, 'comment-window-expired');
+});
+
+test('restarting the watcher retains the same post choice and accumulated viewing time', () => {
+  const env = setup();
+  env.random(0.9);
+  const video = env.addVideo();
+  env.start();
+  const threshold = env.window.__flutterAutoWatch.getStatus().skipAfterSeconds;
+  video.currentTime = 1;
+  env.tick();
+  env.stop();
+  env.random(0.1);
+  env.start();
+  const status = env.window.__flutterAutoWatch.getStatus();
+  assert.equal(status.watchMode, 'skip');
+  assert.equal(status.skipAfterSeconds, threshold);
+  assert.equal(status.watchedSeconds, 1);
+  video.currentTime = threshold;
+  env.tick();
+  assert.equal(env.scrolls.length, 1);
+});
+
+test('a full-watch video that wraps while waiting for its comment advances after confirmation', async () => {
+  const env = setup();
+  env.configure(['Hello']);
+  const video = env.addVideo();
+  const ui = attachComments(env, video);
+  env.start();
+  await beginComment(env, video);
+  video.currentTime = 9.9; env.tick();
+  video.currentTime = 0.1; env.tick();
+  assert.equal(env.scrolls.length, 0);
+  await env.respond(saved('Hello'));
+  env.tick();
+  assert.equal(ui.submit.clicks, 1);
+  assert.equal(env.scrolls.length, 1);
+});
+
+test('enabling mid-video keeps the selected comment time inside the remaining 70% window', async () => {
+  const env = setup();
+  env.configure(['Hello']);
+  env.randomSequence(0, 0.5);
+  const video = env.addVideo();
+  video.duration = 60;
+  video.currentTime = 20;
+  const ui = attachComments(env, video);
+  env.start();
+  const target = env.window.__flutterAutoWatch.getStatus().commentAtSeconds;
+  assert.ok(target >= 5 && 20 + target <= 60 * 0.7);
+  video.currentTime = 20 + target - 2;
+  env.tick(); env.tick();
+  await new Promise(setImmediate);
+  video.currentTime = 20 + target;
+  env.tick();
+  assert.equal(ui.submit.clicks, 1);
+  assert.ok(video.currentTime <= video.duration * 0.7);
+});
+
+test('enabling past 70% watches to the end without preparing a late comment', () => {
+  const env = setup();
+  env.configure(['Hello']);
+  const video = env.addVideo();
+  video.duration = 60;
+  video.currentTime = 45;
+  const ui = attachComments(env, video);
+  env.start();
+  assert.equal(env.window.__flutterAutoWatch.getStatus().commentAtSeconds, null);
+  video.currentTime = 50; env.tick();
+  video.finish();
+  assert.equal(ui.submit.clicks, 0);
+  assert.equal(env.messages.filter(m => m.handler === 'FlutterCommentPaste').length, 0);
+  assert.equal(env.scrolls.length, 1);
+});
+
+test('manual seeking does not count as watched playback or trigger an early skip', () => {
+  const env = setup();
+  env.random(0.9);
+  const video = env.addVideo();
+  video.duration = 60;
+  env.start();
+  video.currentTime = 20;
+  video.listeners.get('seeking')();
+  video.listeners.get('seeked')();
+  env.tick();
+  assert.equal(env.window.__flutterAutoWatch.getStatus().watchedSeconds, 0);
+  assert.equal(env.scrolls.length, 0);
+  video.currentTime += env.window.__flutterAutoWatch.getStatus().skipAfterSeconds + 0.001;
+  env.tick();
+  assert.equal(env.scrolls.length, 1);
 });

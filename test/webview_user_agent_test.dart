@@ -136,7 +136,9 @@ void main() {
               return 'Chrome/154.0.8037.107';
             },
           ),
-          currentAndroidChromeDesktopUserAgent,
+          isWindowsChromeUserAgent(agent)
+              ? windowsChromeUserAgent
+              : currentAndroidChromeDesktopUserAgent,
         );
       }
       expect(nativeReads, 0);
@@ -150,16 +152,80 @@ void main() {
         configured,
         nativeAgentLoader: () async => throw StateError('Unavailable'),
       ),
-      currentAndroidChromeDesktopUserAgent,
+      windowsChromeUserAgent,
     );
     expect(
       await resolveWebViewUserAgent(
         configured,
         nativeAgentLoader: () async => 'unknown',
       ),
-      currentAndroidChromeDesktopUserAgent,
+      windowsChromeUserAgent,
     );
   });
+
+  test(
+    'Android migrates old Miui profiles to Miui desktop and preserves it on launch',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      const pasted =
+          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/534.24 '
+          '(KHTML, like Gecko) Chrome/135.0.7049.79 Safari/534.24 '
+          'XiaoMi/MiuiBrowser/14.65.0-gn';
+      expect(
+        normalizeDesktopUserAgentForPlatform(pasted),
+        miuiBrowserUserAgent,
+      );
+      expect(await resolveWebViewUserAgent(pasted), miuiBrowserUserAgent);
+      const previousMobile =
+          'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 '
+          '(KHTML, like Gecko) Chrome/135.0.7049.79 Mobile Safari/537.36 '
+          'XiaoMi/MiuiBrowser/14.65.0-gn';
+      expect(
+        await resolveWebViewUserAgent(previousMobile),
+        miuiBrowserUserAgent,
+      );
+      expect(miuiBrowserUserAgent, contains('X11; Linux x86_64'));
+      expect(miuiBrowserUserAgent, isNot(contains('Android')));
+      // Migrate the old desktop-labelled profile that still advertised Android.
+      expect(
+        await resolveWebViewUserAgent(
+          previousMobile.replaceFirst(' Mobile', ''),
+        ),
+        miuiBrowserUserAgent,
+      );
+      expect(
+        normalizeDesktopUserAgentForPlatform(
+          previousMobile.replaceFirst(' Mobile', ''),
+        ),
+        miuiBrowserUserAgent,
+      );
+      expect(miuiBrowserUserAgent, isNot(contains('Mobile')));
+      expect(
+        await resolveWebViewUserAgent(miuiBrowserUserAgent),
+        miuiBrowserUserAgent,
+      );
+      expect(
+        chromeFullVersionForUserAgent(miuiBrowserUserAgent),
+        miuiChromeFullVersion,
+      );
+      MethodCall? nativeCall;
+      const channel = MethodChannel('test_tiktok/webview_identity');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        nativeCall = call;
+        return miuiBrowserUserAgent;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      await configureAndroidDesktopIdentity(
+        InAppWebViewController.fromPlatform(platform: TestProxyIpController()),
+        userAgent: miuiBrowserUserAgent,
+        useInstalledEngine: false,
+      );
+      expect(nativeCall!.arguments['userAgent'], miuiBrowserUserAgent);
+      expect(nativeCall!.arguments['chromeFullVersion'], miuiChromeFullVersion);
+    },
+  );
 
   for (final major in [151, 152, 153, 154, 155]) {
     test(
@@ -173,7 +239,7 @@ void main() {
         final resolved = await resolveWebViewUserAgent(selected);
         expect(
           resolved,
-          chromeDesktopUserAgent('X11; Linux x86_64', major: major),
+          chromeDesktopUserAgent(windowsChromePlatform, major: major),
         );
         expect(chromeFullVersionForUserAgent(resolved), startsWith('$major.'));
         expect(await resolveWebViewUserAgent(resolved), resolved);
@@ -191,6 +257,7 @@ void main() {
             platform: TestProxyIpController(),
           ),
           userAgent: resolved,
+          useInstalledEngine: false,
         );
         expect(nativeCall!.method, 'configure');
         expect(nativeCall!.arguments['userAgent'], resolved);

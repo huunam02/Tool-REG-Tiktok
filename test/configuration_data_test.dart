@@ -84,7 +84,6 @@ void main() {
         '$record\n$record',
         record.replaceFirst(':6149:', ':65536:'),
         record.replaceFirst('person@example.com', 'not-email'),
-        record.replaceFirst('|TikTok-password|', '||'),
         record.replaceFirst('|Mailbox-password', '|   '),
         '$record|extra',
         '$record|2',

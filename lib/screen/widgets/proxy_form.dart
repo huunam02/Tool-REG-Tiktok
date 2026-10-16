@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/proxy_store.dart';
+import '../../core/webview_user_agent.dart';
 import '../../core/app_configuration.dart';
+import '../../core/account_password.dart';
 import '../../core/otp_api.dart';
 import '../../core/configuration_data.dart';
 import '../../core/configuration_file_import.dart';
@@ -326,6 +328,10 @@ class _ProxyFormView extends StatelessWidget {
           style: const TextStyle(fontSize: 12, height: 1.6),
           decoration: InputDecoration(
             hintText: 'Nhập User-Agent trên một dòng',
+            helperText: needsAndroidDesktopIdentity
+                ? 'Mặc định TikTok và kiểm tra proxy dùng Chrome theo WebView đang cài. '
+                      'Mẫu lưu ở đây chỉ dùng khi chọn User-Agent đã chọn (thủ công) trong màn TikTok.'
+                : null,
             helperMaxLines: 4,
           ),
           validator: (value) =>
@@ -335,6 +341,30 @@ class _ProxyFormView extends StatelessWidget {
               ? 'Nhập User-Agent hợp lệ trên một dòng.'
               : null,
         ),
+        if (needsAndroidDesktopIdentity)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: _configurationKey('useMiuiUserAgent', index),
+              onPressed: fields.generating
+                  ? null
+                  : () => logic.useMiuiUserAgentFor(fields),
+              icon: const Icon(Icons.phone_android, size: 16),
+              label: const Text('Dùng Miui Browser 14 (Desktop)'),
+            ),
+          ),
+        if (needsAndroidDesktopIdentity)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: _configurationKey('useWindowsUserAgent', index),
+              onPressed: fields.generating
+                  ? null
+                  : () => logic.useWindowsUserAgentFor(fields),
+              icon: const Icon(Icons.desktop_windows, size: 16),
+              label: const Text('Dùng Chrome Windows (Desktop)'),
+            ),
+          ),
         if (fields.generationFailed)
           const Padding(
             padding: EdgeInsets.only(top: 10),
@@ -427,9 +457,19 @@ class _ProxyFormView extends StatelessWidget {
           controller: fields.accountPassword,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Nhập mật khẩu TikTok',
-            prefixIcon: Icon(Icons.lock_outline, size: 20),
+            prefixIcon: const Icon(Icons.lock_outline, size: 20),
+            helperText:
+                'Tự tạo 9–13 ký tự: chữ đầu viết hoa, 2 số cuối. Giữ mật khẩu từ import.',
+            helperMaxLines: 2,
+            suffixIcon: IconButton(
+              tooltip: 'Tạo mật khẩu khác',
+              onPressed: () => logic.mutate(
+                () => fields.accountPassword.text = generateAccountPassword(),
+              ),
+              icon: const Icon(Icons.refresh),
+            ),
           ),
           validator: (value) => value == null || value.trim().isEmpty
               ? 'Nhập mật khẩu TikTok.'

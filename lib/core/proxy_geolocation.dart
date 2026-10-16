@@ -53,6 +53,7 @@ class ProxyGeolocationLookup {
   Future<ProxyGeolocation> lookup({
     required WebViewProxy proxy,
     required String userAgent,
+    bool useInstalledEngine = true,
   }) async {
     if (_cancelled) throw const FormatException('Đã hủy kiểm tra múi giờ.');
     final result = Completer<ProxyGeolocation>();
@@ -68,11 +69,14 @@ class ProxyGeolocationLookup {
     );
     final view = HeadlessInAppWebView(
       initialUserScripts: UnmodifiableListView([
-        hideGpuInfoUserScript(),
+        if (!needsAndroidDesktopIdentity || !useInstalledEngine)
+          pixelGpuInfoUserScript(),
         disableWebRtcUserScript(),
       ]),
       initialSettings: InAppWebViewSettings(
-        userAgent: userAgent,
+        userAgent: needsAndroidDesktopIdentity && useInstalledEngine
+            ? null
+            : userAgent,
         preferredContentMode: UserPreferredContentMode.DESKTOP,
         javaScriptEnabled: true,
         incognito: false,
@@ -83,6 +87,7 @@ class ProxyGeolocationLookup {
           await configureAndroidDesktopIdentity(
             controller,
             userAgent: userAgent,
+            useInstalledEngine: useInstalledEngine,
           );
           if (_cancelled || result.isCompleted) return;
           await controller.loadUrl(urlRequest: request);

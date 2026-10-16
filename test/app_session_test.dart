@@ -10,6 +10,7 @@ import 'package:test_tiktok/core/app_session.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/desktop_user_agents.dart';
 import 'package:test_tiktok/core/chrome_user_agent.dart';
+import 'package:test_tiktok/core/webview_user_agent.dart';
 import 'package:test_tiktok/main.dart';
 import 'package:test_tiktok/screen/home_page.dart';
 import 'package:test_tiktok/screen/create_proxy_page.dart';
@@ -204,7 +205,7 @@ void main() {
   );
 
   test(
-    'Android normalizes an old Windows direct UA to phone desktop Linux',
+    'Android upgrades an old Windows direct UA while keeping Windows',
     () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       const windowsAgent =
@@ -215,7 +216,7 @@ void main() {
         'desktop_user_agents_used': [windowsAgent],
       });
       final selected = await loadDirectDesktopUserAgent();
-      expect(selected, chromeDesktopUserAgent('X11; Linux x86_64'));
+      expect(selected, windowsChromeUserAgent);
       expect(
         (await SharedPreferences.getInstance()).getString(
           'desktop_user_agent_direct',
@@ -241,12 +242,12 @@ void main() {
         'desktop_user_agents_used': [...linux, windows],
       });
       final selected = await selectNextDesktopUserAgent();
-      expect(selected, contains('X11; Linux x86_64'));
+      expect(selected, miuiBrowserUserAgent);
       expect(selected, isNot(contains('Chrome/151.')));
       final history = (await SharedPreferences.getInstance()).getStringList(
         'desktop_user_agents_used',
       )!;
-      expect(history, [selected]);
+      expect(history, [...linux, selected]);
     },
   );
 
@@ -278,12 +279,20 @@ void main() {
           'Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.107 Mobile Safari/537.36';
       final agents = <String>[];
       final count = androidDesktopUserAgents.length;
-      expect(count, 5);
+      expect(count, 6);
       for (var i = 0; i < count * 2; i++) {
         final agent = await selectNextDesktopUserAgent();
-        expect(agent, matches(r'Chrome/15[1-5]\.0\.0\.0'));
-        expect(agent, contains('X11; Linux x86_64'));
-        expect(agent, isNot(matches(r'Android|Mobile| wv|Macintosh|Windows')));
+        if (agent == miuiBrowserUserAgent) {
+          expect(agent, contains('X11; Linux x86_64'));
+          expect(agent, isNot(contains('Mobile')));
+        } else {
+          expect(agent, matches(r'Chrome/15[1-5]\.0\.0\.0'));
+          expect(agent, contains('X11; Linux x86_64'));
+          expect(
+            agent,
+            isNot(matches(r'Android|Mobile| wv|Macintosh|Windows')),
+          );
+        }
         if (agents.isNotEmpty) expect(agent, isNot(agents.last));
         agents.add(agent);
         await (await SharedPreferences.getInstance()).reload();
@@ -295,7 +304,7 @@ void main() {
             .take(count)
             .map((agent) => RegExp(r'Chrome/(\d+)').firstMatch(agent)!.group(1))
             .toSet(),
-        {'151', '152', '153', '154', '155'},
+        {'135', '151', '152', '153', '154', '155'},
       );
       expect(await loadDirectDesktopUserAgent(), agents.last);
       expect(await loadDirectDesktopUserAgent(), agents.last);
@@ -324,19 +333,75 @@ void main() {
           .controller!
           .text;
       var previous = displayedAgent();
-      expect(previous, matches(r'Chrome/15[1-5]\.0\.0\.0'));
+      expect(androidDesktopUserAgents, contains(previous));
       for (var i = 0; i < 4; i++) {
         final button = find.byKey(const Key('generateProxyUserAgent'));
         await tester.ensureVisible(button);
         await tester.tap(button);
         await tester.pumpAndSettle();
         expect(displayedAgent(), isNot(previous));
-        expect(displayedAgent(), matches(r'Chrome/15[1-5]\.0\.0\.0'));
+        expect(androidDesktopUserAgents, contains(displayedAgent()));
         previous = displayedAgent();
       }
       debugDefaultTargetPlatformOverride = null;
     },
   );
+
+  testWidgets('Android can choose Miui directly without random retries', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CreateProxyPage(
+          generateUserAgent: () async => androidDesktopUserAgents.first,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final button = find.byKey(const Key('useMiuiUserAgent'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextFormField>(
+      find.byKey(const Key('savedProxyUserAgent')),
+    );
+    expect(field.controller!.text, miuiBrowserUserAgent);
+    expect(field.controller!.text, contains('X11; Linux x86_64'));
+    expect(field.controller!.text, isNot(contains('Mobile')));
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('Android can select Windows and retain it when normalizing', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CreateProxyPage(
+          generateUserAgent: () async => androidDesktopUserAgents.first,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final button = find.byKey(const Key('useWindowsUserAgent'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextFormField>(
+      find.byKey(const Key('savedProxyUserAgent')),
+    );
+    expect(field.controller!.text, windowsChromeUserAgent);
+    expect(
+      normalizeDesktopUserAgentForPlatform(field.controller!.text),
+      windowsChromeUserAgent,
+    );
+    expect(
+      await resolveWebViewUserAgent(field.controller!.text),
+      windowsChromeUserAgent,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
 
   test(
     'direct User-Agent reuses the last known identity instead of selecting a new one',

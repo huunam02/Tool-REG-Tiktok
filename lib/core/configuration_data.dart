@@ -1,5 +1,6 @@
 import 'app_configuration.dart';
 import 'otp_api.dart';
+import 'account_password.dart';
 
 enum AccountStatus {
   unregistered('Chưa đăng ký'),
@@ -79,7 +80,8 @@ class ImportedConfiguration {
     }
     if (records.isEmpty) {
       throw const FormatException(
-          'Nhập ít nhất một cấu hình, mỗi dòng một cấu hình.');
+        'Nhập ít nhất một cấu hình, mỗi dòng một cấu hình.',
+      );
     }
     return records;
   }
@@ -104,9 +106,12 @@ class ImportedConfiguration {
         '1' => AccountStatus.registered,
         '0' => AccountStatus.unregistered,
         _ => throw const FormatException(
-            'Trạng thái đăng ký phải là 1 (đã đăng ký) hoặc 0 (chưa đăng ký).',
-          ),
+          'Trạng thái đăng ký phải là 1 (đã đăng ký) hoặc 0 (chưa đăng ký).',
+        ),
       };
+    }
+    if (accountParts.length == 3 && accountParts[1].trim().isEmpty) {
+      accountParts[1] = generateAccountPassword();
     }
     return ImportedConfiguration(
       proxy: WebViewProxy.parseImport(line.substring(0, separator)),

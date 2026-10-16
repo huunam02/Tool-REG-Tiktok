@@ -15,7 +15,29 @@ xác thực proxy, User-Agent, email TikTok, mật khẩu TikTok, mật khẩu e
 và trạng thái đăng ký. Nút **Quản lý cấu hình** mở danh sách các bộ dữ liệu.
 Mỗi bộ gộp proxy và tài khoản; không có ô tên riêng, danh sách nhận diện bằng
 email và địa chỉ proxy. Chọn một dòng rồi nhấn **Sử dụng cấu hình này**.
-Home hiển thị trực tiếp cấu hình và bình luận, không có thanh tab.
+Home gồm hai tab **Cấu hình** và **Nuôi acc**. Tab Cấu hình giữ thông tin
+cấu hình và bình luận hiện có. Tab Nuôi acc hiển thị các tài khoản, tổng số
+phút xem, video đã xem và bình luận xác nhận thành công. Các cấu hình cùng
+email được gộp vào một dòng thống kê, không phân biệt chữ hoa/thường.
+
+Tab Cấu hình có khối **Từ khóa tìm kiếm**, mỗi dòng một từ khóa. Danh sách mặc định
+`defaultSearchKeywords` được khai báo trong `lib/core/config.dart`, cạnh danh sách
+bình luận. Từ khóa đã lưu được ưu tiên; lần đầu thêm mặc định cũng điền vào ô trống
+của phiên bản cũ. Sau đó người dùng có thể sửa hoặc xóa hết và app lưu đúng giá trị đó.
+Hai danh sách mặc định gồm 100 bình luận và 20 từ khóa bằng tiếng Anh. Lần đầu nâng
+cấp nội dung, app chuyển các dòng mặc định tiếng Việt đã lưu sang bản tiếng Anh,
+giữ dòng tùy chỉnh không nhận diện và lưu dấu `configuration_content_language = en`.
+Tab Nuôi acc hiển thị ba thống kê: phút xem video, số video đã xem và số bình luận.
+Thẻ tài khoản không hiển thị dòng news feed/search keyword hoặc nút mở xem thủ công.
+Kéo xuống để làm mới danh sách; không có nút làm mới riêng.
+
+Thống kê chỉ ghi nhận video hiển thị và thời gian media thực sự tiến;
+pause, tua, buffering và chạy nền không được tính. Một lượt video được ghi
+khi kết thúc, chuyển video hoặc đóng phiên sau ít nhất một giây phát.
+Bình luận được đếm sau phản hồi thành công có ID, chống đếm lặp trong trang.
+Snapshot được lưu khoảng hai giây/lần và chốt khi đóng màn hình. Khi tiến
+trình bị dừng đột ngột, phần thời gian sau snapshot cuối có thể chưa được lưu.
+Các phiên của luồng tự động cũ không được đưa vào bộ thống kê mới này.
 Trên Android, **Cài đặt → Quyền Trợ năng** có switch hiển thị quyền thực tế.
 Chạm switch để mở Cài đặt Android và bật/tắt dịch vụ; khi quay lại app,
 switch tự cập nhật theo quyền đã cấp.
@@ -28,85 +50,86 @@ Form tạo/sửa có switch **Đã đăng ký**. Bật lưu `statusAccount = reg
 tắt lưu `statusAccount = unregistered` (mặc định). Đây là trạng thái do người
 sử dụng đặt; độc lập với nhãn đã dùng proxy. Sửa trạng thái của cấu hình đang
 chọn cũng cập nhật phần xem trước sau khi quay về Home.
+Form mới tự tạo mật khẩu TikTok dài 9–13 ký tự, chữ đầu viết hoa, các chữ
+tiếp theo viết thường và hai chữ số cuối. Nút đổi mật khẩu tạo giá trị khác.
+Mật khẩu có sẵn khi sửa hoặc import được giữ nguyên; mật khẩu TikTok trống
+trong import được tạo mới. Mật khẩu hộp thư OTP vẫn phải được cung cấp.
 
 App giữ cookie và phiên khi mở lại hoặc chọn lại cùng bộ dữ liệu. Khi áp dụng
 cấu hình có proxy, User-Agent hoặc tài khoản khác, app xóa phiên WebView trước
 khi chuyển. **Bỏ chọn cấu hình** chuyển sang kết nối trực tiếp và bỏ tài khoản
 khỏi phần xem trước, giữ danh sách và phiên trình duyệt.
+Phần xóa dữ liệu Android hiện dùng API WebStorage cũ; chưa xác minh xóa sạch
+service worker/Cache Storage hoặc thời điểm hoàn tất ở backend. Kết quả kiểm tra
+mã nguồn và phạm vi kiểm thử ghi ở [docs/session-audit.md](docs/session-audit.md).
 
-Form **Tạo cấu hình** tự tạo User-Agent mặc định. Nút **Đổi User-Agent**
-cập nhật chuỗi trong form thêm hoặc sửa. App lưu chuỗi đang hiển thị cùng
-proxy bằng SQLite; chọn lại proxy hoặc mở lại app sẽ khôi phục cấu hình đó.
-User-Agent mặc định random giữa 5 phiên bản Chrome gần nhất: 151–155, không tạo Edge.
-Android dùng 5 mẫu Linux desktop, phù hợp Chrome Android bật Trang web cho máy tính
-(trong đó có Pixel 9 thật); iOS vẫn có 10 mẫu Windows/macOS.
-App dùng hết bộ trước khi lặp và không lặp ngay UA cuối khi bắt đầu vòng mới.
-Nút đổi UA và cấu hình mới dùng bộ này; UA đã chọn được giữ qua các lần mở app.
-Các mẫu Chrome/Edge 120–140 do app tạo trước đây được nâng lên Chrome 155 khi
-cập nhật dữ liệu; chuỗi tự nhập khác trong cấu hình được giữ nguyên.
-UA trực tiếp Android được chuẩn hóa thành Linux desktop khi khôi phục; giữ
-major 151–155 đã chọn. Lịch sử Linux/Windows cũ được gộp theo phiên bản,
-không lặp ngay phiên bản cuối khi bắt đầu bộ mới.
-Khi mở TikTok trên Android, app chuẩn hóa UA thành mẫu Chrome Android bật
-**Trang web cho máy tính**: `X11; Linux x86_64`, `Chrome/<major>.0.0.0`.
-App giữ phiên bản 151–155 đã chọn; UA quá cũ/không hợp lệ dùng 155 dự phòng.
-Client Hints dùng `Google Chrome`/`Chromium`, major và phiên bản đầy đủ tương ứng
-với UA đã chọn, platform Linux,
-`mobile=false`, `formFactors=["Desktop"]`, model trống và kiến trúc x86/64 bit.
-Điện thoại vẫn giữ khả năng cảm ứng. Đây là thay đổi nhận diện; engine Android System WebView
-và WebKit iOS vẫn là phiên bản đang cài trên máy. Chrome 155 được xác minh từ
-[Chrome Releases ngày 13/10/2026](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01668083673.html).
-Metadata được cấu hình native trước
-request đầu tiên, cho cả WebView TikTok và WebView kiểm tra IP. Nếu Android
-System WebView không hỗ trợ `USER_AGENT_METADATA`, `USER_AGENT_METADATA_FORM_FACTORS`
-và `DOCUMENT_START_SCRIPT`, app báo lỗi thay vì tải
-trang với nhận diện không đồng nhất. Cần build và chạy lại ứng dụng khi thay
-phần native; hot reload không cập nhật MethodChannel Android.
+Trên Android, **Mở TikTok**, **Đăng nhập**, **Đăng ký**, **Kiểm tra IP / User-Agent**,
+**Kiểm tra IP với WhatIsMyIP**, kiểm tra IP nền và **Tra theo proxy** mặc định
+đều dùng Chrome desktop theo phiên bản Chromium của Android System WebView
+đang cài. User-Agent và Client Hints được cấu hình native trước request đầu tiên;
+ví dụ engine 134 sẽ khai báo `Chrome/134.0.0.0`, không dùng phiên bản 151–155
+chỉ vì cấu hình đã lưu có chuỗi đó. Bản tự động vẫn giữ các bước nhập tài khoản,
+gửi mã, lấy OTP và tiếp tục biểu mẫu; chốt khởi động ngăn chạy lại khi reload/resume.
+CPU/RAM/GPU lấy từ thiết bị, không chèn profile Pixel ở chế độ mặc định này.
+Proxy được áp dụng trước khi tạo WebView; múi giờ đã lưu vẫn dùng cho các luồng
+thông thường. Ngôn ngữ tiếng Anh hiện không bị ép.
+
+Viewport desktop rộng 980 CSS px, thu vừa bề ngang WebView và cho phép zoom.
+Kích thước màn hình, DPR và khả năng cảm ứng giữ theo thiết bị. Client Hints dùng
+`Google Chrome`/`Chromium`, Linux/x86/64 bit, `mobile=false`,
+`formFactors=["Desktop"]`, model trống; `navigator.platform=Linux x86_64`.
+Đây vẫn là Android WebView, không mở Chrome ngoài app hoặc đổi hệ điều hành.
+Nếu WebView không hỗ trợ `USER_AGENT_METADATA`, `USER_AGENT_METADATA_FORM_FACTORS`
+hoặc `DOCUMENT_START_SCRIPT`, app báo lỗi và dừng trước khi tải trang ngoài.
 Android dùng AndroidX WebKit 1.16.0 và yêu cầu Android 7.0 (API 24) trở lên.
-Trên Pixel 9 thật, viewport desktop rộng 980 CSS px được giữ cả khi trang
-thay, xóa hoặc không có meta viewport, thu vừa bề ngang WebView và cho phép
-pinch zoom, với text zoom 100%. Kích thước vật lý, DPR, cảm ứng và chiều cao
-vùng hiển thị lấy từ điện thoại/cài đặt hiển thị hiện tại; không gán cố định
-1080×2424 hoặc một DPR giả. Chiều cao phụ thuộc thanh công cụ và bàn phím của
-app. Kiểm thử Android xác nhận viewport từ script đầu tiên, khả năng thu vừa
-màn hình, DPR native và metadata; kiểm thử trên emulator có màn hình Pixel 9,
-chưa khẳng định giống mọi phiên bản Chrome trên Pixel 9 thật.
-Trong **Cài đặt**, dùng **Kiểm tra IP / User-Agent** để mở
-[WhatIsMyBrowser](https://www.whatismybrowser.com/) hoặc **Kiểm tra IP với
-WhatIsMyIP** để mở [WhatIsMyIP](https://www.whatismyip.com/) bằng WebView đang
-dùng cùng cấu hình proxy, không cần mở TikTok trước.
-Đối chiếu **IP Address** với IP đầu ra proxy và **Your web browser's user agent**
-với UA Chrome desktop. Không so IP đầu ra với hostname proxy vì chúng có thể khác nhau.
-**Local IP Address** là IP nội bộ của thiết bị, nên không tự đổi khi đổi proxy.
-WebView luôn ẩn tên GPU/driver qua `WEBGL_debug_renderer_info`, trả chuỗi rỗng
-cho vendor/renderer và tắt WebGPU trong trang/frame để tránh lộ thông tin adapter.
-WebGL thông thường vẫn hoạt động; tính năng yêu cầu WebGPU cần cơ chế dự phòng.
-Trên Android, `navigator.platform` dùng `Linux x86_64` cho khớp UA/Client Hints.
-Đây là giảm thông tin ở cấp trang/frame; không che mọi dấu vân tay đồ họa hoặc
-API trong Web Worker, không thay engine hay biến emulator thành máy thật.
-App chặn các API kết nối WebRTC cả khi có proxy và khi kết nối trực tiếp,
-bằng script ở đầu mỗi document/frame
-để hạn chế trang đọc IP nội bộ qua ICE/STUN. Trang kiểm tra có thể báo không có
-Local IP hoặc WebRTC không được hỗ trợ; app không tạo IP nội bộ giả theo proxy.
-Tính năng gọi thoại/video dùng WebRTC sẽ không hoạt động trong chế độ này.
-Đây là bảo vệ ở cấp JavaScript của WebView, không phải firewall/VPN toàn thiết bị.
-WebView phụ kiểm tra IP cũng chặn WebRTC. Khi dùng proxy, Android từ chối mở
-trang nếu không hỗ trợ chèn script ở đầu document và bỏ bypass ngầm cho
-localhost/link-local. iOS đặt `allowFailover=false` để không chuyển sang kết nối
-trực tiếp khi proxy lỗi.
-Trang kiểm tra dùng cùng proxy/UA/Client Hints; các thao tác tự động TikTok dừng
-khi mở trang kiểm tra. Nhấn biểu tượng ngôi nhà để quay lại TikTok.
-Đây vẫn là WebView; đồng bộ User-Agent/Client Hints không biến engine thành Chrome thật.
-Trên iOS, User-Agent vẫn được random, dùng hết bộ trước khi lặp và giữ lịch sử
-qua các lần mở app. WebView dùng đúng chuỗi đã chọn và đặt chế độ `DESKTOP`.
-iOS không tự thay chuỗi đã chọn bằng Safari native của máy;
-việc đó từng khiến các User-Agent khác nhau trở thành cùng một chuỗi thực tế.
-Safari desktop từ thông tin native chỉ là phương án dự phòng khi chưa có
-User-Agent cấu hình. Đổi chuỗi User-Agent không thay đổi engine WebKit trên iOS
-và chưa khẳng định sẽ gỡ được giới hạn từ máy chủ TikTok.
-Trong bản debug, lọc `[WebView identity]` để xem `navigator.userAgent` thực tế
-và kết quả so sánh với cấu hình. Dòng `Proxy IP detected` và IP trên AppBar
-cho biết IP đầu ra đã kiểm tra bằng WebView dùng cùng cấu hình proxy.
+Cần build/chạy lại khi sửa phần native; hot reload không cập nhật MethodChannel.
+
+Form **Tạo cấu hình** và màn sửa vẫn lưu mẫu User-Agent cùng proxy bằng SQLite.
+Các nút đổi mẫu, **Dùng Miui Browser 14 (Desktop)** và **Dùng Chrome Windows (Desktop)**
+được giữ. Android random giữa 5 mẫu Chrome desktop 151–155 và Miui Browser
+14.65.0-gn; Chrome Windows x64 là lựa chọn riêng. Chọn lại cấu hình hoặc mở lại
+app vẫn giữ mẫu đã lưu. Các mẫu chỉ được dùng khi chọn **Dùng User-Agent đã chọn
+(thủ công)** trong màn TikTok. Chế độ này đồng bộ UA/Client Hints/platform theo
+mẫu, dùng profile CPU/RAM/GPU Pixel trước đây và tắt thao tác tài khoản tự động.
+Mẫu Miui dùng Linux desktop/Chromium 135; mẫu Windows dùng Windows 10.0.0,
+`navigator.platform=Win32`. Chúng chỉ mô phỏng nhận diện của trang/frame.
+Nút **Desktop theo WebView (thủ công)** chuyển lại cấu hình engine, vẫn thao tác
+thủ công. Quay về Home rồi mở lại để dùng cấu hình engine với luồng tự động.
+
+Trong **Cài đặt**, **Kiểm tra IP / User-Agent** mở
+[WhatIsMyBrowser](https://www.whatismybrowser.com/) và **Kiểm tra IP với WhatIsMyIP**
+mở [WhatIsMyIP](https://www.whatismyip.com/) bằng cùng cấu hình proxy và engine.
+Đối chiếu IP Address với IP đầu ra của proxy, không so với hostname proxy.
+Trang kiểm tra dừng các thao tác TikTok; biểu tượng ngôi nhà quay lại TikTok.
+
+App ẩn Local IP bằng cách vô hiệu hóa `RTCPeerConnection`, các alias và
+`RTCIceGatherer`/`RTCIceTransport` trước script của trang, cho trang chính và iframe.
+Không tạo SDP, ICE candidate hay phát Local IP mô phỏng từ cấu hình cũ.
+Áp dụng cả TikTok, trang kiểm tra và các WebView nền, với proxy hoặc kết nối trực tiếp.
+IP công khai vẫn do kết nối/proxy quyết định. WebRTC không hoạt động trong trang;
+không đổi địa chỉ LAN của hệ điều hành. Android bỏ bypass ngầm cho localhost/link-local;
+iOS đặt `allowFailover=false` để không chuyển sang kết nối trực tiếp khi proxy lỗi.
+
+Trên iOS, User-Agent vẫn dùng mẫu đã chọn và chế độ `DESKTOP`; thay UA không đổi
+engine WebKit. Script GPU Pixel của iOS và chế độ mẫu Android được giữ như trước.
+Trong bản debug, lọc `[WebView identity]` để xem UA thực tế và kết quả so sánh
+với nhận diện đang dùng. Dòng `Proxy IP detected` và IP trên AppBar là IP đầu ra
+đã kiểm tra qua cùng proxy.
+Android bật WebView remote debugging ở bản debug và tắt ở bản profile/release.
+Khi Chrome đăng ký được nhưng app báo `Maximum number of attempts reached`,
+không thể kết luận nguyên nhân chỉ từ console `get region err`.
+Chạy `./tool/flutterw run`, mở TikTok trong app rồi mở
+`chrome://inspect/#devices` trên Chrome máy tính, chọn **inspect** của WebView.
+Trong **Network**, bật **Preserve log**, xem request tài khoản khi lỗi xuất hiện
+và đối chiếu với Chrome trên cùng thiết bị: endpoint (không gồm query),
+HTTP status, `error_code`/`status_code` và thông báo lỗi trong **Response**.
+HTTP 200 vẫn có thể chứa mã lỗi nghiệp vụ. Khi chia sẻ kết quả, chỉ gửi các
+trường trên; không gửi cookie, token, email, mật khẩu, OTP hay HAR chưa lọc.
+Cấu hình engine mặc định đã vượt qua bước region và đến màn nhập OTP trong
+lần kiểm tra thủ công trên emulator (Chrome/WebView 134). Chưa xác nhận hoàn tất
+đăng ký hoặc đăng nhập tự động với tài khoản thật. Phản hồi region HTTP 200 kèm
+`error_code=7` không chỉ rõ lý do từ chối; cấu hình này không bảo đảm xóa giới hạn
+phía TikTok. App không tự thử lại, xóa phiên hoặc đổi cấu hình khi gặp lỗi này.
 Kết nối trực tiếp cũng giữ User-Agent qua các lần mở app. Sửa tên hoặc cấu
 hình một mục giữ User-Agent của mục đó nếu không đổi ô User-Agent.
 Xóa một mục khỏi danh sách vẫn giữ cấu hình và User-Agent đang sử dụng.
@@ -124,10 +147,12 @@ Các ô trong app hiển thị dữ liệu trực tiếp, gồm mật khẩu Tik
 thư OTP, mật khẩu proxy, token API và dữ liệu import; không có nút hiện/ẩn.
 
 Proxy HTTP/HTTPS cần có cổng, ví dụ `http://127.0.0.1:8080`; nhập thông tin xác
-thực ở các ô riêng trong màn quản lý. Dữ liệu nằm trong `proxies.db`,
-chỉ có một bảng ứng dụng `configurations`, gồm cả tài khoản, `statusAccount`
-và cờ chọn cấu hình hiện tại. Migration giữ proxy/User-Agent, tài khoản nếu
-đã có và bộ dữ liệu đang chọn; chuyển dữ liệu rồi xóa hai bảng cũ.
+thực ở các ô riêng trong màn quản lý. Dữ liệu nằm trong `proxies.db`, phiên bản
+schema 10. Bảng `configurations` giữ tài khoản, `statusAccount` và cấu hình
+hiện tại; `nurture_accounts`, `nurture_sessions` lưu lịch sử thống kê;
+`app_settings` lưu chủ đề và bình luận Home. Migration từ phiên bản 9 giữ
+nguyên các dòng cấu hình và lựa chọn hiện tại, bổ sung các bảng mới.
+Chi tiết cấu trúc và quy tắc lưu ở [docs/database.md](docs/database.md).
 Các proxy cũ chưa có tài khoản có thể bổ sung ở màn sửa cấu hình.
 
 Nút **Import data** trên màn tạo mở bottom sheet có hai mục:
@@ -225,13 +250,13 @@ không bấm lại Continue trong cùng modal và tạm ngưng khi trang ở n�
 
 ## Ngôn ngữ WebView
 
-WebView dùng tiếng Anh (`en-US`, `en`) cho cả xem, đăng nhập và đăng ký.
-App đặt locale native trên Android/iOS, gửi header `Accept-Language` khi mở
-trang và về Home, đồng thời inject script tại đầu mỗi document/frame để đặt
-`navigator.language` / `navigator.languages` sang tiếng Anh.
-Trang web vẫn có thể ưu tiên ngôn ngữ đã lưu trong tài khoản hoặc cookie.
-Dừng app và build/chạy lại hoàn toàn để áp dụng thay đổi native;
-hot reload không đủ.
+Tạm tắt ép tiếng Anh khi chẩn đoán đăng ký: không gửi `Accept-Language`
+tùy chỉnh, không chèn script sửa `navigator.language`/`navigator.languages`,
+không ghi đè locale Android. iOS xóa các override `AppleLanguages`/`AppleLocale`
+đã được app đặt trước đó. WebView dùng ngôn ngữ hệ thống; website vẫn có thể
+ưu tiên ngôn ngữ đã lưu trong tài khoản/cookie.
+`forceEnglishWebViewLocale=false` giữ script tiếng Anh trong mã để dễ bật lại;
+muốn bật lại toàn bộ cần khôi phục cả cấu hình locale native.
 
 ## OTP API
 
@@ -250,10 +275,32 @@ Sau khi gửi OTP và mật khẩu, nếu xuất hiện màn **Create username**
 dùng, kể cả khi tên gợi ý không khả dụng. Trên Android, nút Skip dùng
 `dispatchGesture()` tại tọa độ hiện tại trong WebView. App tiếp tục chờ xác nhận đăng ký
 thành công; nút **Dừng** vẫn hủy được thao tác trong thời gian chờ.
+Sau khi TikTok xác nhận đăng ký thành công, app giữ màn hiện tại và chờ ngẫu nhiên
+2–3 phút rồi tự nuôi 10 phút. Overlay hiển thị đang chờ và nút **Hủy chờ**.
+Tải lại trang không chọn lại khoảng chờ; nếu đang ở nền khi hết chờ, app bắt đầu
+nuôi khi quay lại. Đóng màn hoặc hủy chờ sẽ hủy lịch. Bấm Auto nuôi trong lúc chờ
+sẽ bắt đầu sớm, vẫn tự tắt sau 10 phút.
 
 Luồng **Tự động đăng nhập** mở trang chủ TikTok → xem video → bấm tim → mở dialog Login
 → Use phone or email → Username or Email, rồi tiếp tục nhập tài khoản, mật khẩu
 và xử lý OTP như trước, kể cả khi dialog giữ nguyên URL trang chủ.
+Khi TikTok xác nhận đăng nhập thành công (hoặc tài khoản đã đăng nhập), app tự
+bật Auto nuôi và tự tắt sau 10 phút tính từ lần xác nhận đó. Tải lại trang hoặc
+đưa app ra nền rồi quay lại không đặt lại thời hạn. Có thể bấm nút dừng nuôi
+để kết thúc sớm; đóng màn TikTok sẽ hủy phiên nuôi và bộ hẹn giờ.
+
+Auto nuôi bốc thăm độc lập cho mỗi video: 50% xem đến hết, 50% lướt sớm sau
+khoảng 2–5 giây phát thực tế (clip ngắn hơn sẽ lướt trước khi hết). Không ép
+xen kẽ; có thể gặp nhiều video cùng lựa chọn liên tiếp. Kế hoạch của mỗi bài
+được giữ khi tạm dừng rồi khởi động lại watcher trong cùng trang.
+Chỉ video có mục tiêu xem hết mới được bình luận. App chọn thời điểm gửi trong
+khoảng 5 giây đến 70% thời lượng video, chuẩn bị ô nhập trước đó và kiểm tra lại
+mốc 70% ngay trước khi gửi. Chừa một nhịp kiểm tra 250 ms ở cuối khoảng để bù
+độ trễ; video quá ngắn hoặc chưa có thời lượng hợp lệ sẽ bỏ bình luận.
+Thời gian video đứng tải/tạm dừng không tính vào thời gian chờ. Nếu đã nhập bản
+nháp nhưng quá mốc 70%, app dừng và giữ bản nháp, không gửi muộn. Bài ảnh vẫn
+chuyển sau 5 giây và không được bình luận theo quy tắc video này.
+
 Khi hiện **Verify it’s really you**, app chờ 5 giây trước khi chọn ô **Email**.
 Trên Android, app dùng vùng bấm đã cache khi còn hợp lệ và dùng `dispatchGesture()` chạm
 140 ms, có kiểm tra ô đang hiển thị và không bị che. Sau đó app chờ TikTok
@@ -279,7 +326,7 @@ trong biểu mẫu đăng nhập dùng
 kiểm tra nút đang hiển thị, được bật và không bị che. Không cần node Accessibility
 để bấm tọa độ; các sự kiện System UI không làm mất mục tiêu. Mỗi bước chỉ yêu cầu một gesture
 trong mỗi lượt chạy; cần bật quyền Trợ năng cho Tool TikTok. Các nút còn lại gọi click một lần.
-Continue/Tiếp tục có chốt riêng cho bước gửi mật khẩu và bước xác nhận OTP,
+Continue/Tiếp tục và Next/Tiếp theo có chốt riêng cho bước gửi mật khẩu và bước xác nhận OTP,
 kể cả khi trang dùng lại cùng một nút. App dùng cache vùng bấm khi chạm và dừng nếu
 gesture không hoàn tất.
 Cache vùng bấm tách theo luồng và nút (Send code, Email xác minh, Continue mật khẩu,

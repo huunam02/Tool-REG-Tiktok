@@ -6,10 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'webview_user_agent.dart';
 import 'chrome_user_agent.dart';
 
-/// Android phones (including Pixel 9): Chrome's Desktop site uses Linux x64.
+/// Android: five Chrome desktop profiles and one Miui desktop profile.
 final List<String> androidDesktopUserAgents = List<String>.unmodifiable([
   for (final major in recentChromeFullVersions.keys)
     chromeDesktopUserAgent('X11; Linux x86_64', major: major),
+  miuiBrowserUserAgent,
 ]);
 
 /// iOS keeps macOS desktop identities. No generated Windows templates.
@@ -54,7 +55,8 @@ Future<String> loadDirectDesktopUserAgent() async {
     return stored;
   }
   final used = (preferences.getStringList(_usedUserAgentsKey) ?? [])
-      .map(normalizeDesktopUserAgentForPlatform).toList();
+      .map(normalizeDesktopUserAgentForPlatform)
+      .toList();
   final selected = used.isNotEmpty && desktopUserAgents.contains(used.last)
       ? used.last
       : await selectNextDesktopUserAgent();
@@ -75,7 +77,7 @@ Future<String> selectNextDesktopUserAgent() async {
     final agent = normalizeDesktopUserAgentForPlatform(previous);
     if (!candidates.contains(agent)) continue;
     // Old Linux/Windows templates could advertise the same Chrome version.
-    // Retain the last occurrence when moving to the five Linux templates.
+    // Retain the last occurrence of duplicate identities.
     used.remove(agent);
     used.add(agent);
   }

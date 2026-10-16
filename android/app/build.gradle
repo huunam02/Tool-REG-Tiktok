@@ -53,7 +53,7 @@ def generateGpuPrivacyTestAssets = tasks.register("generateGpuPrivacyTestAssets"
     doLast {
         def directory = gpuPrivacyTestAssets.get().asFile
         directory.mkdirs()
-        [hideGpuInfoScript: "hide_gpu_info.js", disableWebRtcScript: "disable_webrtc.js"].each { name, filename ->
+        [pixelGpuInfoScript: "pixel_gpu_info.js", disableWebRtcScript: "disable_webrtc.js"].each { name, filename ->
             def script = (scriptFile.getText("UTF-8") =~ /(?s)const ${name} = r'''(.*?)''';/)
             if (!script.find()) throw new GradleException("Privacy UserScript not found: " + name)
             new File(directory, filename).setText(script.group(1), "UTF-8")

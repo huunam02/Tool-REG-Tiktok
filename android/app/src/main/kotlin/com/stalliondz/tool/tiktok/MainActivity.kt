@@ -1,9 +1,5 @@
 package com.stalliondz.tool.tiktok
 
-import android.content.Context
-import android.content.res.Configuration
-import android.os.LocaleList
-import java.util.Locale
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -14,14 +10,6 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: FlutterActivity() {
-    override fun attachBaseContext(newBase: Context) {
-        val locales = LocaleList(Locale.US, Locale.ENGLISH)
-        LocaleList.setDefault(locales)
-        val configuration = Configuration(newBase.resources.configuration)
-        configuration.setLocales(locales)
-        super.attachBaseContext(newBase.createConfigurationContext(configuration))
-    }
-
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/send_code_target")
@@ -54,7 +42,7 @@ class MainActivity: FlutterActivity() {
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/webview_identity")
             .setMethodCallHandler { call, result ->
-                if (call.method != "configure") {
+                if (call.method != "configure" && call.method != "configureEngine") {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
@@ -73,6 +61,10 @@ class MainActivity: FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 try {
+                    if (call.method == "configureEngine") {
+                        result.success(DesktopChromeIdentity.configure(webView, emulateHardware = false))
+                        return@setMethodCallHandler
+                    }
                     val userAgent = call.argument<String>("userAgent")
                         ?: error("Thiếu User-Agent Chrome desktop.")
                     val fullVersion = call.argument<String>("chromeFullVersion")

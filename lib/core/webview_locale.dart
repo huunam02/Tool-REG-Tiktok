@@ -1,6 +1,10 @@
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-const englishWebViewHeaders = {'Accept-Language': 'en-US,en;q=0.9'};
+// Temporarily use the device/browser language while diagnosing signup.
+const forceEnglishWebViewLocale = false;
+const englishWebViewHeaders = forceEnglishWebViewLocale
+    ? {'Accept-Language': 'en-US,en;q=0.9'}
+    : <String, String>{};
 
 // Run in each document and frame before the website chooses its language.
 const englishWebViewLocaleScript = r'''

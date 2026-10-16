@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../core/app_configuration.dart';
+import '../core/account_password.dart';
 import '../core/proxy_store.dart';
 import '../core/proxy_draft.dart';
 import '../core/configuration_data.dart';
@@ -79,10 +80,14 @@ class ProxyFormController extends AppController {
     try {
       await previous;
       if (!active || fields.disposed) return;
-      var generatedAgent = normalizeDesktopUserAgentForPlatform(await selectUserAgent());
+      var generatedAgent = normalizeDesktopUserAgentForPlatform(
+        await selectUserAgent(),
+      );
       if (!active || fields.disposed) return;
       if (generatedAgent == fields.userAgent.text) {
-        generatedAgent = normalizeDesktopUserAgentForPlatform(await selectUserAgent());
+        generatedAgent = normalizeDesktopUserAgentForPlatform(
+          await selectUserAgent(),
+        );
         if (!active || fields.disposed) return;
       }
       fields.userAgent.text = generatedAgent;
@@ -95,6 +100,32 @@ class ProxyFormController extends AppController {
       finished.complete();
       if (active && !fields.disposed) mutate(() => fields.generating = false);
     }
+  }
+
+  void useMiuiUserAgentFor(ConfigurationFormFields fields) {
+    if (!active ||
+        fields.disposed ||
+        fields.generating ||
+        !needsAndroidDesktopIdentity) {
+      return;
+    }
+    mutate(() {
+      fields.userAgent.text = miuiBrowserUserAgent;
+      fields.generationFailed = false;
+    });
+  }
+
+  void useWindowsUserAgentFor(ConfigurationFormFields fields) {
+    if (!active ||
+        fields.disposed ||
+        fields.generating ||
+        !needsAndroidDesktopIdentity) {
+      return;
+    }
+    mutate(() {
+      fields.userAgent.text = windowsChromeUserAgent;
+      fields.generationFailed = false;
+    });
   }
 
   @override
@@ -273,7 +304,7 @@ class ProxyFormController extends AppController {
       username.clear();
       password.clear();
       accountEmail.clear();
-      accountPassword.clear();
+      accountPassword.text = generateAccountPassword();
       mailboxPassword.clear();
       timeZoneId.clear();
       statusAccount = AccountStatus.unregistered;
@@ -291,10 +322,18 @@ class ConfigurationFormFields {
       ),
       username = TextEditingController(text: entry?.proxy?.username),
       password = TextEditingController(text: entry?.proxy?.password),
-      userAgent = TextEditingController(text: entry == null ? '' : normalizeDesktopUserAgentForPlatform(entry.userAgent)),
+      userAgent = TextEditingController(
+        text: entry == null
+            ? ''
+            : normalizeDesktopUserAgentForPlatform(entry.userAgent),
+      ),
       timeZoneId = TextEditingController(text: entry?.timeZoneId),
       accountEmail = TextEditingController(text: entry?.account?.email),
-      accountPassword = TextEditingController(text: entry?.account?.password),
+      accountPassword = TextEditingController(
+        text: entry == null
+            ? generateAccountPassword()
+            : entry.account?.password,
+      ),
       mailboxPassword = TextEditingController(
         text: entry?.account?.mailboxPassword,
       ),
@@ -332,7 +371,9 @@ class ConfigurationFormFields {
     username.text = data.proxy.username;
     password.text = data.proxy.password;
     accountEmail.text = data.account.email;
-    accountPassword.text = data.account.password;
+    accountPassword.text = data.account.password.trim().isEmpty
+        ? generateAccountPassword()
+        : data.account.password;
     mailboxPassword.text = data.account.mailboxPassword;
     statusAccount = data.statusAccount;
   }

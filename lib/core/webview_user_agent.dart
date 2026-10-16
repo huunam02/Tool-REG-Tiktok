@@ -11,24 +11,47 @@ String get currentAndroidChromeDesktopUserAgent =>
     chromeDesktopUserAgent('X11; Linux x86_64');
 
 String androidChromeDesktopUserAgent(String configuredAgent) =>
-    chromeDesktopUserAgent(
-      'X11; Linux x86_64',
-      major: recentChromeMajorForUserAgent(configuredAgent),
-    );
+    isMiuiBrowserUserAgent(configuredAgent)
+    ? miuiBrowserUserAgent
+    : chromeDesktopUserAgent(
+        isWindowsChromeUserAgent(configuredAgent)
+            ? windowsChromePlatform
+            : linuxChromePlatform,
+        major: recentChromeMajorForUserAgent(configuredAgent),
+      );
 
 /// Complete native Client Hints configuration before the first navigation.
-Future<void> configureAndroidDesktopIdentity(
+Future<String> configureAndroidDesktopIdentity(
   InAppWebViewController controller, {
   required String userAgent,
+  bool useInstalledEngine = true,
 }) async {
-  if (!needsAndroidDesktopIdentity) return;
-  await const MethodChannel(
-    'test_tiktok/webview_identity',
-  ).invokeMethod<String>('configure', {
-    'id': controller.platform.params.id,
-    'userAgent': userAgent,
-    'chromeFullVersion': chromeFullVersionForUserAgent(userAgent),
-  });
+  if (!needsAndroidDesktopIdentity) return userAgent;
+  if (useInstalledEngine) {
+    return configureAndroidEngineDesktopIdentity(controller);
+  }
+  return await const MethodChannel(
+        'test_tiktok/webview_identity',
+      ).invokeMethod<String>('configure', {
+        'id': controller.platform.params.id,
+        'userAgent': userAgent,
+        'chromeFullVersion': chromeFullVersionForUserAgent(userAgent),
+      }) ??
+      userAgent;
+}
+
+/// Use the installed engine's version without overriding CPU or memory.
+Future<String> configureAndroidEngineDesktopIdentity(
+  InAppWebViewController controller,
+) async {
+  final agent = await const MethodChannel('test_tiktok/webview_identity')
+      .invokeMethod<String>('configureEngine', {
+        'id': controller.platform.params.id,
+      });
+  if (agent == null || agent.isEmpty) {
+    throw StateError('Không đọc được nhận diện WebView.');
+  }
+  return agent;
 }
 
 /// Keep a desktop identity while matching the WebKit engine used on iOS.

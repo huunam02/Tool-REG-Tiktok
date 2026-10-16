@@ -38,10 +38,19 @@ public class WebViewGpuPrivacyTest {
         return script.toString();
     }
 
-    @Test public void firstPageAndFrameHideGpuAndWebRtcWhileWebGlStillRenders() throws Exception {
+    @Test public void firstPageAndFrameHideLocalIpWhileWebGlStillRenders() throws Exception {
+        assertGpuAndLocalIp("192.168.1.10");
+    }
+
+    @Test public void savedProxyLocalIpIsNotExposedInPageOrFrame() throws Exception {
+        assertGpuAndLocalIp("192.168.22.34");
+    }
+
+    private void assertGpuAndLocalIp(String localIp) throws Exception {
         assumeTrue(WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT));
-        String script = readPrivacyScript("hide_gpu_info.js") + readPrivacyScript("disable_webrtc.js");
-        String probe = "function probe(){const results=[];" +
+        String script = readPrivacyScript("pixel_gpu_info.js") +
+            readPrivacyScript("disable_webrtc.js").replace("192.168.1.10", localIp);
+        String probe = "async function probe(){const results=[];" +
             "for(const type of ['webgl','webgl2']){" +
             "const canvas=document.createElement('canvas');canvas.width=2;canvas.height=2;" +
             "const gl=canvas.getContext(type);if(!gl)continue;" +
@@ -50,15 +59,16 @@ public class WebViewGpuPrivacyTest {
             "const unmasked=gl.getParameter(0x9246),error=gl.getError();" +
             "gl.clearColor(1,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);" +
             "const pixels=new Uint8Array(4);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixels);" +
-            "results.push({type,debug,vendor,renderer,unmasked,error,pixels:Array.from(pixels)," +
+            "const unmaskedVendor=debug?gl.getParameter(debug.UNMASKED_VENDOR_WEBGL):null;" +
+            "results.push({type,debug:!!debug,vendor,renderer,unmasked,unmaskedVendor,error,pixels:Array.from(pixels)," +
             "debugListed:gl.getSupportedExtensions().includes('WEBGL_debug_renderer_info')});}" +
             "return {webgpu:typeof navigator.gpu,rtc:typeof RTCPeerConnection," +
             "webkitRtc:typeof webkitRTCPeerConnection,mozRtc:typeof mozRTCPeerConnection," +
             "iceGatherer:typeof RTCIceGatherer,iceTransport:typeof RTCIceTransport,results};}";
         String html = "<!doctype html><script>" + probe +
-            "const first=probe();function frameReady(frame){GpuPrivacyTest.receive(JSON.stringify({first,frame}));}" +
+            "const first=probe();function frameReady(frame){first.then(first=>GpuPrivacyTest.receive(JSON.stringify({first,frame})));}" +
             "</script><iframe srcdoc=\"<script>" + probe +
-            "parent.frameReady(probe());</script>\"></iframe>";
+            "probe().then(frame=>parent.frameReady(frame));</script>\"></iframe>";
         AtomicReference<WebView> view = new AtomicReference<>();
         AtomicReference<String> snapshot = new AtomicReference<>();
         CountDownLatch received = new CountDownLatch(1);
@@ -81,19 +91,23 @@ public class WebViewGpuPrivacyTest {
             for (String scope : new String[]{"first", "frame"}) {
                 JSONObject document = captured.getJSONObject(scope);
                 assertEquals("undefined", document.getString("webgpu"));
-                for (String api : new String[]{"rtc", "webkitRtc", "mozRtc", "iceGatherer", "iceTransport"}) {
-                    assertEquals("WebRTC is unavailable in " + scope, "undefined", document.getString(api));
+                for (String api : new String[]{"rtc", "webkitRtc", "mozRtc"}) {
+                    assertEquals("WebRTC is disabled in " + scope, "undefined", document.getString(api));
+                }
+                for (String api : new String[]{"iceGatherer", "iceTransport"}) {
+                    assertEquals("Native ICE is disabled", "undefined", document.getString(api));
                 }
                 JSONArray results = document.getJSONArray("results");
                 assertTrue("Emulator provides a working WebGL context", results.length() > 0);
                 for (int i = 0; i < results.length(); i++) {
                     JSONObject gl = results.getJSONObject(i);
-                    assertTrue(gl.isNull("debug"));
-                    assertFalse(gl.getBoolean("debugListed"));
-                    assertEquals("", gl.getString("vendor"));
-                    assertEquals("", gl.getString("renderer"));
-                    assertTrue(gl.isNull("unmasked"));
-                    assertEquals(0x0500, gl.getInt("error"));
+                    assertTrue("Native renderer extension is available", gl.getBoolean("debug"));
+                    assertTrue(gl.getBoolean("debugListed"));
+                    assertEquals("WebKit", gl.getString("vendor"));
+                    assertEquals("WebKit WebGL", gl.getString("renderer"));
+                    assertEquals("ARM", gl.getString("unmaskedVendor"));
+                    assertEquals("Mali-G715", gl.getString("unmasked"));
+                    assertEquals(0, gl.getInt("error"));
                     assertEquals("[255,0,0,255]", gl.getJSONArray("pixels").toString());
                 }
             }

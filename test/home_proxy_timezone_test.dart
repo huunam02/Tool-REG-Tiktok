@@ -2,11 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_tiktok/controller/home_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/otp_settings_store.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
+import 'package:test_tiktok/core/webview_privacy.dart';
 import 'package:test_tiktok/core/tiktok_launch_action.dart';
 
 import 'support/memory_proxy_store.dart';
@@ -40,6 +42,7 @@ class _Proxy extends PlatformProxyController {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   TestWidgetsFlutterBinding.ensureInitialized();
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -90,6 +93,16 @@ void main() {
           actualAction,
         ) async {
           expect(configuration.webViewTimeZone, 'America/New_York');
+          expect(
+            platform.probes.single.params.initialSettings!.userAgent,
+            isNull,
+          );
+          expect(
+            platform.probes.single.params.initialUserScripts!.any(
+              (script) => script.source == disableWebRtcScript,
+            ),
+            isTrue,
+          );
           expect(actualAction, action);
           navigated = true;
         });
@@ -155,6 +168,12 @@ void main() {
         _,
       ) async {
         expect(configuration.webViewTimeZone, 'America/New_York');
+        expect(
+          platform.probes.single.params.initialUserScripts!.any(
+            (script) => script.source == disableWebRtcScript,
+          ),
+          isTrue,
+        );
       });
       expect(platform.probes, hasLength(1));
     },

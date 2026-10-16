@@ -12,10 +12,10 @@ import Network
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Set WebKit language preferences before any WebView is created.
+    // Remove the language overrides previously set by this app.
     let defaults = UserDefaults.standard
-    defaults.set(["en-US", "en"], forKey: "AppleLanguages")
-    defaults.set("en_US", forKey: "AppleLocale")
+    defaults.removeObject(forKey: "AppleLanguages")
+    defaults.removeObject(forKey: "AppleLocale")
     GeneratedPluginRegistrant.register(with: self)
     if let controller = window?.rootViewController as? FlutterViewController {
       proxyChannel = FlutterMethodChannel(

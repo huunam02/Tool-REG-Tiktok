@@ -18,7 +18,7 @@ void main() {
   );
 
   testWidgets(
-    'Home shows general settings and the selected configuration without tabs',
+    'Home retains general settings and selected configuration in its first tab',
     (tester) async {
       final store = MemoryProxyStore();
       final id = await store.save(
@@ -49,7 +49,7 @@ void main() {
       expect(find.text('proxy-user'), findsOneWidget);
       expect(find.text('proxy-pass'), findsOneWidget);
       expect(find.text('Đã đăng ký'), findsOneWidget);
-      expect(find.byType(TabBar), findsNothing);
+      expect(find.byType(TabBar), findsOneWidget);
       expect(find.byType(IndexedStack), findsNothing);
       expect(find.byKey(const Key('comments')), findsOneWidget);
       expect(find.byKey(const Key('openTikTok')), findsOneWidget);

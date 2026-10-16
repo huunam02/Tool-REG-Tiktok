@@ -5,12 +5,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_tiktok/core/proxy_geolocation.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 
 import 'support/test_proxy_ip_platform.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   TestWidgetsFlutterBinding.ensureInitialized();
   late TestProxyIpPlatform platform;
   final proxy = WebViewProxy.parse(
@@ -29,7 +31,11 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(
       const MethodChannel('test_tiktok/webview_identity'),
-      (call) async => 'test-agent',
+      (call) async {
+        expect(call.method, 'configureEngine');
+        expect(call.arguments.containsKey('userAgent'), isFalse);
+        return 'test-agent';
+      },
     );
     addTearDown(() {
       debugDefaultTargetPlatformOverride = null;
@@ -49,6 +55,7 @@ void main() {
       expect(view.controller.loadedRequest!.url!.host, 'ipwho.is');
       expect(view.controller.loadedRequest!.url!.scheme, 'https');
       expect(view.params.initialSettings!.cacheEnabled, isFalse);
+      expect(view.params.initialSettings!.userAgent, isNull);
       view.loaded(valid);
       final result = await future;
       expect(result.ip, '82.23.203.216');
@@ -124,6 +131,7 @@ void main() {
     final checker = ProxyGeolocationLookup();
     final future = lookup(checker);
     final assertion = expectLater(future, throwsFormatException);
+    await flush();
     checker.cancel();
     await assertion;
     platform.startupGate!.complete();

@@ -74,9 +74,11 @@ void main() {
           await step('signup-success');
           await signup;
           expect(notices, ['Đăng ký TikTok thành công.']);
-          expect(view.watchStarted, isTrue);
+          expect(view.watchStarted, isFalse);
+          expect(logic.waitingToAutoWatch, isTrue);
           expect(view.stopCalls, 1);
         }
+        logic.onClose();
       },
     );
   }

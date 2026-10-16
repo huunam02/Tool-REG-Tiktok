@@ -19,6 +19,18 @@ object DesktopChromeIdentity {
             Object.defineProperty(Navigator.prototype, 'platform', {
                 get: () => 'Linux x86_64', configurable: false
             });
+            // Pixel 9 Pro XL hardware profile, also in subframes. Desktop
+            // Chrome still advertises Linux/x86 in UA and Client Hints.
+            // Device Memory is deliberately capped at 8 GiB by Chromium,
+            // including on this 16 GiB phone. Keep real screen/DPR metrics
+            // so rendering, media queries and native touch coordinates agree.
+            if (__EMULATE_HARDWARE__) for (const [key, value] of Object.entries({
+                hardwareConcurrency: 8, deviceMemory: 8
+            })) {
+                Object.defineProperty(Navigator.prototype, key, {
+                    get: () => value, configurable: false
+                });
+            }
             if (window.top !== window) return;
             const normalize = (element) => {
                 if (element.tagName === 'META' &&
@@ -59,7 +71,8 @@ object DesktopChromeIdentity {
 
     @JvmOverloads
     fun configure(webView: WebView, requestedAgent: String? = null,
-                  requestedFullVersion: String? = null): String {
+                  requestedFullVersion: String? = null,
+                  emulateHardware: Boolean = true): String {
         check(WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             "WebView cần hỗ trợ cấu hình viewport trước khi tải trang. Hãy cập nhật Android System WebView."
         }
@@ -84,15 +97,28 @@ object DesktopChromeIdentity {
             }
             requestedFullVersion
         } else nativeVersion
-        val userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+        val isMiui = requestedAgent?.contains("XiaoMi/MiuiBrowser/") == true
+        val isWindows = !isMiui && requestedAgent?.contains("(Windows NT 10.0; Win64; x64)") == true
+        val platform = if (isWindows) "Windows NT 10.0; Win64; x64" else "X11; Linux x86_64"
+        val userAgent = if (isMiui) {
+            require(version == "135.0.7049.79") { "Phiên bản Chromium của Miui không khớp." }
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/135.0.7049.79 Safari/537.36 " +
+                "XiaoMi/MiuiBrowser/14.65.0-gn"
+        } else "Mozilla/5.0 ($platform) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/${version.substringBefore('.')}.0.0.0 Safari/537.36"
         require(requestedAgent == null || requestedAgent == userAgent) {
-            "User-Agent phải dùng cấu hình Chrome desktop Linux."
+            "User-Agent phải dùng cấu hình Chrome desktop hoặc Miui desktop."
         }
         val major = version.substringBefore('.')
         val settings = webView.settings
         val defaults = WebSettingsCompat.getUserAgentMetadata(settings)
-        val brands = defaults.brandVersionList.map {
+        val brands = if (isMiui) listOf(
+            UserAgentMetadata.BrandVersion.Builder()
+                .setBrand("Chromium").setMajorVersion(major).setFullVersion(version).build(),
+            UserAgentMetadata.BrandVersion.Builder()
+                .setBrand("Miui Browser").setMajorVersion("14").setFullVersion("14.65.0").build()
+        ) else defaults.brandVersionList.map {
             if (it.brand == "Chromium" || it.brand == "Android WebView" || it.brand == "Google Chrome") {
                 UserAgentMetadata.BrandVersion.Builder()
                     .setBrand(if (it.brand == "Android WebView") "Google Chrome" else it.brand)
@@ -109,13 +135,16 @@ object DesktopChromeIdentity {
         settings.displayZoomControls = false
         settings.textZoom = 100
         webView.setInitialScale(0)
-        WebViewCompat.addDocumentStartJavaScript(webView, desktopViewportScript, setOf("*"))
+        val viewportScript = desktopViewportScript.replace("__EMULATE_HARDWARE__", emulateHardware.toString())
+        val identityScript = if (isWindows) viewportScript.replace("Linux x86_64", "Win32")
+            else viewportScript
+        WebViewCompat.addDocumentStartJavaScript(webView, identityScript, setOf("*"))
         WebSettingsCompat.setUserAgentMetadata(settings,
             UserAgentMetadata.Builder(defaults)
                 .setBrandVersionList(brands)
                 .setFullVersion(version)
-                .setPlatform("Linux")
-                .setPlatformVersion("")
+                .setPlatform(if (isWindows) "Windows" else "Linux")
+                .setPlatformVersion(if (isWindows) "10.0.0" else "")
                 .setArchitecture("x86")
                 .setBitness(64)
                 .setModel("")

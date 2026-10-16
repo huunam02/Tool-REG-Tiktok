@@ -20,6 +20,8 @@ class AppConfiguration {
     this.birthday,
     this.proxy,
     this.webViewTimeZone,
+    this.webViewLocalIp = '192.168.1.10',
+    this.configurationId,
   }) : comments = List.unmodifiable(comments);
 
   factory AppConfiguration.defaults(String userAgent) => AppConfiguration(
@@ -45,6 +47,8 @@ class AppConfiguration {
   final DateTime? birthday;
   final WebViewProxy? proxy;
   final String? webViewTimeZone;
+  final String webViewLocalIp;
+  final int? configurationId;
 
   static List<String> parseComments(String value) => value
       .split('\n')

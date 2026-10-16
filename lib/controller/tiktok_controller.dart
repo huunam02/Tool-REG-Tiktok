@@ -15,6 +15,10 @@ import '../core/scripts/auto_cookie_script.dart';
 import '../core/scripts/auto_interest_script.dart';
 import '../core/scripts/auto_signup_script.dart';
 import '../core/scripts/auto_watch_script.dart';
+import '../core/scripts/manual_viewing_script.dart';
+import '../core/manual_viewing_session.dart';
+import '../core/nurture_data.dart';
+import '../core/nurture_store.dart';
 import '../core/scripts/country_modal_script.dart';
 import '../core/webview_proxy_ip.dart';
 import '../core/webview_user_agent.dart';
@@ -33,29 +37,52 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     this.launchAction = TikTokLaunchAction.browse,
     this.startWithBrowserCheck = false,
     this.startWithIpCheck = false,
+    bool useNativeWebView = false,
+    this.useInstalledEngine = true,
+    this.manualViewingPlan,
+    this.nurtureRepository,
     this.otpReaderFactory,
     this.onReturnToConfiguration,
     bool? useAccessibility,
     DateTime Function()? now,
-  }) : _now = now ?? DateTime.now,
+  }) : useNativeWebView = useNativeWebView || manualViewingPlan != null,
+       _now = now ?? DateTime.now,
        _accessibilityOverride = useAccessibility,
-      browserCheckOpen = startWithBrowserCheck || startWithIpCheck;
+       browserCheckOpen = startWithBrowserCheck || startWithIpCheck;
 
   final AppConfiguration configuration;
   final TikTokLaunchAction launchAction;
   final bool startWithBrowserCheck;
   final bool startWithIpCheck;
+  // Manual-only mode is independent of the browser identity used by automation.
+  final bool useNativeWebView;
+  final bool useInstalledEngine;
+  final NurturePlan? manualViewingPlan;
+  final NurtureRepository? nurtureRepository;
+  ManualViewingSession? _manualSession;
+  int? _manualNavigation;
+  bool manualViewingClosed = false;
+  Future<void>? _manualClose;
+  bool get manualViewingClosing => _manualClose != null;
+  bool get usesEngineIdentity =>
+      needsAndroidDesktopIdentity && useInstalledEngine;
+  String? _effectiveUserAgent;
+  String get effectiveUserAgent =>
+      _effectiveUserAgent ?? configuration.userAgent;
+  bool get needsDesktopIdentity => needsAndroidDesktopIdentity;
+  Map<String, String>? get navigationHeaders =>
+      useNativeWebView ? null : englishWebViewHeaders;
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
   final VoidCallback? onReturnToConfiguration;
   final DateTime Function() _now;
   final bool? _accessibilityOverride;
-    String get initialUrl => startWithBrowserCheck
+  String get initialUrl => startWithBrowserCheck
       ? browserCheckUrl
       : startWithIpCheck
       ? ipCheckUrl
-      : launchAction.initialUrl;
+      : manualViewingPlan?.initialUrl ?? launchAction.initialUrl;
   static const browserCheckUrl = 'https://www.whatismybrowser.com/';
-    static const ipCheckUrl = 'https://www.whatismyip.com/';
+  static const ipCheckUrl = 'https://www.whatismyip.com/';
   bool browserCheckOpen;
   bool browserIdentityReady = false;
 
@@ -141,6 +168,13 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   WebViewProxyIpChecker? _ipChecker;
   bool autoWatchEnabled = false;
   bool autoWatchBusy = false;
+  static const autoWatchAfterLoginDuration = Duration(minutes: 10);
+  Timer? _autoWatchStopTimer;
+  DateTime? _autoWatchStopsAt;
+  Timer? _autoWatchStartTimer;
+  DateTime? _autoWatchStartsAt;
+  DateTime? get autoWatchStartsAt => _autoWatchStartsAt;
+  bool get waitingToAutoWatch => _autoWatchStartsAt != null;
   bool appActive = true;
   late final List<String> comments;
   bool inputBusy = false;
@@ -149,11 +183,28 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   void onInit() {
     super.onInit();
     comments = configuration.comments;
+    final plan = manualViewingPlan;
+    final repository = nurtureRepository;
+    if (plan != null &&
+        repository != null &&
+        configuration.loginUsername.trim().isNotEmpty) {
+      _manualSession = ManualViewingSession(
+        repository: repository,
+        email: configuration.loginUsername,
+        configurationId: configuration.configurationId,
+        plan: plan,
+        onError: () => notify(
+          'Không thể lưu thống kê phiên xem. Hãy kiểm tra bộ nhớ rồi thử lại.',
+        ),
+      );
+    }
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void onClose() {
+    unawaited(closeManualViewing());
+    _cancelAutoWatchTimers();
     unawaited(_sendCodeAccessibility?.dispose());
     _ipChecker?.cancel();
     cancelAutoLogin(updateUi: false);
@@ -166,9 +217,19 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     appActive = state == AppLifecycleState.resumed;
+    if (manualViewingPlan != null) {
+      unawaited(_updateManualForeground());
+      return;
+    }
     if (!appActive && autoLoginBusy) cancelAutoLogin();
     if (!appActive && autoSignupBusy) cancelAutoSignup();
-    if (appActive) unawaited(runInitialAction());
+    if (appActive) {
+      unawaited(runInitialAction());
+      if (waitingToAutoWatch) {
+        _startPendingAutoWatchIfReady();
+        return;
+      }
+    }
     if (autoWatchEnabled && appActive) {
       unawaited(startAutoWatch());
     } else {
@@ -177,6 +238,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> startAutoWatch() async {
+    if (useNativeWebView) return;
+    final stopsAt = _autoWatchStopsAt;
+    if (stopsAt != null && !_now().isBefore(stopsAt)) {
+      _finishTimedAutoWatch();
+      return;
+    }
     if (!active ||
         browserCheckOpen ||
         !autoWatchEnabled ||
@@ -195,12 +262,78 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       }
     } catch (_) {
       if (!active || !autoWatchEnabled) return;
+      _cancelAutoWatchTimers();
       mutate(() => autoWatchEnabled = false);
       notify('Không thể bật tự động xem. Hãy thử tải lại TikTok.');
     }
   }
 
+  void _cancelAutoWatchTimers() {
+    _autoWatchStartTimer?.cancel();
+    _autoWatchStartTimer = null;
+    _autoWatchStartsAt = null;
+    _autoWatchStopTimer?.cancel();
+    _autoWatchStopTimer = null;
+    _autoWatchStopsAt = null;
+  }
+
+  void _scheduleAutoWatchAfterSignup() {
+    _cancelAutoWatchTimers();
+    final hold = Duration(seconds: 120 + _actionRandom.nextInt(61));
+    mutate(() {
+      autoWatchEnabled = false;
+      _autoWatchStartsAt = _now().add(hold);
+    });
+    _autoWatchStartTimer = Timer(hold, () {
+      _autoWatchStartTimer = null;
+      _startPendingAutoWatchIfReady();
+    });
+  }
+
+  void _startPendingAutoWatchIfReady() {
+    final startsAt = _autoWatchStartsAt;
+    if (startsAt == null ||
+        _now().isBefore(startsAt) ||
+        !active ||
+        !appActive ||
+        browserCheckOpen ||
+        pageFailure != null ||
+        accountFailure != null ||
+        autoLoginBusy ||
+        autoSignupBusy) {
+      return;
+    }
+    unawaited(_startTimedAutoWatch());
+  }
+
+  void cancelAutoWatchHold() {
+    if (!waitingToAutoWatch) return;
+    _cancelAutoWatchTimers();
+    mutate(() {});
+  }
+
+  void _finishTimedAutoWatch() {
+    _cancelAutoWatchTimers();
+    if (!active || !autoWatchEnabled) return;
+    mutate(() => autoWatchEnabled = false);
+    unawaited(stopAutoWatch());
+    notify('Đã tự tắt Auto nuôi sau 10 phút.');
+  }
+
+  Future<void> _startTimedAutoWatch() async {
+    _cancelAutoWatchTimers();
+    // Keep one deadline across document reloads and app background/resume.
+    _autoWatchStopsAt = _now().add(autoWatchAfterLoginDuration);
+    _autoWatchStopTimer = Timer(
+      autoWatchAfterLoginDuration,
+      _finishTimedAutoWatch,
+    );
+    mutate(() => autoWatchEnabled = true);
+    await startAutoWatch();
+  }
+
   Future<void> stopAutoWatch() async {
+    if (useNativeWebView) return;
     try {
       await webViewController?.evaluateJavascript(source: autoWatchStopScript);
     } catch (_) {
@@ -269,6 +402,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> toggleAutoWatch() async {
+    if (useNativeWebView) return;
     if (browserCheckOpen ||
         autoWatchBusy ||
         autoLoginBusy ||
@@ -281,12 +415,18 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       return;
     }
     if (!active || autoLoginBusy || autoSignupBusy) return;
+    final timedStart = waitingToAutoWatch;
+    _cancelAutoWatchTimers();
     mutate(() {
       autoWatchBusy = true;
       autoWatchEnabled = !autoWatchEnabled;
     });
     if (autoWatchEnabled) {
-      await startAutoWatch();
+      if (timedStart) {
+        await _startTimedAutoWatch();
+      } else {
+        await startAutoWatch();
+      }
     } else {
       await stopAutoWatch();
     }
@@ -294,6 +434,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> stopAutoLogin(int attempt) async {
+    if (useNativeWebView) return;
     try {
       await webViewController?.evaluateJavascript(
         source: buildAutoLoginStopScript(attempt),
@@ -312,6 +453,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> stopAutoSignup(int attempt) async {
+    if (useNativeWebView) return;
     try {
       await webViewController?.evaluateJavascript(
         source: buildAutoSignupStopScript(attempt),
@@ -598,6 +740,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> autoSignup() async {
+    if (useNativeWebView) return;
     if (autoSignupBusy) {
       cancelAutoSignup();
       return;
@@ -617,6 +760,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
     if (!validateOtpMailbox(signup: true)) return;
     if (!await ensureAccountAccessibility()) return;
+    _cancelAutoWatchTimers();
     activeSignupOtp = configuration.signupOtp.trim();
     final attempt = ++autoSignupAttempt;
     mutate(() {
@@ -879,14 +1023,14 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           notify(message);
         }
         if (signupSucceeded && appActive && pageFailure == null) {
-          mutate(() => autoWatchEnabled = true);
-          await startAutoWatch();
+          _scheduleAutoWatchAfterSignup();
         }
       }
     }
   }
 
   Future<void> autoLogin() async {
+    if (useNativeWebView) return;
     if (autoLoginBusy) {
       cancelAutoLogin();
       return;
@@ -906,6 +1050,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
     if (!validateOtpMailbox(signup: false)) return;
     if (!await ensureAccountAccessibility()) return;
+    _cancelAutoWatchTimers();
     activeLoginOtp = configuration.loginOtp.trim();
     final attempt = ++autoLoginAttempt;
     mutate(() {
@@ -1106,8 +1251,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         mutate(() => autoLoginBusy = false);
         notify(message);
         if (loginSucceeded && appActive && pageFailure == null) {
-          mutate(() => autoWatchEnabled = true);
-          await startAutoWatch();
+          await _startTimedAutoWatch();
         }
       }
     }
@@ -1128,9 +1272,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       'comment-post-changed' =>
         'Video đã thay đổi khi đang bình luận. Đã dừng tự động.',
       'comment-paste-failed' => 'Không thể tự nhập bình luận. Đã dừng tự động.',
+      'comment-window-expired' =>
+        'Đã quá 70% thời lượng video khi đang nhập bình luận. Đã dừng và giữ bản nháp.',
       _ =>
         'Chưa xác nhận được bình luận đã gửi. Đã dừng, không gửi lại để tránh trùng.',
     };
+    _cancelAutoWatchTimers();
     mutate(() => autoWatchEnabled = false);
     unawaited(stopAutoWatch());
     notify(text);
@@ -1138,6 +1285,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   Future<void> runInitialAction() async {
     if (!active ||
+        useNativeWebView ||
         browserCheckOpen ||
         !appActive ||
         !initialPageLoaded ||
@@ -1172,7 +1320,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         url?.scheme == 'https' &&
         url?.host == 'www.tiktok.com';
     await updateNavigationState();
-    if (pageFailure != null || browserCheckOpen) return;
+    if (pageFailure != null || browserCheckOpen || useNativeWebView) return;
     try {
       await webViewController?.evaluateJavascript(
         source: autoAcceptCookieScript,
@@ -1200,7 +1348,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       if (!active || agent is! String) return;
       debugPrint('[WebView identity] User-Agent thực tế: $agent');
       debugPrint(
-        '[WebView identity] Khớp cấu hình: ${agent == configuration.userAgent}',
+        '[WebView identity] Khớp nhận diện đang dùng: ${agent == effectiveUserAgent}',
       );
     } catch (_) {
       // A navigation may replace the document before this debug-only read.
@@ -1224,6 +1372,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   void showPageFailure(WebViewFailure failure) {
     if (!active) return;
+    _cancelAutoWatchTimers();
     _ipChecker?.cancel();
     if (autoLoginBusy) cancelAutoLogin();
     if (autoSignupBusy) cancelAutoSignup();
@@ -1274,7 +1423,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     mutate(() => checkingIp = true);
     try {
       final ip = await checker.check(
-        userAgent: configuration.userAgent,
+        userAgent: effectiveUserAgent,
+        useInstalledEngine: usesEngineIdentity,
+        localIp: configuration.webViewLocalIp,
         onAuth: (controller, challenge) async {
           if (!active || checkNavigationId != navigationId) {
             return HttpAuthResponse(action: HttpAuthResponseAction.CANCEL);
@@ -1295,6 +1446,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   /// Injects a MutationObserver that watches for the "Select country or region"
   /// modal and automatically clicks the "Done" button.
   Future<void> injectAutoCloseCountryModal() async {
+    if (useNativeWebView) return;
     try {
       await webViewController?.evaluateJavascript(
         source: autoCloseCountryModalScript,
@@ -1311,61 +1463,76 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   Future<void> onWebViewCreated(InAppWebViewController controller) async {
     webViewController = controller;
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterCommentPaste',
-      callback: inputCommentText,
-    );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterLoginPaste',
-      callback: inputLoginText,
-    );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterLoginSendCode',
-      callback: clickLoginSendCode,
-    );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterLoginEmailVerification',
-      callback: clickLoginEmailVerification,
-    );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterLoginPasswordContinue',
-      callback: clickLoginPasswordContinue,
-    );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterLoginOtpContinue',
-      callback: clickLoginOtpContinue,
-    );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterSignupPaste',
-      callback: inputSignupText,
-    );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterSignupSendCode',
-      callback: clickSignupSendCode,
-    );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterSignupPasswordSubmit',
-      callback: clickSignupPasswordSubmit,
-    );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterSignupUsernameSkip',
-      callback: clickSignupUsernameSkip,
-    );
-    controller.addJavaScriptHandler(
-      handlerName: 'FlutterAutoWatch',
-      callback: (args) {
-        if (args.isNotEmpty) {
-          handleAutoWatchMessage(args.first.toString());
-        }
-      },
-    );
-    if (needsAndroidDesktopIdentity) {
+    if (_manualSession != null) {
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterManualViewingStats',
+        callback: (args) async {
+          if (args.isNotEmpty && active) {
+            await _manualSession?.accept(args.first);
+          }
+        },
+      );
+    }
+    if (!useNativeWebView) {
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterCommentPaste',
+        callback: inputCommentText,
+      );
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterLoginPaste',
+        callback: inputLoginText,
+      );
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterLoginSendCode',
+        callback: clickLoginSendCode,
+      );
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterLoginEmailVerification',
+        callback: clickLoginEmailVerification,
+      );
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterLoginPasswordContinue',
+        callback: clickLoginPasswordContinue,
+      );
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterLoginOtpContinue',
+        callback: clickLoginOtpContinue,
+      );
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterSignupPaste',
+        callback: inputSignupText,
+      );
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterSignupSendCode',
+        callback: clickSignupSendCode,
+      );
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterSignupPasswordSubmit',
+        callback: clickSignupPasswordSubmit,
+      );
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterSignupUsernameSkip',
+        callback: clickSignupUsernameSkip,
+      );
+      controller.addJavaScriptHandler(
+        handlerName: 'FlutterAutoWatch',
+        callback: (args) {
+          if (args.isNotEmpty) {
+            handleAutoWatchMessage(args.first.toString());
+          }
+        },
+      );
+    }
+    if (needsDesktopIdentity) {
       try {
-        await configureAndroidDesktopIdentity(
+        final agent = await configureAndroidDesktopIdentity(
           controller,
           userAgent: configuration.userAgent,
+          useInstalledEngine: usesEngineIdentity,
         );
-        final timeZone = configuration.webViewTimeZone;
+        final timeZone = useNativeWebView
+            ? null
+            : configuration.webViewTimeZone;
         if (timeZone != null) {
           // Validate in the empty initial document before any external page.
           final ready = await controller.evaluateJavascript(
@@ -1381,11 +1548,15 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           }
         }
         if (!active) return;
-        mutate(() => browserIdentityReady = true);
+        mutate(() {
+          _effectiveUserAgent = agent;
+          browserIdentityReady = true;
+          if (useNativeWebView) initialActionStarted = true;
+        });
         await controller.loadUrl(
           urlRequest: URLRequest(
             url: WebUri(initialUrl),
-            headers: englishWebViewHeaders,
+            headers: navigationHeaders,
           ),
         );
       } on FormatException catch (error) {
@@ -1475,6 +1646,60 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     WebUri? url,
   ) async {
     await handlePageLoadComplete(url);
+    final host = url?.host ?? '';
+    final session = _manualSession;
+    final navigation = navigationId;
+    if (session == null ||
+        !active ||
+        pageFailure != null ||
+        manualViewingClosed ||
+        !(host == 'tiktok.com' || host.endsWith('.tiktok.com')) ||
+        url?.scheme != 'https' ||
+        _manualNavigation == navigationId) {
+      return;
+    }
+    _manualNavigation = navigationId;
+    await session.start();
+    if (!active || manualViewingClosed || navigation != navigationId) return;
+    final segment = session.addSegment();
+    try {
+      final result = await controller.evaluateJavascript(
+        source: buildManualViewingScript(session.id, segment),
+      );
+      if (result != true) throw StateError('Playback observer unavailable');
+      await _updateManualForeground();
+    } catch (_) {
+      if (active) notify('Không thể theo dõi thời gian xem trên trang này.');
+    }
+  }
+
+  Future<void> _updateManualForeground() async {
+    final session = _manualSession;
+    if (session == null || manualViewingClosed) return;
+    try {
+      final snapshot = await webViewController?.evaluateJavascript(
+        source:
+            'window.__manualViewing?.setActive(${appActive ? 'true' : 'false'}) ?? null',
+      );
+      await session.accept(snapshot);
+    } catch (_) {}
+    await session.setForeground(appActive);
+  }
+
+  Future<void> closeManualViewing() => _manualClose ??= _finishManualViewing();
+
+  Future<void> _finishManualViewing() async {
+    final session = _manualSession;
+    if (session != null) {
+      try {
+        final snapshot = await webViewController?.evaluateJavascript(
+          source: 'window.__manualViewing?.stop() ?? null',
+        );
+        await session.accept(snapshot);
+      } catch (_) {}
+      await session.finish(error: pageFailure != null);
+    }
+    if (active) mutate(() => manualViewingClosed = true);
   }
 
   void onConsoleMessage(
@@ -1496,7 +1721,13 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     // These backend errors also occur on a manual tap. Stop pending account
     // actions and mailbox requests, then show the reason without resizing the page.
     cancelAutoActions();
-    mutate(() => accountFailure = failure);
+    final wasWatching = autoWatchEnabled;
+    _cancelAutoWatchTimers();
+    mutate(() {
+      accountFailure = failure;
+      autoWatchEnabled = false;
+    });
+    if (wasWatching) unawaited(stopAutoWatch());
     notify(
       '${failure.title}\n${failure.message}',
       duration: const Duration(seconds: 6),
@@ -1563,7 +1794,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       webViewController?.loadUrl(
         urlRequest: URLRequest(
           url: WebUri(tiktokHomeUrl),
-          headers: englishWebViewHeaders,
+          headers: navigationHeaders,
         ),
       ),
     );
@@ -1572,6 +1803,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   Future<void> openBrowserCheck() async {
     final controller = webViewController;
     if (!active || controller == null || !browserIdentityReady) return;
+    _cancelAutoWatchTimers();
     cancelAutoActions();
     _ipChecker?.cancel();
     mutate(() {
@@ -1586,7 +1818,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     await controller.loadUrl(
       urlRequest: URLRequest(
         url: WebUri(browserCheckUrl),
-        headers: englishWebViewHeaders,
+        headers: navigationHeaders,
       ),
     );
   }

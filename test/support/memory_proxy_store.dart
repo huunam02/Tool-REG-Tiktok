@@ -3,8 +3,14 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
+import 'package:test_tiktok/core/nurture_store.dart';
+import 'memory_nurture_store.dart';
 
 class MemoryProxyStore extends ProxyStore {
+  @override
+  late final NurtureRepository nurture = MemoryNurtureRepository(
+    () async => entries,
+  );
   WebViewProxy? current;
   String currentUserAgent = 'cached-proxy-user-agent';
   String currentName = '';
@@ -32,10 +38,10 @@ class MemoryProxyStore extends ProxyStore {
   Future<ProxyProfile?> getCurrentProfile() {
     if (failReads) throw StateError('Storage unavailable');
     return SynchronousFuture(
-      current == null
+      current == null && currentAccount == null && currentId == null
           ? null
           : ProxyProfile(
-              proxy: current!,
+              proxy: current,
               userAgent: currentUserAgent,
               timeZoneId: currentTimeZoneId,
               name: currentName,
@@ -63,7 +69,13 @@ class MemoryProxyStore extends ProxyStore {
       currentUserAgent = 'proxy-user-agent-${_nextAgent++}';
     }
     current = proxy;
-    if (proxy == null) currentAccount = null;
+    if (proxy == null) {
+      currentAccount = null;
+      currentId = null;
+      currentName = '';
+      currentTimeZoneId = '';
+      currentStatus = AccountStatus.unregistered;
+    }
   }
 
   @override

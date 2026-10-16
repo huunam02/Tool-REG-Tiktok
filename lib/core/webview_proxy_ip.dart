@@ -25,6 +25,8 @@ class WebViewProxyIpChecker {
 
   Future<String?> check({
     required String userAgent,
+    bool useInstalledEngine = true,
+    String localIp = '192.168.1.10',
     required Future<HttpAuthResponse?> Function(
       InAppWebViewController,
       URLAuthenticationChallenge,
@@ -52,8 +54,9 @@ class WebViewProxyIpChecker {
       final view = HeadlessInAppWebView(
         initialUrlRequest: needsAndroidDesktopIdentity ? null : request,
         initialUserScripts: UnmodifiableListView([
-          hideGpuInfoUserScript(),
-          disableWebRtcUserScript(),
+          if (!needsAndroidDesktopIdentity || !useInstalledEngine)
+            pixelGpuInfoUserScript(),
+          disableWebRtcUserScript(localIp: localIp),
         ]),
         onWebViewCreated: (controller) async {
           if (!needsAndroidDesktopIdentity) return;
@@ -61,6 +64,7 @@ class WebViewProxyIpChecker {
             await configureAndroidDesktopIdentity(
               controller,
               userAgent: userAgent,
+              useInstalledEngine: useInstalledEngine,
             );
             if (_cancelled || result.isCompleted) return;
             await controller.loadUrl(urlRequest: request);
@@ -69,7 +73,9 @@ class WebViewProxyIpChecker {
           }
         },
         initialSettings: InAppWebViewSettings(
-          userAgent: userAgent,
+          userAgent: needsAndroidDesktopIdentity && useInstalledEngine
+              ? null
+              : userAgent,
           preferredContentMode: UserPreferredContentMode.DESKTOP,
           javaScriptEnabled: true,
           // Non-persistent stores on iOS would lose the configured proxy.
@@ -77,7 +83,7 @@ class WebViewProxyIpChecker {
           cacheEnabled: true,
         ),
         onLoadStop: (controller, url) async {
-          if (result.isCompleted) return;
+          if (result.isCompleted || url?.scheme == 'about') return;
           if (url?.scheme != 'https' || url?.host != host) {
             finish(null);
             return;

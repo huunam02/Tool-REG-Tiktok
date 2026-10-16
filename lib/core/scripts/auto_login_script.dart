@@ -427,7 +427,8 @@ const String autoLoginStepScript = r'''
     return nativeButtonTarget(request.control, 'login/select-verification-email');
   };
 
-  const continuePattern = /^(continue|tiếp tục)$/i;
+  // OTP dialogs can label the same native confirmation action as Next.
+  const continuePattern = /^(continue|next|tiếp tục|tiếp theo)$/i;
   const passwordFormRoot = () => {
     const editor = findForm('input[type="password"]');
     return editor?.closest('form') || editor?.parentElement

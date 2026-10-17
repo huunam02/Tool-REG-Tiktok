@@ -6,8 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../core/app_configuration.dart';
-import '../core/config.dart' as config;
-import '../core/english_configuration_content.dart';
+import '../core/services/remote_config_service.dart';
 import '../core/app_session.dart';
 import '../core/nurture_data.dart';
 import '../core/proxy_geolocation.dart';
@@ -145,24 +144,15 @@ class HomeController extends AppController
     }
   }
 
-  final formKey = GlobalKey<FormState>();
   late String userAgent;
   late String directUserAgent;
   late OtpApiSettings otpSettings;
   ProxyProfile? currentProxy;
-  late final TextEditingController comments;
-  late final TextEditingController keywords;
   late final TabController tabs;
   int tabIndex = 0;
   List<NurtureAccount> nurtureAccounts = [];
   bool loadingAccounts = false;
   bool accountsLoadFailed = false;
-  bool preferencesLoadFailed = false;
-  bool _preferencesReady = false;
-  bool _commentsEdited = false;
-  bool _keywordsEdited = false;
-  Timer? _preferencesTimer;
-  Future<void> _preferenceWrites = Future.value();
   bool opening = false;
   bool loadingProxy = true;
   bool proxyLoadFailed = false;
@@ -189,90 +179,15 @@ class HomeController extends AppController
     userAgent = initialUserAgent;
     directUserAgent = initialUserAgent;
     otpSettings = initialOtpSettings;
-    final defaults = AppConfiguration.defaults(userAgent);
-    comments = TextEditingController(text: defaults.comments.join('\n'));
-    keywords = TextEditingController(
-      text: config.defaultSearchKeywords.join('\n'),
-    );
     tabs = TabController(length: 2, vsync: this);
     tabs.addListener(() {
       if (tabIndex == tabs.index) return;
       mutate(() => tabIndex = tabs.index);
       if (tabIndex == 1) unawaited(loadNurtureAccounts());
     });
-    comments.addListener(_commentsChanged);
-    keywords.addListener(_keywordsChanged);
     proxyStore = store;
     unawaited(restoreProxy());
-    unawaited(restorePreferences());
     unawaited(loadNurtureAccounts());
-  }
-
-  void _commentsChanged() {
-    _commentsEdited = true;
-    _schedulePreferences();
-  }
-
-  void _keywordsChanged() {
-    _keywordsEdited = true;
-    _schedulePreferences();
-  }
-
-  void _schedulePreferences() {
-    if (!_preferencesReady) return;
-    _preferencesTimer?.cancel();
-    _preferencesTimer = Timer(const Duration(milliseconds: 400), () {
-      unawaited(savePreferences());
-    });
-  }
-
-  Future<void> restorePreferences() async {
-    try {
-      final values = await store.nurture.preferences();
-      if (!active) return;
-      final translateSavedContent =
-          values['configuration_content_language'] != 'en';
-      if (!_commentsEdited && values.containsKey('home_comments')) {
-        final saved = values['home_comments']!;
-        comments.text = translateSavedContent
-            ? translateLegacyConfigurationContent(saved)
-            : saved;
-      }
-      final savedKeywords = values['nurture_keywords'];
-      if (!_keywordsEdited &&
-          savedKeywords != null &&
-          (savedKeywords.trim().isNotEmpty ||
-              values['search_keywords_initialized'] == '1')) {
-        keywords.text = translateSavedContent
-            ? translateLegacyConfigurationContent(savedKeywords)
-            : savedKeywords;
-      }
-      mutate(() => preferencesLoadFailed = false);
-    } catch (_) {
-      if (active) mutate(() => preferencesLoadFailed = true);
-    } finally {
-      _preferencesReady = true;
-      // Include edits made while the database was opening.
-      if (active && !preferencesLoadFailed) _schedulePreferences();
-    }
-  }
-
-  Future<void> savePreferences() {
-    _preferencesTimer?.cancel();
-    if (!_preferencesReady || preferencesLoadFailed) return Future.value();
-    final values = {
-      'home_comments': comments.text,
-      'nurture_keywords': keywords.text,
-      'search_keywords_initialized': '1',
-      'configuration_content_language': 'en',
-    };
-    return _preferenceWrites = _preferenceWrites.then((_) async {
-      try {
-        await store.nurture.savePreferences(values);
-      } catch (_) {
-        if (active) notify('Không thể lưu từ khóa và bình luận. Hãy thử lại.');
-      }
-    });
   }
 
   Future<void> loadNurtureAccounts() async {
@@ -319,9 +234,7 @@ class HomeController extends AppController
     if (!active) {
       return;
     }
-    final plan = NurturePlan.choose(
-      AppConfiguration.parseComments(keywords.text),
-    );
+    final plan = NurturePlan.choose(RemoteConfig.searchKeywords);
     await openTikTok(
       TikTokLaunchAction.browse,
       (configuration, _) => navigate(configuration, plan),
@@ -396,16 +309,9 @@ class HomeController extends AppController
     cancelScheduledLogin();
     WidgetsBinding.instance.removeObserver(this);
     _timeZoneLookup?.cancel();
-    unawaited(savePreferences());
-    _preferencesTimer?.cancel();
     tabs.dispose();
-    comments.dispose();
-    keywords.dispose();
     super.onClose();
   }
-
-  void updateOtpSettings(OtpApiSettings settings) =>
-      mutate(() => otpSettings = settings);
 
   Future<void> openTikTok(
     TikTokLaunchAction action,
@@ -483,8 +389,8 @@ class HomeController extends AppController
             needsAndroidDesktopIdentity && proxy != null && timeZone.isNotEmpty
             ? timeZone
             : null,
-        comments: AppConfiguration.parseComments(comments.text),
-        searchKeywords: AppConfiguration.parseComments(keywords.text),
+        comments: RemoteConfig.autoComments,
+        searchKeywords: RemoteConfig.searchKeywords,
         signupEmail: account?.email ?? '',
         signupPassword: account?.password ?? '',
         loginUsername: account?.email ?? '',
@@ -526,13 +432,15 @@ class HomeController extends AppController
   OtpApiConfiguration? otpApiFor(TikTokLaunchAction action) {
     if (action == TikTokLaunchAction.browse) return null;
     if (otpSettings.token.trim().isEmpty) {
-      throw const FormatException('Hãy cấu hình token OTP API trong Cài đặt.');
+      throw const FormatException(
+        'Token OTP API chưa được cấu hình trong Remote Config.',
+      );
     }
     try {
       return otpSettings.toConfiguration();
     } on FormatException {
       throw const FormatException(
-        'Hãy cấu hình URL OTP API HTTP/HTTPS hợp lệ trong Cài đặt.',
+        'URL OTP API trong Remote Config phải là HTTP/HTTPS hợp lệ.',
       );
     }
   }

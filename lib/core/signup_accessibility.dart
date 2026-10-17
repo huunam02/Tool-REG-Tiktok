@@ -170,10 +170,28 @@ class SignupSnapshot {
 }
 
 class SignupAccessibility {
+  SignupAccessibility({this.beforeSnapshot, this.beforeAction});
+  final Future<void> Function()? beforeSnapshot, beforeAction;
+  int _actionsInFlight = 0;
+  bool get actionBusy => _actionsInFlight > 0;
+
+  Future<T> _perform<T>(Future<T> Function() action) async {
+    await beforeAction?.call();
+    _actionsInFlight++;
+    try {
+      return await action();
+    } finally {
+      _actionsInFlight--;
+    }
+  }
+
   Future<void> cancelPaste() => FlutterAccessibilityService.signupCancelPaste();
-  Future<SignupSnapshot> snapshot() async =>
-      SignupSnapshot(await FlutterAccessibilityService.signupSnapshot());
-  Future<void> tap(SignupViewport viewport, Offset point) async {
+  Future<SignupSnapshot> snapshot() async {
+    await beforeSnapshot?.call();
+    return SignupSnapshot(await FlutterAccessibilityService.signupSnapshot());
+  }
+
+  Future<void> tap(SignupViewport viewport, Offset point) => _perform(() async {
     final physical = viewport.toScreen(point);
     final completed = await FlutterAccessibilityService.dispatchGesture(
       GestureDescription(
@@ -187,42 +205,64 @@ class SignupAccessibility {
       ),
     );
     if (!completed) throw StateError('Accessibility chưa hoàn tất cú chạm.');
-  }
+  });
 
-  Future<void> swipe(SignupViewport viewport, Offset from, Offset to) async {
-    final a = viewport.toScreen(from), b = viewport.toScreen(to);
-    final completed = await FlutterAccessibilityService.dispatchGesture(
-      GestureDescription(
-        strokes: [
-          GestureStroke(
-            path: [GesturePoint(a.dx, a.dy), GesturePoint(b.dx, b.dy)],
-            startTime: 0,
-            duration: 450,
+  Future<void> swipe(SignupViewport viewport, Offset from, Offset to) async =>
+      swipeScreen(
+        viewport.bounds,
+        viewport.toScreen(from),
+        viewport.toScreen(to),
+      );
+
+  /// Physical coordinates also support manual WebViews with any aspect ratio.
+  Future<void> swipeScreen(Rect bounds, Offset from, Offset to) =>
+      _perform(() async {
+        if (!bounds.isFinite ||
+            bounds.isEmpty ||
+            !from.dx.isFinite ||
+            !from.dy.isFinite ||
+            !to.dx.isFinite ||
+            !to.dy.isFinite ||
+            !bounds.contains(from) ||
+            !bounds.contains(to)) {
+          throw StateError('Điểm kéo nằm ngoài khung WebView.');
+        }
+        final completed = await FlutterAccessibilityService.dispatchGesture(
+          GestureDescription(
+            strokes: [
+              GestureStroke(
+                path: [
+                  GesturePoint(from.dx, from.dy),
+                  GesturePoint(to.dx, to.dy),
+                ],
+                startTime: 0,
+                duration: 450,
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-    if (!completed) {
-      throw StateError('Accessibility chưa hoàn tất thao tác cuộn.');
-    }
-  }
+        );
+        if (!completed) {
+          throw StateError('Accessibility chưa hoàn tất thao tác cuộn.');
+        }
+      });
 
-  Future<Map<String, dynamic>> paste(String text, String field) =>
-      FlutterAccessibilityService.signupPasteFocused(text, field);
-  Future<void> setKeyboardSuppressed(bool suppressed) async {
+  Future<Map<String, dynamic>> paste(String text, String field) => _perform(
+    () => FlutterAccessibilityService.signupPasteFocused(text, field),
+  );
+  Future<void> setKeyboardSuppressed(bool suppressed) => _perform(() async {
     if (!await FlutterAccessibilityService.signupSetKeyboardSuppressed(
       suppressed,
     )) {
       throw StateError('Không điều khiển được bàn phím để nhập bình luận.');
     }
-  }
+  });
 
   Future<bool> submitComment() =>
-      FlutterAccessibilityService.signupSubmitComment();
+      _perform(FlutterAccessibilityService.signupSubmitComment);
 
-  Future<void> dismissKeyboard() async {
+  Future<void> dismissKeyboard() => _perform(() async {
     if (!await FlutterAccessibilityService.signupDismissKeyboard()) {
       throw StateError('Không đóng được bàn phím.');
     }
-  }
+  });
 }

@@ -10,6 +10,9 @@ import 'package:flutter_accessibility_service/flutter_accessibility_service.dart
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../core/scripts/auto_login_script.dart';
+import '../core/scripts/rotate_captcha_script.dart';
+import '../core/rotate_captcha.dart';
+import '../core/captcha_settings_store.dart';
 import '../core/scripts/authenticated_session_script.dart';
 import '../core/scripts/auto_logout_script.dart';
 import '../core/send_code_accessibility.dart';
@@ -56,14 +59,18 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     this.otpReaderFactory,
     this.loginProfileLoader,
     this.nurtureProfileLoader,
+    this.rotateCaptchaSolverFactory,
     this.onReturnToConfiguration,
     this.onFlowFinished,
     Random? workflowRandom,
     ProxyStore? proxyStore,
+    CaptchaSettingsStore? captchaSettingsStore,
     bool? useAccessibility,
     DateTime Function()? now,
   }) : useNativeWebView = useNativeWebView || manualViewingPlan != null,
        proxyStore = proxyStore ?? ProxyStore.instance,
+       captchaSettingsStore =
+           captchaSettingsStore ?? CaptchaSettingsStore.instance,
        _workflowRandom = workflowRandom ?? Random(),
        _now = now ?? DateTime.now,
        _accessibilityOverride = useAccessibility,
@@ -71,6 +78,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   final AppConfiguration configuration;
   final ProxyStore proxyStore;
+  final CaptchaSettingsStore captchaSettingsStore;
   final ValueChanged<TikTokFlowResult>? onFlowFinished;
   final Random _workflowRandom;
   Timer? _signupLogoutTimer;
@@ -141,6 +149,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         if (url.scheme != 'https' || url.host != 'www.tiktok.com') {
           throw StateError('Logout left TikTok');
         }
+        await _checkRotateCaptcha();
+        if (!current() || !appActive) return;
         dynamic result;
         try {
           result = await webViewController?.evaluateJavascript(
@@ -260,6 +270,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
   final Future<LoginCoordinateProfile> Function()? loginProfileLoader;
   final Future<NurtureCoordinateProfile> Function()? nurtureProfileLoader;
+  final RotateCaptchaSolver Function()? rotateCaptchaSolverFactory;
   final VoidCallback? onReturnToConfiguration;
   final DateTime Function() _now;
   final bool? _accessibilityOverride;
@@ -288,7 +299,248 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   /// Width of the 1:2 frame in dp; fixes the page scale to the frame, which
   /// is narrower than the screen on 16:9 phones, tablets and foldables.
   double? signupViewportWidth;
-  final signupAccessibility = SignupAccessibility();
+  late final signupAccessibility = SignupAccessibility(
+    beforeSnapshot: _checkRotateCaptcha,
+    beforeAction: _beforeAccessibilityAction,
+  );
+  Future<void>? _rotateCaptchaWork;
+  RotateCaptchaSolver? _rotateCaptchaSolver;
+  Timer? _rotateCaptchaPollTimer;
+  bool _rotateCaptchaMonitorRunning = false;
+  bool _captchaSettingsReady = false, _captchaSettingsSubscribed = false;
+  bool _tikTokScreenVisible = true;
+  int _rotateCaptchaEpoch = 0, _nurtureActionEpoch = 0;
+  RotateCaptchaChallenge? _failedRotateCaptcha;
+  String? _rotateCaptchaFailure, _rotateCaptchaFailureKey, _rotateCaptchaNotice;
+
+  bool get _canCheckRotateCaptcha =>
+      active &&
+      appActive &&
+      _tikTokScreenVisible &&
+      autoWatchEnabled &&
+      !useNativeWebView &&
+      !manualViewingClosed &&
+      !browserCheckOpen &&
+      pageFailure == null &&
+      webViewController != null &&
+      _usesAccessibility &&
+      _captchaSettingsReady &&
+      _captchaKey.isNotEmpty;
+
+  void setTikTokScreenVisible(bool visible) {
+    if (_tikTokScreenVisible == visible) return;
+    _tikTokScreenVisible = visible;
+    if (visible) {
+      _startRotateCaptchaMonitor();
+    } else {
+      _stopRotateCaptchaMonitor();
+    }
+  }
+
+  // Poll across TikTok routes only while the nurture run is enabled.
+  void _startRotateCaptchaMonitor() {
+    if (_rotateCaptchaMonitorRunning || !_canCheckRotateCaptcha) return;
+    _rotateCaptchaMonitorRunning = true;
+    final epoch = _rotateCaptchaEpoch;
+    bool current() =>
+        _rotateCaptchaMonitorRunning &&
+        epoch == _rotateCaptchaEpoch &&
+        _canCheckRotateCaptcha;
+    void schedule() {
+      _rotateCaptchaPollTimer = Timer(const Duration(seconds: 1), () async {
+        _rotateCaptchaPollTimer = null;
+        if (!current()) return;
+        try {
+          if (!signupAccessibility.actionBusy) await _checkRotateCaptcha();
+        } on RotateCaptchaCancelled {
+          // Navigation, route changes and backgrounding invalidate old work.
+        } catch (error) {
+          if (!current()) return;
+          if (autoLoginBusy) cancelAutoLogin();
+          if (autoSignupBusy) cancelAutoSignup();
+          if (autoWatchEnabled) {
+            _cancelAutoWatchTimers();
+            mutate(() => autoWatchEnabled = false);
+            unawaited(stopAutoWatch());
+          }
+          final message = error is StateError
+              ? error.message.toString()
+              : 'Không xử lý được CAPTCHA. Hãy kiểm tra màn hiện tại.';
+          if (_rotateCaptchaNotice != message) {
+            _rotateCaptchaNotice = message;
+            notify(message);
+          }
+        }
+        if (current()) schedule();
+      });
+    }
+
+    schedule();
+  }
+
+  void _clearRotateCaptchaFailure() {
+    _failedRotateCaptcha = null;
+    _rotateCaptchaFailure = null;
+    _rotateCaptchaFailureKey = null;
+    _rotateCaptchaNotice = null;
+  }
+
+  void _stopRotateCaptchaMonitor() {
+    _rotateCaptchaMonitorRunning = false;
+    _rotateCaptchaEpoch++;
+    _rotateCaptchaPollTimer?.cancel();
+    _rotateCaptchaPollTimer = null;
+    _rotateCaptchaSolver?.close();
+    _clearRotateCaptchaFailure();
+  }
+
+  String get _captchaKey => captchaSettingsStore.effectiveLicenseKey;
+
+  void _captchaSettingsChanged() {
+    if (!_captchaSettingsSubscribed || !active) return;
+    _captchaSettingsReady = captchaSettingsStore.loaded;
+    _stopRotateCaptchaMonitor();
+    _startRotateCaptchaMonitor();
+  }
+
+  Future<void> _loadCaptchaSettings() async {
+    try {
+      await captchaSettingsStore.load();
+    } catch (_) {
+      // Keep the current Remote Config values if settings cannot be loaded.
+    }
+    if (_captchaSettingsSubscribed && active) {
+      _captchaSettingsReady = true;
+      _startRotateCaptchaMonitor();
+    }
+  }
+
+  Future<void> _beforeAccessibilityAction() async {
+    final signup = autoSignupBusy,
+        login = autoLoginBusy,
+        watch = autoWatchEnabled;
+    final signupAttempt = autoSignupAttempt, loginAttempt = autoLoginAttempt;
+    final watchEpoch = _nurtureActionEpoch;
+    await _checkRotateCaptcha();
+    // A queued action must still belong to the same active attempt after
+    // waiting for CAPTCHA handling.
+    if (!active ||
+        !appActive ||
+        !_tikTokScreenVisible ||
+        signup && (!autoSignupBusy || signupAttempt != autoSignupAttempt) ||
+        login && (!autoLoginBusy || loginAttempt != autoLoginAttempt) ||
+        watch && (!autoWatchEnabled || watchEpoch != _nurtureActionEpoch)) {
+      throw RotateCaptchaCancelled();
+    }
+  }
+
+  Future<void> _checkRotateCaptcha() async {
+    if (!_canCheckRotateCaptcha) return;
+    final pending = _rotateCaptchaWork;
+    if (pending != null) return pending;
+    final work = _inspectRotateCaptcha();
+    _rotateCaptchaWork = work;
+    try {
+      await work;
+    } finally {
+      if (identical(_rotateCaptchaWork, work)) _rotateCaptchaWork = null;
+    }
+  }
+
+  Future<void> _inspectRotateCaptcha() async {
+    final controller = webViewController!;
+    final navigation = navigationId, epoch = _rotateCaptchaEpoch;
+    bool current() =>
+        _canCheckRotateCaptcha &&
+        navigationId == navigation &&
+        _rotateCaptchaEpoch == epoch;
+    final url = await controller.getUrl();
+    if (!current() || url?.scheme != 'https' || url?.host != 'www.tiktok.com') {
+      return;
+    }
+    Future<void> guard() async {
+      if (!current()) throw RotateCaptchaCancelled();
+      final url = await controller.getUrl();
+      if (!current() ||
+          url?.scheme != 'https' ||
+          url?.host != 'www.tiktok.com') {
+        throw RotateCaptchaCancelled();
+      }
+    }
+
+    Future<RotateCaptchaChallenge?> read() async =>
+        RotateCaptchaChallenge.fromResult(
+          await controller.evaluateJavascript(source: readRotateCaptchaScript),
+        );
+    Future<bool> isPresent() async =>
+        await controller.evaluateJavascript(
+          source: rotateCaptchaPresentScript,
+        ) !=
+        false;
+    var challenge = await read();
+    await guard();
+    if (challenge == null && !await isPresent()) {
+      await guard();
+      _clearRotateCaptchaFailure();
+      return;
+    }
+    await guard();
+    final key = _captchaKey;
+    final failed = _failedRotateCaptcha;
+    if (_rotateCaptchaFailure != null &&
+        _rotateCaptchaFailureKey == key &&
+        (challenge == null && failed == null ||
+            challenge != null &&
+                failed != null &&
+                challenge.outer == failed.outer &&
+                challenge.inner == failed.inner)) {
+      throw StateError(_rotateCaptchaFailure!);
+    }
+    _clearRotateCaptchaFailure();
+    RotateCaptchaSolver? solver;
+    try {
+      if (!await FlutterAccessibilityService.isAccessibilityPermissionEnabled()) {
+        throw StateError('Bật Trợ năng cho Tool TikTok để tự xử lý CAPTCHA.');
+      }
+      await guard();
+      solver = rotateCaptchaSolverFactory?.call() ?? RotateCaptchaSolver();
+      _rotateCaptchaSolver = solver;
+      await solver.solve(
+        licenseKey: key,
+        guard: guard,
+        read: () async {
+          final value = await read();
+          if (value != null) challenge = value;
+          return value;
+        },
+        isPresent: isPresent,
+        accessibility: SignupAccessibility(), // No recursive hooks.
+        onStatus: (status) {
+          if (current()) {
+            mutate(() {
+              if (autoSignupBusy) signupStatus = status;
+              if (autoLoginBusy) loginStatus = status;
+            });
+          }
+        },
+      );
+      await guard();
+    } on RotateCaptchaCancelled {
+      rethrow;
+    } catch (error) {
+      if (!current()) throw RotateCaptchaCancelled();
+      final message = error is StateError
+          ? error.message.toString()
+          : 'Không xử lý được CAPTCHA xoay. Hãy kiểm tra API key, mạng và màn hiện tại.';
+      _failedRotateCaptcha = challenge;
+      _rotateCaptchaFailure = message;
+      _rotateCaptchaFailureKey = key;
+      throw StateError(message);
+    } finally {
+      if (identical(_rotateCaptchaSolver, solver)) _rotateCaptchaSolver = null;
+    }
+  }
+
   SignupCoordinateRunner? _signupCoordinateRunner;
   LoginAccessibilityRunner? _loginAccessibilityRunner;
   static const _signupCalibrationChannel = MethodChannel(
@@ -409,6 +661,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   void onInit() {
     super.onInit();
     comments = configuration.comments;
+    _captchaSettingsSubscribed = true;
+    _captchaSettingsReady = captchaSettingsStore.loaded;
+    captchaSettingsStore.addListener(_captchaSettingsChanged);
+    if (!_captchaSettingsReady) unawaited(_loadCaptchaSettings());
     final plan = manualViewingPlan;
     final repository = nurtureRepository;
     if (plan != null &&
@@ -429,6 +685,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   @override
   void onClose() {
+    _captchaSettingsSubscribed = false;
+    captchaSettingsStore.removeListener(_captchaSettingsChanged);
+    _stopRotateCaptchaMonitor();
     _accessibilityNurture?.cancel();
     if (usesAccessibilityAccountFlow) {
       _signupCalibrationChannel.setMethodCallHandler(null);
@@ -448,6 +707,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     appActive = state == AppLifecycleState.resumed;
+    if (!appActive) {
+      _stopRotateCaptchaMonitor();
+    } else {
+      _startRotateCaptchaMonitor();
+    }
     if (manualViewingPlan != null) {
       unawaited(_updateManualForeground());
       return;
@@ -487,6 +751,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         pageFailure != null) {
       return;
     }
+    _startRotateCaptchaMonitor();
     final navigation = navigationId;
     try {
       await _startAutoViewingStats();
@@ -587,6 +852,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   void _cancelAutoWatchTimers() {
+    _stopRotateCaptchaMonitor();
+    _nurtureActionEpoch++;
     _autoWatchStopTimer?.cancel();
     _autoWatchStopTimer = null;
     _autoWatchStopsAt = null;
@@ -640,6 +907,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       );
 
   Future<void> _stopAutoWatch({bool finishViewing = false}) async {
+    _stopRotateCaptchaMonitor();
     if (useNativeWebView) return;
     if (usesAccessibilityLogin) {
       await _accessibilityNurture?.stop();
@@ -825,10 +1093,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         !loginConfirmed &&
         launchAction != TikTokLaunchAction.browse) {
       notify('Hãy đăng nhập tự động thành công trước khi bật Auto nuôi.');
-      return;
-    }
-    if (!autoWatchEnabled && comments.isEmpty) {
-      notify('Hãy nhập nội dung bình luận ở màn Cấu hình.');
       return;
     }
     mutate(() => autoWatchBusy = true);
@@ -1502,6 +1766,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         if (activeSignupOtp.isEmpty && otpRequest?.code != null) {
           mutate(() => activeSignupOtp = otpRequest!.code!);
         }
+        await _checkRotateCaptcha();
+        if (!isActive()) return;
         dynamic result;
         try {
           final url = await controller.getUrl();
@@ -1730,6 +1996,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           break;
         }
       }
+    } on StateError catch (error) {
+      message = error.message.toString();
     } catch (_) {
       message = 'Không thể tự động đăng ký. Hãy thử lại trên TikTok.';
     } finally {
@@ -1921,6 +2189,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           mutate(() => activeLoginOtp = otpRequest!.code!);
         }
         // A navigation can destroy the JavaScript context between polls.
+        await _checkRotateCaptcha();
+        if (!isActive()) return;
         dynamic result;
         try {
           final url = await controller.getUrl();
@@ -2074,6 +2344,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           break;
         }
       }
+    } on StateError catch (error) {
+      message = error.message.toString();
     } catch (_) {
       // Keep credentials and WebView exception details out of UI messages.
     } finally {
@@ -2345,6 +2617,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         pageFailure == null &&
         url?.scheme == 'https' &&
         url?.host == 'www.tiktok.com';
+    _startRotateCaptchaMonitor();
     await updateNavigationState();
     if (pageFailure != null || browserCheckOpen || useNativeWebView) return;
     if (usesAccessibilityAccountFlow) {
@@ -2404,6 +2677,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   void showPageFailure(WebViewFailure failure) {
     if (!active) return;
+    _stopRotateCaptchaMonitor();
     cancelSignupHandoff();
     _cancelAutoWatchTimers();
     _ipChecker?.cancel();
@@ -2496,6 +2770,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   Future<void> onWebViewCreated(InAppWebViewController controller) async {
     webViewController = controller;
+    _startRotateCaptchaMonitor();
     if (usesAccessibilityAccountFlow && kDebugMode) {
       _signupCalibrationChannel.setMethodCallHandler(_handleSignupCalibration);
     }
@@ -2669,6 +2944,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   void onLoadStart(InAppWebViewController controller, WebUri? url) {
     if (!active) return;
+    _stopRotateCaptchaMonitor();
     _ipChecker?.cancel();
     initialPageLoaded = false;
     _autoViewingNavigation = null;
@@ -2689,6 +2965,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       checkingIp = false;
       detectedIp = null;
     });
+    _startRotateCaptchaMonitor();
   }
 
   void onProgressChanged(InAppWebViewController controller, int progress) {
@@ -2746,6 +3023,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   Future<void> closeManualViewing() => _manualClose ??= _finishManualViewing();
 
   Future<void> _finishManualViewing() async {
+    _stopRotateCaptchaMonitor();
     final session = _manualSession;
     if (session != null) {
       try {

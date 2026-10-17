@@ -218,6 +218,7 @@ class _TikTokView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    logic.setTikTokScreenVisible(ModalRoute.of(context)?.isCurrent ?? true);
     return PopScope(
       canPop: logic.manualViewingPlan == null || logic.manualViewingClosed,
       onPopInvokedWithResult: (didPop, _) async {

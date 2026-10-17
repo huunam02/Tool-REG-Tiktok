@@ -19,19 +19,19 @@ class HomePage extends StatelessWidget {
     super.key,
     required this.userAgent,
     this.proxyStore,
-    this.initialOtpSettings = const OtpApiSettings.defaults(),
+    this.initialOtpSettings,
     this.otpSettingsStore,
   });
   final String userAgent;
   final ProxyStore? proxyStore;
-  final OtpApiSettings initialOtpSettings;
+  final OtpApiSettings? initialOtpSettings;
   final OtpSettingsStore? otpSettingsStore;
 
   @override
   Widget build(BuildContext context) => ControllerScope<HomeController>(
     controller: HomeController(
       initialUserAgent: userAgent,
-      initialOtpSettings: initialOtpSettings,
+      initialOtpSettings: initialOtpSettings ?? OtpApiSettings.defaults(),
       store: proxyStore,
       otpSettingsStore: otpSettingsStore,
     ),
@@ -98,10 +98,7 @@ class _HomeView extends StatelessWidget {
       Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => SettingsPage(
-            initialOtpSettings: logic.otpSettings,
-            otpSettingsStore: logic.otpSettingsStore,
             proxyStore: logic.proxyStore,
-            onOtpSettingsChanged: logic.updateOtpSettings,
             onOpenBrowserCheck: () => logic.openTikTok(
               TikTokLaunchAction.browse,
               (configuration, _) => Navigator.of(context).push<void>(
@@ -127,19 +124,6 @@ class _HomeView extends StatelessWidget {
           ),
         ),
       );
-
-  InputDecoration _decoration(
-    String label, {
-    String? hint,
-    String? helper,
-    IconData? icon,
-  }) => InputDecoration(
-    labelText: label,
-    hintText: hint,
-    helperText: helper,
-    helperMaxLines: 3,
-    prefixIcon: icon == null ? null : Icon(icon, size: 20),
-  );
 
   Widget _section(
     String title,
@@ -201,17 +185,6 @@ class _HomeView extends StatelessWidget {
       ),
     ),
   );
-
-  Widget _pair(Widget first, Widget second, bool wide) => wide
-      ? Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: first),
-            const SizedBox(width: 18),
-            Expanded(child: second),
-          ],
-        )
-      : Column(children: [first, const SizedBox(height: 16), second]);
 
   @override
   Widget build(BuildContext context) => Theme(
@@ -296,25 +269,7 @@ class _HomeView extends StatelessWidget {
                       builder: (context, constraints) {
                         final wide = constraints.maxWidth >= 760;
                         return _homeContent(wide, [
-                          if (logic.preferencesLoadFailed) ...[
-                            const Text('Chưa tải được cài đặt đã lưu.'),
-                            TextButton(
-                              onPressed: logic.restorePreferences,
-                              child: const Text('Tải lại cài đặt'),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          _pair(
-                            _proxySection(context),
-                            Column(
-                              children: [
-                                _commentsSection(),
-                                const SizedBox(height: 16),
-                                _keywordsSection(),
-                              ],
-                            ),
-                            wide,
-                          ),
+                          _proxySection(context),
                           const SizedBox(height: 18),
                         ]);
                       },
@@ -474,23 +429,21 @@ class _HomeView extends StatelessWidget {
     ),
   );
 
-  Widget _homeContent(bool wide, List<Widget> sections) => Form(
-    key: logic.formKey,
-    child: SingleChildScrollView(
-      key: const PageStorageKey('home-general'),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: EdgeInsets.fromLTRB(wide ? 28 : 16, 16, wide ? 28 : 16, 24),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1080),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: sections,
+  Widget _homeContent(bool wide, List<Widget> sections) =>
+      SingleChildScrollView(
+        key: const PageStorageKey('home-general'),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(wide ? 28 : 16, 16, wide ? 28 : 16, 24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1080),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: sections,
+            ),
           ),
         ),
-      ),
-    ),
-  );
+      );
 
   Widget _actionBar(BuildContext context) => Container(
     decoration: const BoxDecoration(
@@ -581,42 +534,6 @@ class _HomeView extends StatelessWidget {
           child: const Text('Quản lý cấu hình'),
         ),
       ]);
-
-  Widget _commentsSection() => _section(
-    'Bình luận',
-    'Danh sách các bình luận random',
-    Icons.chat_bubble_outline,
-    [
-      TextFormField(
-        key: const Key('comments'),
-        controller: logic.comments,
-        minLines: 4,
-        maxLines: 10,
-        decoration: _decoration(
-          'Nội dung bình luận',
-          helper: 'Mỗi dòng là một bình luận.',
-        ),
-      ),
-    ],
-  );
-
-  Widget _keywordsSection() => _section(
-    'Từ khóa tìm kiếm',
-    'Danh sách từ khóa tìm kiếm, mỗi dòng một từ khóa.',
-    Icons.search,
-    [
-      TextFormField(
-        key: const Key('nurtureKeywords'),
-        controller: logic.keywords,
-        minLines: 4,
-        maxLines: 10,
-        decoration: _decoration(
-          'Nội dung từ khóa',
-          helper: 'Mỗi dòng là một từ khóa tìm kiếm.',
-        ),
-      ),
-    ],
-  );
 }
 
 abstract final class _HomeStyle {

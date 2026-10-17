@@ -14,7 +14,7 @@ import 'package:test_tiktok/screen/home_page.dart';
 import 'package:test_tiktok/screen/tiktok_page.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
-import 'package:test_tiktok/core/config.dart' as config;
+import 'package:test_tiktok/core/services/remote_config_service.dart';
 import 'package:test_tiktok/core/scripts/auto_login_script.dart';
 import 'package:test_tiktok/core/scripts/auto_cookie_script.dart';
 import 'package:test_tiktok/core/scripts/auto_interest_script.dart';
@@ -218,10 +218,7 @@ void main() {
       );
       expect(find.byType(InAppWebView), findsNothing);
       expect(find.text('Tool TikTok'), findsOneWidget);
-      await tester.enterText(
-        find.byKey(const Key('comments')),
-        ' First comment \n\n Second comment ',
-      );
+      expect(find.byKey(const Key('comments')), findsNothing);
       expect(find.byType(TabBar), findsOneWidget);
       expect(find.byKey(const Key('runAutoSignup')), findsNothing);
       expect(find.byKey(const Key('runAutoLogin')), findsNothing);
@@ -236,7 +233,8 @@ void main() {
       expect(page.configuration.loginPassword, 'tiktok-password');
       expect(page.configuration.signupOtp, isEmpty);
       expect(page.configuration.loginOtp, isEmpty);
-      expect(page.configuration.comments, ['First comment', 'Second comment']);
+      expect(page.configuration.comments, RemoteConfig.autoComments);
+      expect(page.configuration.searchKeywords, RemoteConfig.searchKeywords);
       expect(page.configuration.userAgent, desktopUserAgents.first);
       expect(proxyCalls.single.arguments['host'], '127.0.0.1');
       expect(proxyCalls.single.arguments['port'], 8888);
@@ -476,7 +474,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(TabBar), findsOneWidget);
-    await tester.ensureVisible(find.byKey(const Key('comments')));
+    expect(find.byKey(const Key('comments')), findsNothing);
+    expect(find.byKey(const Key('nurtureKeywords')), findsNothing);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
@@ -523,8 +522,14 @@ void main() {
       final configuration = tester
           .widget<TikTokPage>(find.byType(TikTokPage))
           .configuration;
-      expect(configuration.otpApi!.url.toString(), config.otpApiUrl);
-      expect(configuration.otpApi!.readerToken, config.otpApiToken.trim());
+      expect(
+        configuration.otpApi!.url.toString(),
+        RemoteConfig.getString(RemoteConfigKey.otp_api_url),
+      );
+      expect(
+        configuration.otpApi!.readerToken,
+        RemoteConfig.getString(RemoteConfigKey.otp_api_token),
+      );
       expect(configuration.otpApi!.waitSeconds, 180);
       expect(configuration.signupMailboxPassword, 'mail-secret');
       expect(configuration.loginMailboxPassword, 'mail-secret');

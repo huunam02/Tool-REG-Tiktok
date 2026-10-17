@@ -150,7 +150,7 @@ const String autoLoginStepScript = r'''
 
   }
 
-  if (find('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], ' +
+  if (find('#captcha-verify-container, .captcha-verify-container, .captcha-disable-scroll, [id*="captcha"], [class*="Captcha"], ' +
 
       'iframe[src*="captcha"]')) {
 
@@ -386,7 +386,7 @@ const String autoLoginStepScript = r'''
         root !== request?.root || !hasTitle(root, identityTitle) || findVerification() ||
         !request?.pending || request.failed || request.control.isConnected === false ||
         findEmailVerificationMethod(root) !== request.control ||
-        find('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]')) return null;
+        find('#captcha-verify-container, .captcha-verify-container, .captcha-disable-scroll, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]')) return null;
     return nativeButtonTarget(request.control, 'login/select-verification-email');
   };
 

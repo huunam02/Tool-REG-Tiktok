@@ -61,11 +61,12 @@ class _Session {
     DateTime Function()? now,
     TikTokLaunchAction launchAction = TikTokLaunchAction.login,
     bool startWithNurture = false,
+    List<String> comments = const ['Test comment'],
   }) {
     logic = TikTokController(
       configuration: AppConfiguration(
         userAgent: 'test-agent',
-        comments: ['Test comment'],
+        comments: comments,
         signupEmail: 'signup@example.com',
         signupPassword: 'test-password',
         loginUsername: 'login@example.com',
@@ -110,6 +111,21 @@ class _Session {
 }
 
 void main() {
+  testWidgets(
+    'empty remote comments allow nurturing without automatic comments',
+    (tester) async {
+      final session = _Session(tester, comments: const []);
+      session.logic.loginConfirmed = true;
+      await session.logic.toggleAutoWatch();
+      await tester.pump();
+      expect(session.logic.autoWatchEnabled, isTrue);
+      expect(session.view.starts, 1);
+      expect(session.notices, isEmpty);
+      session.logic.onDelete();
+      await tester.pump();
+    },
+  );
+
   testWidgets(
     'retained session starts another ten minutes without logging in',
     (tester) async {

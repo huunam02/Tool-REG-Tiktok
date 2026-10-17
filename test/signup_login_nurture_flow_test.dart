@@ -168,7 +168,7 @@ class _Session {
     logic.onNotice = (notice) => notices.add(notice.message);
     home = HomeController(
       initialUserAgent: 'agent',
-      initialOtpSettings: const OtpApiSettings.defaults(),
+      initialOtpSettings: OtpApiSettings.defaults(),
       store: store,
       now: tester.binding.clock.now,
       workflowRandom: random,

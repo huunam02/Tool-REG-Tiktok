@@ -6,16 +6,14 @@ import '../core/proxy_store.dart';
 import 'app_controller.dart';
 
 class StartupController extends AppController {
-  StartupController({
-    ProxyStore? store,
-    OtpSettingsStore? otpSettingsStore,
-  })  : store = store ?? ProxyStore.instance,
-        otpSettingsStore = otpSettingsStore ?? OtpSettingsStore.instance;
+  StartupController({ProxyStore? store, OtpSettingsStore? otpSettingsStore})
+    : store = store ?? ProxyStore.instance,
+      otpSettingsStore = otpSettingsStore ?? OtpSettingsStore.instance;
 
   final ProxyStore store;
   final OtpSettingsStore otpSettingsStore;
   String? userAgent;
-  OtpApiSettings otpSettings = const OtpApiSettings.defaults();
+  OtpApiSettings otpSettings = OtpApiSettings.defaults();
   bool loading = true;
   bool failed = false;
 
@@ -35,9 +33,9 @@ class StartupController extends AppController {
         ? Future<void>.delayed(const Duration(milliseconds: 700))
         : Future<void>.value();
     try {
-      final settingsFuture = otpSettingsStore
-          .load()
-          .catchError((_) => const OtpApiSettings.defaults());
+      final settingsFuture = otpSettingsStore.load().catchError(
+        (_) => OtpApiSettings.defaults(),
+      );
       final profile = await store.getCurrentProfile();
       final agent = profile?.userAgent ?? await loadDirectDesktopUserAgent();
       final settings = await settingsFuture;

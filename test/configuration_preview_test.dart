@@ -51,7 +51,7 @@ void main() {
       expect(find.text('Đã đăng ký'), findsOneWidget);
       expect(find.byType(TabBar), findsOneWidget);
       expect(find.byType(IndexedStack), findsNothing);
-      expect(find.byKey(const Key('comments')), findsOneWidget);
+      expect(find.byKey(const Key('comments')), findsNothing);
       expect(find.byKey(const Key('openTikTok')), findsOneWidget);
       expect(find.text('Đăng nhập tài khoản'), findsOneWidget);
       final preview = tester.widget<ProxyDetails>(find.byType(ProxyDetails));
@@ -170,7 +170,7 @@ void main() {
       expect(find.text('person@example.com'), findsNothing);
       expect(find.text('Đăng ký tài khoản'), findsOneWidget);
       expect(find.text('Đăng nhập tài khoản'), findsNothing);
-      expect(find.byKey(const Key('comments')), findsOneWidget);
+      expect(find.byKey(const Key('comments')), findsNothing);
       await tester.tap(find.byKey(const Key('manageProxies')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(Key('savedProxy-$first')));

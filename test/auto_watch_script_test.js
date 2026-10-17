@@ -17,6 +17,7 @@ function setup() {
   const buttons = [];
   const cards = [];
   const dialogs = [];
+  const captchas = [];
   const messages = [];
   const editors = [];
   const responses = [];
@@ -30,7 +31,8 @@ function setup() {
     hidden: false,
     createRange: () => ({ selectNodeContents: () => {} }),
     execCommand: () => assert.fail('Comments must use native clipboard paste'),
-    querySelectorAll: (selector) => selector === 'video' ? videos
+    querySelectorAll: (selector) => selector.startsWith('#captcha-verify-container') ? captchas
+      : selector === 'video' ? videos
       : selector.startsWith('article') ? cards
       : selector.startsWith('[role="dialog"]') ? dialogs
       : selector.includes('contenteditable') ? editors : buttons,
@@ -97,7 +99,7 @@ function setup() {
   }
   return {
     addVideo, videos, scrolls, buttons, cards, dialogs, messages, document, window, intervals,
-    editors, responses, fetch,
+    editors, responses, fetch, captchas,
     focus: (editor) => { focusedEditor = editor; document.activeElement = editor; },
     paste: (callback) => { pasteBehavior = callback; },
     random: (value) => { randomValue = value; },
@@ -1088,4 +1090,28 @@ test('manual seeking does not count as watched playback or trigger an early skip
   video.currentTime += env.window.__flutterAutoWatch.getStatus().skipAfterSeconds + 0.001;
   env.tick();
   assert.equal(env.scrolls.length, 1);
+});
+
+test('a CAPTCHA appearing late pauses playback actions until removed', () => {
+  const env = setup();
+  const video = env.addVideo();
+  env.addVideo(800);
+  env.start();
+  env.elapse(1000);
+  video.currentTime = 1;
+  env.tick();
+  const before = env.window.__flutterAutoWatch.getStatus().watchedSeconds;
+  const captcha = {
+    hidden: false,
+    getBoundingClientRect: () => ({left:0,right:400,top:0,bottom:800}),
+  };
+  env.captchas.push(captcha);
+  env.elapse(5000);
+  video.finish();
+  env.tick();
+  assert.equal(env.scrolls.length, 0);
+  assert.equal(env.window.__flutterAutoWatch.getStatus().watchedSeconds, before);
+  captcha.hidden = true;
+  env.tick();
+  assert.ok(env.scrolls.length > 0, 'watcher resumes after the CAPTCHA disappears');
 });

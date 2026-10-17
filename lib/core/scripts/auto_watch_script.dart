@@ -79,6 +79,9 @@ const String autoWatchStartScript = r'''
     return Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) *
       Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
   };
+  const captchaVisible = () => Array.from(document.querySelectorAll(
+    '#captcha-verify-container, .captcha-verify-container, .captcha-disable-scroll, .captcha_verify_slide--slidebar, iframe[src*="captcha"]'
+  )).some(element => visibleArea(element) > 0);
   const dismissLiveInvite = () => {
     const selector = 'button, [role="button"], a, div, span';
     const label = element => (element.textContent ||
@@ -511,6 +514,10 @@ const String autoWatchStartScript = r'''
     goToNextVideo(pendingAdvance.element);
   };
   const finishVideo = () => {
+    if (captchaVisible()) {
+      resetPlaybackSample();
+      return;
+    }
     if (running && !document.hidden && dismissLiveInvite()) {
       resetPlaybackSample();
       return;
@@ -536,6 +543,10 @@ const String autoWatchStartScript = r'''
   };
   const tick = () => {
     if (!running || document.hidden) return;
+    if (captchaVisible()) {
+      resetPlaybackSample();
+      return;
+    }
     if (dismissLiveInvite()) {
       resetPlaybackSample();
       return;
@@ -626,7 +637,7 @@ const String autoWatchStartScript = r'''
   const timer = setInterval(tick, 250);
   window.__flutterAutoWatch = {
     canPasteComment(text) {
-      return running && !document.hidden && comment?.stage === 'pasting' &&
+      return running && !document.hidden && !captchaVisible() && comment?.stage === 'pasting' &&
         comment.text === text && document.activeElement === findEditor() &&
         (comment.element.currentSrc || comment.element.src || '') === comment.source &&
         (!findActiveCard() || findActiveCard() === comment.root);

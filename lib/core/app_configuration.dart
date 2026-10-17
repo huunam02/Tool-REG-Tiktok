@@ -1,7 +1,7 @@
 import 'dart:math';
 
-import 'config.dart' as defaults;
 import 'otp_api.dart';
+import 'services/remote_config_service.dart';
 
 /// A snapshot of Home's configuration for one TikTok screen.
 class AppConfiguration {
@@ -28,11 +28,12 @@ class AppConfiguration {
 
   factory AppConfiguration.defaults(String userAgent) => AppConfiguration(
     userAgent: userAgent,
-    signupEmail: defaults.emailSignup,
-    signupPassword: defaults.passwordSignup,
-    loginUsername: defaults.email,
-    loginPassword: defaults.password,
-    comments: defaults.defaultAutoComments,
+    signupEmail: '',
+    signupPassword: '',
+    loginUsername: '',
+    loginPassword: '',
+    comments: RemoteConfig.autoComments,
+    searchKeywords: RemoteConfig.searchKeywords,
   );
 
   final String userAgent;

@@ -17,7 +17,7 @@ const String autoLogoutStepScript = r'''
   const all = (selector, root = document) => Array.from(root.querySelectorAll(selector)).filter(visible);
   const text = el => (el.innerText || el.textContent || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
   const enabled = el => !el.disabled && el.getAttribute('aria-disabled') !== 'true';
-  if (all('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]').length) return 'verification-required';
+  if (all('#captcha-verify-container, .captcha-verify-container, .captcha-disable-scroll, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]').length) return 'verification-required';
   // TikTok renamed its top Log in button (id, no data-e2e) and keeps the old
   // one hidden; a visible "Log in" control outside a dialog also counts.
   const login = [

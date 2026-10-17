@@ -8,9 +8,9 @@ import 'package:test_tiktok/controller/home_controller.dart';
 import 'package:test_tiktok/core/accessibility_permission.dart';
 import 'package:test_tiktok/core/desktop_user_agents.dart';
 import 'package:test_tiktok/core/otp_settings_store.dart';
+import 'package:test_tiktok/core/services/remote_config_service.dart';
 import 'package:test_tiktok/core/tiktok_launch_action.dart';
 import 'package:test_tiktok/screen/home_page.dart';
-import 'package:test_tiktok/screen/otp_settings_page.dart';
 import 'package:test_tiktok/screen/settings_page.dart';
 import 'package:test_tiktok/screen/usage_guide_page.dart';
 
@@ -19,7 +19,17 @@ import 'support/memory_proxy_store.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    RemoteConfig.configs = {
+      ...RemoteConfig.defaults,
+      'otp_api_url': 'https://remote.example.com/api/code',
+      'otp_api_token': 'remote-reader-token',
+    };
+  });
+  tearDown(() {
+    RemoteConfig.configs = RemoteConfig.defaults;
+  });
 
   testWidgets('accessibility switch follows system permission on resume', (
     tester,
@@ -170,7 +180,7 @@ void main() {
     },
   );
 
-  testWidgets('settings opens OTP configuration and usage guide', (
+  testWidgets('settings hides API configuration and opens usage guide', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(430, 900));
@@ -191,43 +201,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SettingsPage), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('openOtpSettings')));
-    await tester.pumpAndSettle();
-    expect(find.byType(OtpSettingsPage), findsOneWidget);
-    expect(
-      tester
-          .widget<EditableText>(
-            find.descendant(
-              of: find.byKey(const Key('otpApiToken')),
-              matching: find.byType(EditableText),
-            ),
-          )
-          .obscureText,
-      isFalse,
-    );
-    await tester.enterText(
-      find.byKey(const Key('otpApiUrl')),
-      'http://10.0.2.2:5678/api/code',
-    );
-    await tester.enterText(
-      find.byKey(const Key('otpApiToken')),
-      'saved-reader-token',
-    );
-    await tester.tap(find.byKey(const Key('saveOtpSettings')));
-    await tester.pumpAndSettle();
-    expect(find.byType(SettingsPage), findsOneWidget);
-
+    expect(find.byKey(const Key('openOtpSettings')), findsNothing);
+    expect(find.byKey(const Key('openCaptchaSettings')), findsNothing);
+    expect(find.text('Cấu hình OTP Email API'), findsNothing);
+    expect(find.text('Cấu hình CAPTCHA API'), findsNothing);
     final saved = await settingsStore.load();
-    expect(saved.url, 'http://10.0.2.2:5678/api/code');
-    expect(saved.token, 'saved-reader-token');
+    expect(saved.url, 'https://remote.example.com/api/code');
+    expect(saved.token, 'remote-reader-token');
 
-    await tester.ensureVisible(find.byKey(const Key('openUsageGuide')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('openUsageGuide')),
+      150,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('openUsageGuide')));
     await tester.pumpAndSettle();
     expect(find.byType(UsageGuidePage), findsOneWidget);
     expect(find.text('Bắt đầu nhanh'), findsOneWidget);
-    expect(find.text('Cấu hình OTP Email API'), findsOneWidget);
+    expect(find.text('API OTP và CAPTCHA'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -265,12 +256,7 @@ Future<void> _pumpAccessibilitySettings(
               child: child!,
             )
           : null,
-      home: SettingsPage(
-        initialOtpSettings: const OtpApiSettings.defaults(),
-        otpSettingsStore: const OtpSettingsStore(),
-        onOtpSettingsChanged: (_) {},
-        accessibilityPermission: service,
-      ),
+      home: SettingsPage(accessibilityPermission: service),
     ),
   );
   await tester.pumpAndSettle();

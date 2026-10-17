@@ -4,27 +4,19 @@ import 'package:flutter/widgets.dart';
 
 import '../core/accessibility_permission.dart';
 import '../core/data_file_export.dart';
-import '../core/otp_settings_store.dart';
 import '../core/proxy_store.dart';
 import 'app_controller.dart';
 
 class SettingsController extends AppController with WidgetsBindingObserver {
   SettingsController({
-    required OtpApiSettings initialSettings,
-    required this.store,
-    required this.onSettingsChanged,
     AccessibilityPermissionService? accessibilityPermission,
     ProxyStore? proxyStore,
-  }) : otpSettings = initialSettings,
-       proxyStore = proxyStore ?? ProxyStore.instance,
+  }) : proxyStore = proxyStore ?? ProxyStore.instance,
        accessibilityPermission =
            accessibilityPermission ?? AccessibilityPermissionService();
 
-  final OtpSettingsStore store;
   final ProxyStore proxyStore;
   bool exporting = false;
-  final ValueChanged<OtpApiSettings> onSettingsChanged;
-  OtpApiSettings otpSettings;
   final AccessibilityPermissionService accessibilityPermission;
   bool? accessibilityEnabled;
   bool checkingAccessibility = false;
@@ -133,9 +125,4 @@ class SettingsController extends AppController with WidgetsBindingObserver {
       }
     }
   }
-
-  void applyOtpSettings(OtpApiSettings settings) => mutate(() {
-    otpSettings = settings;
-    onSettingsChanged(settings);
-  });
 }

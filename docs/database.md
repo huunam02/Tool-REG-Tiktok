@@ -9,15 +9,13 @@ tài khoản từ email của cấu hình. Các migration cũ tiếp tục chạ
 | `configurations` | `id` | Cấu hình, proxy, UA, thông tin đăng nhập, trạng thái đăng ký, cấu hình hiện tại. Giữ nguyên cột cũ. |
 | `nurture_accounts` | `account_key` | Email đã trim/lowercase làm khóa; email hiển thị và thời điểm tạo/cập nhật. Không sao chép mật khẩu. |
 | `nurture_sessions` | `id` | Tài khoản, cấu hình tham chiếu, chế độ `feed`/`search`, keyword, trạng thái, các bộ đếm tích lũy, revision và thời điểm. |
-| `app_settings` | `key` | `home_comments`, `nurture_keywords` lưu nội dung ô nhập; `search_keywords_initialized` đánh dấu đã khởi tạo mặc định; `configuration_content_language` đánh dấu đã nâng cấp nội dung mặc định sang tiếng Anh. |
+| `app_settings` | `key` | Giữ dữ liệu danh sách cũ (`home_comments`, `nurture_keywords`) và cờ migration. Home không còn đọc/ghi các danh sách này. |
 
-`defaultSearchKeywords` trong `lib/core/config.dart` điền sẵn khối **Từ khóa tìm kiếm**
-ở tab Cấu hình khi chưa có dữ liệu hoặc giá trị cũ trống và chưa khởi tạo mặc định.
-Sau khi đánh dấu `search_keywords_initialized = 1`, giá trị trống do người dùng
-lưu được giữ nguyên khi mở lại. Không đổi schema hay xóa danh sách từ khóa đã có.
-Khi chưa có `configuration_content_language = en`, các dòng khớp danh sách mặc định
-tiếng Việt được đổi sang tiếng Anh rồi lưu lại. Dòng tùy chỉnh không nhận diện,
-dòng trống và khoảng trắng được giữ; nội dung nhập sau nâng cấp không tự dịch lại.
+Danh sách từ khóa và bình luận hiện chỉ lấy từ Firebase Remote Config qua hai
+tham số `search_keywords` và `auto_comments` (kiểu String, nội dung là JSON array các chuỗi). Hai ô nhập
+trên Home đã được bỏ. Các danh sách trong `lib/core/config.dart` chỉ là mặc định
+của Remote Config khi thiếu tham số hoặc JSON sai định dạng. Không đổi schema
+hoặc xóa dữ liệu cũ trong `app_settings`.
 
 `nurture_sessions.account_key` tham chiếu tài khoản.
 `configuration_id` tham chiếu cấu hình với `ON DELETE SET NULL`: xóa cấu hình

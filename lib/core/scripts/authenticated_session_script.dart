@@ -9,7 +9,7 @@ const String authenticatedSessionScript = r'''
       style.visibility !== 'hidden' && Number(style.opacity) !== 0;
   };
   const any = selector => Array.from(document.querySelectorAll(selector)).some(visible);
-  if (any('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]')) return false;
+  if (any('#captcha-verify-container, .captcha-verify-container, .captcha-disable-scroll, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]')) return false;
   const titles = 'h1, h2, h3, [data-e2e="login-title"], [class*="DivTitle"], [class*="DivModalTitle"]';
   const accountTitle = /^(log\s*in( to tiktok)?|sign\s*up( for tiktok)?|verify (it['’]s|it is) really you|verify (your )?(identity|email)|email verification|enter (the |your )?(verification |6[- ]digit )?code|create (a |your )?username|đăng nhập( tiktok)?|đăng ký( tiktok)?|xác minh.*|nhập mã.*|tạo tên người dùng)$/i;
   const dialogs = document.querySelectorAll('[role="dialog"], [aria-modal="true"], [data-e2e="login-modal"], [data-e2e="signup-modal"], [class*="DivModalContainer"], #idv-modal-container');

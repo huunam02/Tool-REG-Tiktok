@@ -16,17 +16,39 @@ và trạng thái đăng ký. Nút **Quản lý cấu hình** mở danh sách c�
 Mỗi bộ gộp proxy và tài khoản; không có ô tên riêng, danh sách nhận diện bằng
 email và địa chỉ proxy. Chọn một dòng rồi nhấn **Sử dụng cấu hình này**.
 Home gồm hai tab **Cấu hình** và **Nuôi acc**. Tab Cấu hình giữ thông tin
-cấu hình và bình luận hiện có. Tab Nuôi acc hiển thị các tài khoản, tổng số
+cấu hình đã chọn. Tab Nuôi acc hiển thị các tài khoản, tổng số
 phút xem, video đã xem và bình luận xác nhận thành công. Các cấu hình cùng
 email được gộp vào một dòng thống kê, không phân biệt chữ hoa/thường.
 
-Tab Cấu hình có khối **Từ khóa tìm kiếm**, mỗi dòng một từ khóa. Danh sách mặc định
-`defaultSearchKeywords` được khai báo trong `lib/core/config.dart`, cạnh danh sách
-bình luận. Từ khóa đã lưu được ưu tiên; lần đầu thêm mặc định cũng điền vào ô trống
-của phiên bản cũ. Sau đó người dùng có thể sửa hoặc xóa hết và app lưu đúng giá trị đó.
-Hai danh sách mặc định gồm 100 bình luận và 20 từ khóa bằng tiếng Anh. Lần đầu nâng
-cấp nội dung, app chuyển các dòng mặc định tiếng Việt đã lưu sang bản tiếng Anh,
-giữ dòng tùy chỉnh không nhận diện và lưu dấu `configuration_content_language = en`.
+Từ khóa và bình luận chỉ lấy từ Firebase Remote Config; Home không còn hai ô
+nhập danh sách và không đọc dữ liệu danh sách cũ trong `app_settings`.
+
+Tài liệu gửi khách: [Hướng dẫn cấu hình Firebase Remote Config](docs/huong-dan-cau-hinh-firebase.md).
+
+Chọn kiểu **String** cho cả 5 tham số. Hai danh sách là chuỗi chứa JSON array,
+đúng chữ hoa/thường:
+
+| Tham số | Ví dụ giá trị |
+| --- | --- |
+| `search_keywords` | `["Travel", "Cà phê", "Technology"]` |
+| `auto_comments` | `["Great video!", "Cảm ơn bạn ❤️"]` |
+
+Tất cả tên tham số Remote Config dùng `snake_case`: `otp_api_url`, `otp_api_token`,
+`sadcaptcha_license_key`, `search_keywords`, `auto_comments`. Hai tên cũ
+`listSearchKeywords` và `AutoComments` đã đổi thành `search_keywords` và
+`auto_comments`. Dữ liệu mặc định đầy đủ để sao chép từng tham số nằm trong
+[remote_config_values.json](docs/remote_config_values.json); đây là dữ liệu
+key/value để nhập từng tham số, không phải template import toàn bộ Firebase.
+Tất cả giá trị trong file đều là chuỗi; dấu `\"` là cách JSON biểu diễn dấu nháy
+trong chuỗi. Khi nhập vào ô giá trị String trên Firebase, dán nội dung như
+`["Travel","Coffee"]`, không thêm dấu nháy ngoài và không thêm ký tự `\`.
+App đọc String từ Remote Config rồi dùng `jsonDecode()` để lấy danh sách.
+
+Publish cấu hình rồi mở lại app để fetch và activate. App bỏ khoảng trắng hai
+đầu và các phần tử chuỗi rỗng. `[]` là danh sách rỗng: từ khóa rỗng chỉ nuôi news
+feed, bình luận rỗng không tự bình luận. Nếu thiếu tham số hoặc JSON không phải
+mảng chuỗi hợp lệ, app dùng các danh sách dự phòng trong `lib/core/config.dart`
+(100 bình luận, 20 từ khóa tiếng Anh), đã đăng ký với Remote Config bằng `setDefaults()`.
 Tab Nuôi acc hiển thị ba thống kê: phút xem video, số video đã xem và số bình luận.
 Thẻ tài khoản không hiển thị dòng news feed/search keyword hoặc nút mở xem thủ công.
 Kéo xuống để làm mới danh sách; không có nút làm mới riêng.
@@ -155,7 +177,7 @@ Proxy HTTP/HTTPS cần có cổng, ví dụ `http://127.0.0.1:8080`; nhập thô
 thực ở các ô riêng trong màn quản lý. Dữ liệu nằm trong `proxies.db`, phiên bản
 schema 10. Bảng `configurations` giữ tài khoản, `statusAccount` và cấu hình
 hiện tại; `nurture_accounts`, `nurture_sessions` lưu lịch sử thống kê;
-`app_settings` lưu chủ đề và bình luận Home. Migration từ phiên bản 9 giữ
+`app_settings` giữ dữ liệu chủ đề và bình luận cũ; Home không còn đọc/ghi hai danh sách này. Migration từ phiên bản 9 giữ
 nguyên các dòng cấu hình và lựa chọn hiện tại, bổ sung các bảng mới.
 Chi tiết cấu trúc và quy tắc lưu ở [docs/database.md](docs/database.md).
 Các proxy cũ chưa có tài khoản có thể bổ sung ở màn sửa cấu hình.
@@ -441,10 +463,10 @@ Bước Send code đăng nhập cũng
 chờ bộ đếm gửi lại hoặc màn OTP xác nhận gửi mã; hết 15 giây không có xác nhận
 thì dừng, chưa gọi API lấy OTP và không tự gửi lại mã.
 
-App luôn lấy OTP qua API cho **Đăng nhập** và **Đăng ký**. Mở biểu tượng
-**Cài đặt** trên AppBar, chọn **Cấu hình OTP API** để sửa URL và token dùng chung
-cho hai luồng. App lưu cấu hình bằng `SharedPreferences`; các giá trị
-`otpApiUrl` và `otpApiToken` trong `lib/core/config.dart` là mặc định lần đầu.
+App luôn lấy OTP qua API cho **Đăng nhập** và **Đăng ký**. App chỉ dùng
+`otp_api_url` và `otp_api_token` từ Firebase Remote Config cho cả hai luồng;
+các giá trị đã lưu trên thiết bị không còn được dùng. Màn Cài đặt không có mục
+nhập hoặc xem cấu hình API OTP/CAPTCHA.
 URL API chấp nhận cả HTTP và HTTPS. Nếu API chạy trên máy tính, Android Emulator
 dùng `10.0.2.2`, iOS Simulator trên cùng máy dùng `127.0.0.1`; điện thoại thật
 dùng IP LAN của máy tính hoặc địa chỉ API truy cập được từ thiết bị.
@@ -539,3 +561,14 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+Tự giải CAPTCHA xoay trên Android: cấu hình String `sadcaptcha_license_key` trong
+Firebase Remote Config và bật Trợ năng. Key rỗng trên Remote Config sẽ tắt tự giải.
+Cả OTP và CAPTCHA dùng mặc định khai báo tại `RemoteConfigKey.defaultValue` khi
+chưa có giá trị trên Firebase; app đăng ký các mặc định này bằng `setDefaults()`.
+App fetch và activate khi khởi động; nếu mất mạng sẽ dùng cấu hình Firebase đã
+cache hoặc mặc định. Không đọc các giá trị OTP/CAPTCHA cũ trong SharedPreferences.
+Bộ theo dõi chỉ chạy khi Auto nuôi đang bật, áp dụng cho cả news feed
+và search keyword, trên cả Home/Profile/trang tìm kiếm/video chi tiết;
+tắt hoặc kết thúc nuôi sẽ hủy theo dõi và lượt giải đang chờ. App gọi SadCaptcha và kéo bằng
+`flutter_accessibility_service`; chỉ tiếp tục khi CAPTCHA biến mất. Xem [hướng dẫn tích hợp](tiktok_rotate_captcha_guide.md#6-tích-hợp-trong-ứng-dụng-flutter-hiện-tại).

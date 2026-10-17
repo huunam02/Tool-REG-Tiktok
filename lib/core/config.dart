@@ -1,5 +1,4 @@
-const String email = '';
-const String password = '';
+// Danh sách dự phòng cho Remote Config khi chưa cấu hình hoặc JSON không hợp lệ.
 const List<String> defaultSearchKeywords = [
   'Travel in Vietnam',
   'Street food',
@@ -124,9 +123,3 @@ const List<String> defaultAutoComments = [
   'I had to leave a comment after watching this!',
   'Keep it up, you have my support!',
 ];
-const String emailSignup = '';
-const String passwordSignup = '';
-// API lấy OTP dùng chung cho đăng ký và đăng nhập.
-const String otpApiUrl =
-    'https://drainer-wager-uncheck.ngrok-free.dev/api/code';
-const String otpApiToken = 'c3247bbbf1e7b6913cbf314a4f0aa16e';

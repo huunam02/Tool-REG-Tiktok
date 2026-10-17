@@ -4,10 +4,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import 'config.dart' as config;
-
-const defaultOtpApiUrl = config.otpApiUrl;
-
 class OtpApiConfiguration {
   const OtpApiConfiguration({
     required this.url,

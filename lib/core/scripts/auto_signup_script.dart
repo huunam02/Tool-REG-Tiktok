@@ -219,7 +219,7 @@ const String autoSignupStepScript = r'''
 
     (previousState?.emailEntered || previousState?.otpRequestedAt != null || config.otpRequestedAt != null);
 
-  if (find('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], ' +
+  if (find('#captcha-verify-container, .captcha-verify-container, .captcha-disable-scroll, [id*="captcha"], [class*="Captcha"], ' +
 
       'iframe[src*="captcha"]')) {
 

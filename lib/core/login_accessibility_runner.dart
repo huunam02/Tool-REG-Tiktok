@@ -6,7 +6,8 @@ import 'login_coordinate_profile.dart';
 import 'signup_accessibility.dart';
 
 /// All screen reading and input use the bundled Accessibility service.
-/// WebView is consulted only to verify the origin, never to inspect/mutate DOM.
+/// The controller may read CAPTCHA image/slider geometry before snapshots.
+/// Account form input continues to use Accessibility.
 class LoginAccessibilityRunner {
   LoginAccessibilityRunner({
     required this.accessibility,

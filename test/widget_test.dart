@@ -661,7 +661,7 @@ void main() {
         await tester.tap(find.byKey(const Key('autoWatch')));
         await tester.pumpAndSettle();
       }
-      if (action != TikTokLaunchAction.login) {
+      if (action == TikTokLaunchAction.signup) {
         expect(find.text('Hủy chờ'), findsNothing);
         expect(
           find.byTooltip('Đăng nhập tự động thành công để bật Auto nuôi'),

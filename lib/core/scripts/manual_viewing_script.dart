@@ -1,9 +1,15 @@
 import 'dart:convert';
 
-/// Observes playback and successful manual comments; never clicks, scrolls,
+/// Observes playback and confirmed comments in manual or automatic viewing;
+/// never clicks, scrolls,
 /// starts playback, fills a form, or sends a request.
-String buildManualViewingScript(String session, String segment) =>
-    'window.__manualViewingConfig = ${jsonEncode({'session': session, 'segment': segment})};\n'
+String buildManualViewingScript(
+  String session,
+  String segment, {
+  String handlerName = 'FlutterManualViewingStats',
+  bool allowTransparentVideo = false,
+}) =>
+    'window.__manualViewingConfig = ${jsonEncode({'session': session, 'segment': segment, 'handler': handlerName, 'allowTransparentVideo': allowTransparentVideo})};\n'
     '$manualViewingScript';
 
 const manualViewingScript = r'''
@@ -23,23 +29,23 @@ const manualViewingScript = r'''
     videos, full_videos: full, skipped_videos: skipped, comments});
   const emit = () => {
     const value = snapshot();
-    try { window.flutter_inappwebview?.callHandler('FlutterManualViewingStats', value)?.catch?.(() => {}); } catch (_) {}
+    try { window.flutter_inappwebview?.callHandler(config.handler || 'FlutterManualViewingStats', value)?.catch?.(() => {}); } catch (_) {}
     lastEmit = Date.now();
     return value;
   };
   const area = (video) => {
     const rect = video.getBoundingClientRect();
     const style = getComputedStyle(video);
-    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return 0;
+    if (style.display === 'none' || style.visibility === 'hidden' ||
+        (!config.allowTransparentVideo && Number(style.opacity) === 0)) return 0;
     return Math.max(0, Math.min(rect.right, innerWidth) - Math.max(0, rect.left)) *
       Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(0, rect.top));
   };
   const finishVideo = () => {
-    if (!current || current.counted || current.watched <= 0 ||
-        (current.watched < 1 && !current.video.ended)) return;
+    if (!current || current.counted || current.watched <= 0) return;
     current.counted = true;
     videos++;
-    if (current.video.ended) full++; else skipped++;
+    if (current.completed || current.video.ended) full++; else skipped++;
     emit();
   };
   const sample = () => {
@@ -60,7 +66,13 @@ const manualViewingScript = r'''
     if (!selected) return;
     if (!current) current = {video: selected, key, watched: 0, counted: false, lastTime: null, lastWall: Date.now()};
     const time = Number(selected.currentTime), now = Date.now();
-    const delta = current.lastTime === null ? 0 : time - current.lastTime;
+    const duration = Number(selected.duration);
+    const wrapped = !selected.seeking && current.lastTime !== null &&
+      Number.isFinite(duration) && duration > 0 &&
+      current.lastTime >= Math.max(0, duration - 0.5) &&
+      current.lastTime > time + 0.5 && time < 0.5;
+    const delta = current.lastTime === null ? 0 : wrapped
+      ? duration - current.lastTime + time : time - current.lastTime;
     const elapsed = Math.max(0, (now - current.lastWall) / 1000);
     if (!selected.seeking && (!selected.paused || selected.ended) && Number.isFinite(delta) &&
         delta > 0 && delta <= Math.min(2, elapsed * 1.5 + 0.25)) {
@@ -69,7 +81,8 @@ const manualViewingScript = r'''
     }
     current.lastTime = selected.seeking || (selected.paused && !selected.ended) ? null : time;
     current.lastWall = now;
-    if (selected.ended) finishVideo();
+    if (wrapped) current.completed = true;
+    if (selected.ended || wrapped) finishVideo();
     if (now - lastEmit >= 2000) emit();
   };
   const observeComment = (url, body) => {
@@ -112,7 +125,12 @@ const manualViewingScript = r'''
   };
   if (wrappedOpen) xhr.open = wrappedOpen;
   const visibility = () => { if (current) current.lastTime = null; emit(); };
+  const pagehide = () => { sample(); finishVideo(); emit(); };
+  // Capture completion before the page's ended handler replaces the video.
+  const ended = () => sample();
   document.addEventListener('visibilitychange', visibility);
+  document.addEventListener('ended', ended, true);
+  window.addEventListener?.('pagehide', pagehide);
   const interval = setInterval(sample, 250);
   window.__manualViewing = {
     segment: config.segment,
@@ -124,6 +142,8 @@ const manualViewingScript = r'''
       running = false;
       clearInterval(interval);
       document.removeEventListener('visibilitychange', visibility);
+      document.removeEventListener('ended', ended, true);
+      window.removeEventListener?.('pagehide', pagehide);
       if (window.fetch === wrappedFetch) window.fetch = originalFetch;
       if (xhr?.open === wrappedOpen) xhr.open = originalOpen;
       delete window.__manualViewing;

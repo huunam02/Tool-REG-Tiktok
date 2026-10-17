@@ -30,9 +30,11 @@ class HomeController extends AppController
     OtpSettingsStore? otpSettingsStore,
     DateTime Function()? now,
     Random? workflowRandom,
+    Future<bool> Function()? readLoginSession,
   }) : store = store ?? ProxyStore.instance,
        _now = now ?? DateTime.now,
        _workflowRandom = workflowRandom ?? Random(),
+       _readLoginSession = readLoginSession ?? hasTikTokLoginSession,
        otpSettingsStore = otpSettingsStore ?? OtpSettingsStore.instance;
 
   final String initialUserAgent;
@@ -41,6 +43,9 @@ class HomeController extends AppController
   final OtpSettingsStore otpSettingsStore;
   final DateTime Function() _now;
   final Random _workflowRandom;
+  final Future<bool> Function() _readLoginSession;
+  int _profileLoadGeneration = 0;
+  bool hasCurrentAccountSession = false;
   Timer? _scheduledLoginTimer;
   DateTime? autoLoginStartsAt;
   AppConfiguration? _scheduledConfiguration;
@@ -131,7 +136,13 @@ class HomeController extends AppController
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appActive = state == AppLifecycleState.resumed;
-    if (_appActive) unawaited(_runScheduledLogin());
+    if (_appActive) {
+      if (waitingForAutoLogin) {
+        unawaited(_runScheduledLogin());
+      } else if (!opening && !managingProxies) {
+        unawaited(refreshCurrentAccountSession());
+      }
+    }
   }
 
   final formKey = GlobalKey<FormState>();
@@ -160,10 +171,16 @@ class HomeController extends AppController
   late final ProxyStore proxyStore;
   bool get busy =>
       opening || loadingProxy || managingProxies || waitingForAutoLogin;
-  TikTokLaunchAction get accountAction =>
-      currentProxy?.statusAccount == AccountStatus.registered
+  TikTokLaunchAction get accountAction => hasCurrentAccountSession
+      ? TikTokLaunchAction.browse
+      : currentProxy?.statusAccount == AccountStatus.registered
       ? TikTokLaunchAction.login
       : TikTokLaunchAction.signup;
+  String get accountActionLabel => hasCurrentAccountSession
+      ? 'Nuôi tiếp Account'
+      : accountAction == TikTokLaunchAction.login
+      ? 'Đăng nhập và nuôi Account'
+      : 'Đăng ký tài khoản';
 
   @override
   void onInit() {
@@ -312,23 +329,53 @@ class HomeController extends AppController
   }
 
   Future<void> restoreProxy() async {
+    final generation = ++_profileLoadGeneration;
     mutate(() => loadingProxy = true);
     try {
       final profile = await proxyStore.getCurrentProfile();
       final restoredDirectUserAgent = profile == null && currentProxy != null
           ? await loadDirectDesktopUserAgent()
           : directUserAgent;
-      if (!active) return;
+      final hasSession =
+          profile?.account?.email.trim().isNotEmpty == true &&
+          await proxyStore.canReuseCurrentAccountSession() &&
+          await _readLoginSession();
+      if (!active || generation != _profileLoadGeneration) return;
       mutate(() {
         currentProxy = profile;
+        hasCurrentAccountSession = hasSession;
         directUserAgent = restoredDirectUserAgent;
         userAgent = profile?.userAgent ?? restoredDirectUserAgent;
         proxyLoadFailed = false;
       });
     } catch (_) {
-      if (active) mutate(() => proxyLoadFailed = true);
+      if (active && generation == _profileLoadGeneration) {
+        mutate(() {
+          proxyLoadFailed = true;
+          hasCurrentAccountSession = false;
+        });
+      }
     } finally {
-      if (active) mutate(() => loadingProxy = false);
+      if (active && generation == _profileLoadGeneration) {
+        mutate(() => loadingProxy = false);
+      }
+    }
+  }
+
+  Future<void> refreshCurrentAccountSession() async {
+    final profile = currentProxy;
+    var hasSession = false;
+    if (profile?.account?.email.trim().isNotEmpty == true) {
+      try {
+        hasSession =
+            await proxyStore.canReuseCurrentAccountSession() &&
+            await _readLoginSession();
+      } catch (_) {
+        // A failed session check must not block the existing login action.
+      }
+    }
+    if (active && identical(profile, currentProxy)) {
+      mutate(() => hasCurrentAccountSession = hasSession);
     }
   }
 
@@ -449,7 +496,11 @@ class HomeController extends AppController
             : null,
       );
       await navigate(configuration, action);
-      if (active && action == TikTokLaunchAction.signup) await restoreProxy();
+      if (active && action == TikTokLaunchAction.signup) {
+        await restoreProxy();
+      } else if (active) {
+        await refreshCurrentAccountSession();
+      }
       if (active) await loadNurtureAccounts();
     } on FormatException catch (error) {
       if (!active) return;

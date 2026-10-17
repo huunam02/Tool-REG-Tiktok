@@ -1,6 +1,6 @@
 # Đăng ký Android bằng tọa độ và Accessibility
 
-Cập nhật 16/10/2026. Nhánh: `experiment/android-signup-fixed-viewport-accessibility`.
+Cập nhật 17/10/2026. Nhánh: `experiment/android-signup-fixed-viewport-accessibility`.
 
 ## Kết quả ghi mẫu
 
@@ -29,7 +29,20 @@ Khi chạy, app đọc bounds WebView qua Accessibility rồi quy đổi sang t�
 hình. Trước mỗi lần bấm control, app kiểm tra nhãn, trạng thái bật và bounds.
 Các mục trong dropdown ngày sinh được tìm theo nhãn và vị trí đang hiển thị,
 rồi đọc lại kết quả lựa chọn. Nếu tỷ lệ hoặc control thay đổi, app dừng để đo lại.
-Trước Log in, app chờ WebView tải xong ít nhất 5 giây và nút ổn định 2 giây.
+Trước thao tác đầu, app chờ WebView tải xong ít nhất 5 giây và nút ổn định
+2 giây. Nếu popup **Log in to TikTok** đã mở, app kiểm tra nút **Sign up**
+trong popup rồi tiếp tục từ đó; nếu đã ở **Sign up for TikTok**, app kiểm tra
+**Use phone or email**. Popup xuất hiện trong lúc chờ cũng được nhận diện lại,
+ưu tiên hơn các nút trang chủ còn lộ trong Accessibility. Không bấm Log in
+phía sau popup. Vẫn dừng nếu nút bị tắt, lệch tọa độ hoặc trang chưa tải xong.
+
+Đã xác nhận lỗi chờ Log in trên phiên giả lập: snapshot chỉ có popup đăng nhập,
+không còn control Log in của trang chủ. Sau hot reload, chạy bộ runner mới từ
+popup đó đã qua Sign up → Use phone or email → biểu mẫu ngày sinh/số điện thoại.
+Phép kiểm chứng hủy runner khi mở biểu mẫu, trước nhập dữ liệu hoặc gửi OTP.
+Snapshot cuối ở `outputs/signup-calibration/entry-modal-fixed-verified.json`:
+ô Phone number có độ dài 0, Send code đang tắt. Đây là kiểm chứng riêng bước
+vào đăng ký, chưa phải phát lại trọn luồng.
 
 | Bước | X | Y |
 | --- | ---: | ---: |

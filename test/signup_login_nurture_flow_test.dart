@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -46,6 +47,8 @@ class _View extends PlatformInAppWebViewController {
   int watchStops = 0;
   int reloads = 0;
   bool failNextLogoutEvaluation = false;
+  Completer<void>? loginStopGate;
+  bool stoppingLogin = false;
   @override
   Future<void> reload() async => reloads++;
   @override
@@ -62,6 +65,11 @@ class _View extends PlatformInAppWebViewController {
   }) async {
     if (source.contains(autoSignupStepScript)) return signupResult;
     if (source.contains(autoLoginStepScript)) return loginResult;
+    if (source.contains('delete window.__flutterAutoLogin;')) {
+      stoppingLogin = true;
+      await loginStopGate?.future;
+      return true;
+    }
     if (source.contains(autoLogoutStepScript)) {
       if (failNextLogoutEvaluation) {
         failNextLogoutEvaluation = false;
@@ -79,10 +87,28 @@ class _View extends PlatformInAppWebViewController {
 }
 
 class _Platform extends InAppWebViewPlatform {
+  bool loggedIn = false;
+  @override
+  PlatformCookieManager createPlatformCookieManager(
+    PlatformCookieManagerCreationParams params,
+  ) => _Cookies(params, this);
+
   @override
   PlatformInAppWebViewWidget createPlatformInAppWebViewWidget(
     PlatformInAppWebViewWidgetCreationParams params,
   ) => _WebViewWidget(params);
+}
+
+class _Cookies extends PlatformCookieManager {
+  _Cookies(super.params, this.owner) : super.implementation();
+  final _Platform owner;
+  @override
+  Future<List<Cookie>> getCookies({
+    required WebUri url,
+    PlatformInAppWebViewController? iosBelow11WebViewController,
+    PlatformInAppWebViewController? webViewController,
+  }) async =>
+      owner.loggedIn ? [Cookie(name: 'sid_tt', value: 'test-session')] : [];
 }
 
 class _WebViewWidget extends PlatformInAppWebViewWidget {
@@ -183,11 +209,47 @@ class _Session {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  for (final result in ['login-success', 'already-logged-in', 'login-error']) {
+    testWidgets('$result persists login status before cleanup and nurturing', (
+      tester,
+    ) async {
+      final session = _Session(tester);
+      await session.init();
+      final gate = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      session.view.loginResult = result;
+      session.view.loginStopGate = gate;
+      expect(await session.store.canReuseCurrentAccountSession(), isFalse);
+      final run = session.logic.autoLogin();
+      await tester.pump();
+      for (var tick = 0; tick < 11 && !session.view.stoppingLogin; tick++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(session.view.stoppingLogin, isTrue);
+      expect(
+        await session.store.canReuseCurrentAccountSession(),
+        result != 'login-error',
+      );
+      expect(session.logic.loginConfirmed, result != 'login-error');
+      expect(session.view.watchStarts, 0);
+      gate.complete();
+      await tester.pump();
+      await run;
+      expect(session.logic.autoWatchEnabled, result != 'login-error');
+      session.logic.onDelete();
+      session.home.onDelete();
+      await tester.pump();
+    });
+  }
+
   testWidgets(
     'routes through Home between signup and login, then reports nurture completion',
     (tester) async {
       final previous = InAppWebViewPlatform.instance;
-      InAppWebViewPlatform.instance = _Platform();
+      final platform = _Platform();
+      InAppWebViewPlatform.instance = platform;
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       final messenger = tester.binding.defaultBinaryMessenger;
       messenger.setMockMethodCallHandler(
@@ -279,6 +341,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
       }
       await authentication;
+      platform.loggedIn = true;
       expect(login.autoWatchEnabled, isTrue);
       await tester.pump(const Duration(minutes: 10));
       await tester.pumpAndSettle();
@@ -289,6 +352,42 @@ void main() {
       );
       expect(loginView.logoutCalls, 0);
       expect(home.waitingForAutoLogin, isFalse);
+      expect(find.text('Nuôi tiếp Account'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('runAccountAction')));
+      await tester.pumpAndSettle();
+      final continuedPage = tester.widget<TikTokPage>(find.byType(TikTokPage));
+      expect(continuedPage.launchAction, TikTokLaunchAction.browse);
+      expect(continuedPage.startWithNurture, isTrue);
+      expect(continuedPage.configuration.configurationId, id);
+      expect(continuedPage.configuration.otpApi, isNull);
+      final continued = currentLogic();
+      final continuedView = _View();
+      continued.webViewController = InAppWebViewController.fromPlatform(
+        platform: continuedView,
+      );
+      continued.initialPageLoaded = true;
+      continued.mutate(() => continued.loadingProgress = 100);
+      await continued.runInitialAction();
+      await tester.pump();
+      expect(continued.autoWatchEnabled, isTrue);
+      expect(continuedView.watchStarts, 1);
+      await tester.pump(const Duration(minutes: 10));
+      await tester.pumpAndSettle();
+      expect(find.byType(TikTokPage), findsNothing);
+      expect(find.text('Nuôi tiếp Account'), findsOneWidget);
+      expect(continuedView.logoutCalls, 0);
+      // The separate Mở TikTok action remains fully manual, even with cookies.
+      await tester.tap(find.byKey(const Key('openTikTok')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TikTokPage>(find.byType(TikTokPage)).startWithNurture,
+        isFalse,
+      );
+      platform.loggedIn = false;
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nuôi tiếp Account'), findsNothing);
+      expect(find.text('Đăng nhập và nuôi Account'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
       debugDefaultTargetPlatformOverride = null;

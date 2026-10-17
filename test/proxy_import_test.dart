@@ -292,6 +292,54 @@ void main() {
   });
 
   testWidgets(
+    'pasted Excel filename guides to file import and preserves fields',
+    (tester) async {
+      const fileName = 'proxy_email_accounts_corrected.xlsx';
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async =>
+            call.method == 'Clipboard.getData' ? {'text': fileName} : null,
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final logic = tester
+          .state<GetBuilderState<ProxyFormController>>(
+            find.byType(GetBuilder<ProxyFormController>),
+          )
+          .controller!;
+      logic.importData.text = combinedRecord;
+      logic.importProxy();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('importProxyData')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pasteProxyData')));
+      await tester.pumpAndSettle();
+      expect(logic.importError, contains('Import data > Từ file'));
+      expect(text(tester, 'proxyImportData'), fileName);
+      expect(logic.accountEmail.text, 'person@example.com');
+      expect(logic.password.text, 'proxy-password');
+      expect(logic.importing, isFalse);
+      await tester.tap(find.byKey(const Key('applyProxyImportData')));
+      await tester.pumpAndSettle();
+      expect(logic.importError, contains('Import data > Từ file'));
+      expect(logic.accountEmail.text, 'person@example.com');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'clipboard imports multiple configurations and saves after review',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 2000));

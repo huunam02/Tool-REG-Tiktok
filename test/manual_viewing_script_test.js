@@ -23,13 +23,14 @@ function setup(host = 'www.tiktok.com') {
   const originalOpen = XHR.prototype.open;
   const window = { __manualViewingConfig: {session: 's', segment: '1'}, fetch: originalFetch, XMLHttpRequest: XHR,
     flutter_inappwebview: { callHandler(name, value) { messages.push({name, value}); return Promise.resolve(); } },
+    addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name),
     scrollBy() { assert.fail('Must not automate viewing'); },
   };
   window.top = window;
   const document = {visibilityState: 'visible', querySelectorAll: () => videos,
     addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name)};
   const context = {window, document, location, URL, innerWidth: 400, innerHeight: 800,
-    getComputedStyle: video => ({display: video.hidden ? 'none' : 'block', visibility: 'visible', opacity: '1'}),
+    getComputedStyle: video => ({display: video.hidden ? 'none' : 'block', visibility: 'visible', opacity: video.opacity ?? '1'}),
     Date: {now: () => now}, setInterval(fn) { intervals.add(fn); return fn; }, clearInterval(fn) { intervals.delete(fn); }};
   function addVideo() {
     const video = {currentTime: 0, duration: 10, currentSrc: `v${videos.length}`, paused: false, ended: false,
@@ -75,10 +76,20 @@ test('pause, hidden page, buffering and seeks do not inflate time', () => {
 
 test('app background retains segment without counting background time', () => {
   const h = setup(), video = h.addVideo(); h.start(); h.play(video, 2);
-  h.window.__manualViewing.setActive(false); h.play(video, 5);
+  assert.equal(h.window.__manualViewing.setActive(false).videos, 0);
+  h.play(video, 5);
   h.window.__manualViewing.setActive(true); h.tick(); h.play(video, 2);
   const value = h.window.__manualViewing.stop();
   assert.equal(value.watch_ms, 4000); assert.equal(value.videos, 1);
+});
+
+test('ended event saves a full video before an automatic scroll replaces the player', () => {
+  const h = setup(), video = h.addVideo(); h.start(); h.play(video, 1.75);
+  video.ended = true; video.currentTime = 2;
+  h.listeners.get('ended')({target: video});
+  assert.equal(h.snapshot().full_videos, 1);
+  video.hidden = true; h.addVideo(); h.tick();
+  assert.equal(h.snapshot().videos, 1);
 });
 
 test('ended video is counted once and changing video accounts for the previous view', () => {
@@ -104,6 +115,7 @@ test('successful manual XHR comments count once while failed and unrelated repli
   xhr.respond({status_code: 0, comment: {cid: 'a'}});
   xhr.open('GET', '/api/comment/list/'); xhr.respond({status_code: 0, comment: {cid: 'other'}});
   xhr.open('POST', 'https://example.com/api/comment/publish/'); xhr.respond({status_code: 0, comment: {cid: 'foreign'}});
+  assert.equal(h.snapshot().comments, 1, 'persists immediately before stopping');
   assert.equal(h.window.__manualViewing.stop().comments, 1);
 });
 
@@ -114,7 +126,35 @@ test('fetch observes a clone and preserves the original response and request beh
   h.responses.shift()(response);
   assert.equal(await pending, response);
   await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.snapshot().comments, 1, 'persists immediately after server confirmation');
   assert.equal(h.window.__manualViewing.stop().comments, 1);
+});
+
+test('every real swipe emits a completed view immediately, including a short skip', () => {
+  const h = setup(), first = h.addVideo(); h.start(); h.play(first, .5);
+  first.hidden = true; const second = h.addVideo(); h.tick();
+  assert.equal(h.snapshot().videos, 1); assert.equal(h.snapshot().skipped_videos, 1);
+  h.play(second, 2); second.hidden = true; h.addVideo(); h.tick();
+  assert.equal(h.snapshot().videos, 2); assert.equal(h.snapshot().skipped_videos, 2);
+});
+
+test('automatic nurturing routes decoder playback statistics to its own handler', () => {
+  const h = setup(), video = h.addVideo(); video.opacity = '0';
+  h.window.__manualViewingConfig.handler = 'FlutterNurtureStats';
+  h.window.__manualViewingConfig.allowTransparentVideo = true;
+  h.start(); h.play(video, 2);
+  video.hidden = true; h.addVideo(); h.tick();
+  assert.equal(h.messages.at(-1).name, 'FlutterNurtureStats');
+  assert.equal(h.snapshot().videos, 1); assert.equal(h.snapshot().watch_ms, 2000);
+});
+
+test('a playback wrap counts a full video once and page navigation flushes progress', () => {
+  const h = setup(), video = h.addVideo(); h.start(); h.play(video, 9.75);
+  video.currentTime = 0; h.tick();
+  assert.equal(h.snapshot().full_videos, 1); assert.equal(h.snapshot().watch_ms, 10000);
+  h.play(video, 1); h.listeners.get('pagehide')();
+  assert.equal(h.snapshot().videos, 1); assert.equal(h.snapshot().watch_ms, 11000);
+  assert.equal(h.window.__manualViewing.stop().videos, 1);
 });
 
 test('same segment reinjection is idempotent and other origins and frames are ignored', () => {

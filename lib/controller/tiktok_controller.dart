@@ -10,6 +10,7 @@ import 'package:flutter_accessibility_service/flutter_accessibility_service.dart
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../core/scripts/auto_login_script.dart';
+import '../core/scripts/authenticated_session_script.dart';
 import '../core/scripts/auto_logout_script.dart';
 import '../core/send_code_accessibility.dart';
 import '../core/signup_accessibility.dart';
@@ -41,6 +42,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   TikTokController({
     required this.configuration,
     this.launchAction = TikTokLaunchAction.browse,
+    this.startWithNurture = false,
     this.startWithBrowserCheck = false,
     this.startWithIpCheck = false,
     bool useNativeWebView = false,
@@ -156,6 +158,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             logoutBusy = false;
             loginConfirmed = false;
           });
+          await _persistCurrentAccountLoginState(false);
+          if (!active || generation != _workflowGeneration) return;
           if (!_flowFinished) {
             _flowFinished = true;
             onFlowFinished?.call(TikTokFlowResult.signupLoggedOut);
@@ -214,6 +218,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   final TikTokLaunchAction launchAction;
+  final bool startWithNurture;
   final bool startWithBrowserCheck;
   final bool startWithIpCheck;
   // Manual-only mode is independent of the browser identity used by automation.
@@ -222,6 +227,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   final NurturePlan? manualViewingPlan;
   final NurtureRepository? nurtureRepository;
   ManualViewingSession? _manualSession;
+  ManualViewingSession? _autoViewingSession;
+  int? _autoViewingNavigation;
+  String? _autoViewingSegment;
+  Future<void> _autoWatchOperations = Future.value();
   int? _manualNavigation;
   bool manualViewingClosed = false;
   Future<void>? _manualClose;
@@ -321,8 +330,22 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   bool initialActionStarted = false;
   bool initialPageLoaded = false;
   bool autoLoginBusy = false;
-  // Set only when autoLogin confirms a successful authenticated session.
+  // Confirmed by automatic login or by a session check on a manual start.
   bool loginConfirmed = false;
+
+  Future<void> _persistCurrentAccountLoginState(bool loggedIn) async {
+    final id = configuration.configurationId;
+    final email = configuration.loginUsername.trim().isEmpty
+        ? configuration.signupEmail
+        : configuration.loginUsername;
+    if (id == null || email.trim().isEmpty) return;
+    try {
+      await proxyStore.setCurrentAccountLoggedIn(id, email, loggedIn);
+    } catch (_) {
+      // Session persistence must not interrupt browser controls.
+    }
+  }
+
   SendCodeAccessibility? _sendCodeAccessibility;
   final Map<String, int> _accountTapAttempts = {};
   bool _requestingAccessibility = false;
@@ -391,7 +414,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     cancelAutoLogin(updateUi: false);
     cancelAutoSignup(updateUi: false);
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(stopAutoWatch());
+    unawaited(_closeAutoViewing());
     super.onClose();
   }
 
@@ -419,7 +442,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
   }
 
-  Future<void> startAutoWatch() async {
+  Future<void> startAutoWatch() => _autoWatchOperations = _autoWatchOperations
+      .then((_) => _startAutoWatch());
+
+  Future<void> _startAutoWatch() async {
     if (useNativeWebView) return;
     final stopsAt = _autoWatchStopsAt;
     if (stopsAt != null && !_now().isBefore(stopsAt)) {
@@ -434,19 +460,29 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         pageFailure != null) {
       return;
     }
+    final navigation = navigationId;
     try {
+      await _startAutoViewingStats();
+      if (!active ||
+          !autoWatchEnabled ||
+          !appActive ||
+          navigation != navigationId) {
+        await _stopAutoWatch();
+        return;
+      }
       final result = await webViewController?.evaluateJavascript(
         source: buildAutoWatchScript(comments),
       );
       if (result != true) throw StateError('Video watcher did not start');
       // The app may have been paused or the toggle disabled during injection.
       if (!active || !autoWatchEnabled || !appActive) {
-        await stopAutoWatch();
+        await _stopAutoWatch();
       }
     } catch (_) {
       if (!active || !autoWatchEnabled) return;
       _cancelAutoWatchTimers();
       mutate(() => autoWatchEnabled = false);
+      await _stopAutoWatch();
       notify('Không thể bật tự động xem. Hãy thử tải lại TikTok.');
     }
   }
@@ -470,7 +506,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     _finishingWatch = true;
     try {
       // Stop page automation, retaining TikTok cookies and the login session.
-      await stopAutoWatch();
+      await stopAutoWatch(finishViewing: true);
+      await _autoViewingSession?.finish(completed: true);
+      _autoViewingSession = null;
       if (!active || !appActive) return;
       _watchCompletionPending = false;
       if (onFlowFinished != null && !_flowFinished) {
@@ -497,13 +535,81 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     await startAutoWatch();
   }
 
-  Future<void> stopAutoWatch() async {
+  Future<void> stopAutoWatch({bool finishViewing = false}) =>
+      _autoWatchOperations = _autoWatchOperations.then(
+        (_) => _stopAutoWatch(finishViewing: finishViewing),
+      );
+
+  Future<void> _stopAutoWatch({bool finishViewing = false}) async {
     if (useNativeWebView) return;
     try {
       await webViewController?.evaluateJavascript(source: autoWatchStopScript);
     } catch (_) {
       // Navigation/disposal may already have destroyed the old page.
     }
+    final session = _autoViewingSession;
+    final hadObserver = _autoViewingNavigation != null;
+    if (finishViewing) {
+      _autoViewingNavigation = null;
+      _autoViewingSegment = null;
+    }
+    if (session == null) return;
+    if (hadObserver) {
+      try {
+        final snapshot = await webViewController?.evaluateJavascript(
+          source: finishViewing
+              ? 'window.__manualViewing?.stop() ?? null'
+              : 'window.__manualViewing?.setActive(false) ?? null',
+        );
+        await session.accept(snapshot);
+      } catch (_) {
+        // Event snapshots have already saved every completed view/comment.
+      }
+    }
+    await session.setForeground(false);
+  }
+
+  Future<void> _startAutoViewingStats() async {
+    final email = configuration.loginUsername.trim();
+    if (email.isEmpty) return;
+    final navigation = navigationId;
+    final session = _autoViewingSession ??= ManualViewingSession(
+      repository: nurtureRepository ?? proxyStore.nurture,
+      email: email,
+      configurationId: configuration.configurationId,
+      plan: const NurturePlan(NurtureMode.feed),
+      onError: () => notify('Không thể lưu thống kê nuôi vào tài khoản.'),
+    );
+    await session.start();
+    if (!active ||
+        !autoWatchEnabled ||
+        !appActive ||
+        navigation != navigationId) {
+      return;
+    }
+    if (_autoViewingNavigation != navigation) {
+      _autoViewingNavigation = navigation;
+      _autoViewingSegment = session.addSegment();
+    }
+    final ready = await webViewController?.evaluateJavascript(
+      source: buildManualViewingScript(
+        session.id,
+        _autoViewingSegment!,
+        handlerName: 'FlutterNurtureStats',
+        allowTransparentVideo: true,
+      ),
+    );
+    if (ready != true) throw StateError('Nurture statistics did not start');
+    final snapshot = await webViewController?.evaluateJavascript(
+      source: 'window.__manualViewing?.setActive(true) ?? null',
+    );
+    await session.accept(snapshot);
+    await session.setForeground(true);
+  }
+
+  Future<void> _closeAutoViewing() async {
+    await stopAutoWatch(finishViewing: true);
+    await _autoViewingSession?.finish(error: pageFailure != null);
   }
 
   Future<bool> inputCommentText(List<dynamic> args) async {
@@ -568,7 +674,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   Future<void> toggleAutoWatch() async {
     if (useNativeWebView) return;
-    if (browserCheckOpen ||
+    if (!active ||
+        !appActive ||
+        pageFailure != null ||
+        accountFailure != null ||
+        browserCheckOpen ||
         waitingToLogout ||
         logoutBusy ||
         _flowFinished ||
@@ -578,7 +688,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         webViewController == null) {
       return;
     }
-    if (!autoWatchEnabled && !loginConfirmed) {
+    if (!autoWatchEnabled &&
+        !loginConfirmed &&
+        launchAction != TikTokLaunchAction.browse) {
       notify('Hãy đăng nhập tự động thành công trước khi bật Auto nuôi.');
       return;
     }
@@ -586,18 +698,45 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       notify('Hãy nhập nội dung bình luận ở màn Cấu hình.');
       return;
     }
-    if (!active || autoLoginBusy || autoSignupBusy) return;
-    _cancelAutoWatchTimers();
-    mutate(() {
-      autoWatchBusy = true;
-      autoWatchEnabled = !autoWatchEnabled;
-    });
-    if (autoWatchEnabled) {
-      await startAutoWatch();
-    } else {
-      await stopAutoWatch();
+    mutate(() => autoWatchBusy = true);
+    try {
+      if (!autoWatchEnabled && launchAction == TikTokLaunchAction.browse) {
+        final navigation = navigationId;
+        mutate(() => loginConfirmed = false);
+        final authenticated = await webViewController?.evaluateJavascript(
+          source: checkAuthenticatedSessionScript,
+        );
+        if (!active ||
+            !appActive ||
+            navigation != navigationId ||
+            browserCheckOpen ||
+            pageFailure != null ||
+            accountFailure != null) {
+          return;
+        }
+        if (authenticated != true) {
+          await _persistCurrentAccountLoginState(false);
+          notify(
+            'Hãy đăng nhập TikTok trên trang hiện tại trước khi bật Auto nuôi.',
+          );
+          return;
+        }
+        mutate(() => loginConfirmed = true);
+        await _persistCurrentAccountLoginState(true);
+        if (!active || !appActive || navigation != navigationId) return;
+      }
+      _cancelAutoWatchTimers();
+      mutate(() => autoWatchEnabled = !autoWatchEnabled);
+      if (autoWatchEnabled) {
+        await startAutoWatch();
+      } else {
+        await stopAutoWatch();
+      }
+    } catch (_) {
+      notify('Không thể kiểm tra phiên đăng nhập. Hãy thử bật Auto nuôi lại.');
+    } finally {
+      mutate(() => autoWatchBusy = false);
     }
-    if (active) mutate(() => autoWatchBusy = false);
   }
 
   Future<void> stopAutoLogin(int attempt) async {
@@ -1604,6 +1743,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
               'Hãy kiểm tra trên TikTok.';
         } else if (result == 'already-logged-in' || result == 'login-success') {
           loginSucceeded = true;
+          mutate(() => loginConfirmed = true);
+          await _persistCurrentAccountLoginState(true);
           message = result == 'already-logged-in'
               ? 'Tài khoản TikTok đã đăng nhập.'
               : 'Đăng nhập TikTok thành công.';
@@ -1679,8 +1820,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       if (active && isActive()) {
         mutate(() => autoLoginBusy = false);
         notify(message);
-        if (loginSucceeded && appActive && pageFailure == null) {
-          mutate(() => loginConfirmed = true);
+        if (loginSucceeded && active && appActive && pageFailure == null) {
           await _startTimedAutoWatch();
         }
       }
@@ -1713,7 +1853,52 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       if (message == 'login-required') loginConfirmed = false;
     });
     unawaited(stopAutoWatch());
+    if (message == 'login-required') {
+      unawaited(_persistCurrentAccountLoginState(false));
+    }
     notify(text);
+  }
+
+  Future<void> _startNurtureWithRetainedSession() async {
+    mutate(() => autoWatchBusy = true);
+    bool canContinue() =>
+        active &&
+        appActive &&
+        !browserCheckOpen &&
+        pageFailure == null &&
+        accountFailure == null;
+    try {
+      // A retained cookie is only a hint. Allow TikTok to hydrate and confirm
+      // the live signed-in UI before enabling another ten-minute run.
+      for (var attempt = 0; attempt < 20 && canContinue(); attempt++) {
+        final navigation = navigationId;
+        dynamic authenticated;
+        try {
+          authenticated = await webViewController?.evaluateJavascript(
+            source: checkAuthenticatedSessionScript,
+          );
+        } catch (_) {
+          // Navigation can briefly replace the JavaScript context.
+        }
+        if (!canContinue()) return;
+        if (navigation == navigationId && authenticated == true) {
+          mutate(() => loginConfirmed = true);
+          await _persistCurrentAccountLoginState(true);
+          if (!canContinue() || navigation != navigationId) return;
+          await _startTimedAutoWatch();
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      if (canContinue()) {
+        await _persistCurrentAccountLoginState(false);
+        notify(
+          'Phiên đăng nhập không còn sẵn sàng. Hãy đăng nhập lại để nuôi tiếp.',
+        );
+      }
+    } finally {
+      mutate(() => autoWatchBusy = false);
+    }
   }
 
   Future<void> runInitialAction() async {
@@ -1730,6 +1915,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
     // Latch before starting: reloads, SPA navigations and resume cannot submit again.
     initialActionStarted = true;
+    if (startWithNurture) {
+      await _startNurtureWithRetainedSession();
+      return;
+    }
     switch (launchAction) {
       case TikTokLaunchAction.browse:
         return;
@@ -1918,6 +2107,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
     if (!useNativeWebView && !usesCoordinateSignup) {
       controller.addJavaScriptHandler(
+        handlerName: 'FlutterNurtureStats',
+        callback: (args) async {
+          if (args.isNotEmpty) await _autoViewingSession?.accept(args.first);
+        },
+      );
+      controller.addJavaScriptHandler(
         handlerName: 'FlutterCommentPaste',
         callback: inputCommentText,
       );
@@ -2067,6 +2262,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     if (!active) return;
     _ipChecker?.cancel();
     initialPageLoaded = false;
+    _autoViewingNavigation = null;
+    _autoViewingSegment = null;
     mutate(() {
       final host = url?.host ?? '';
       browserCheckOpen =

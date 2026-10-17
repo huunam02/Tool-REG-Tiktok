@@ -129,7 +129,9 @@ class _ProxyFormView extends StatelessWidget {
                     color: ProxyColors.cyan,
                   ),
                   title: const Text('Dán từ clipboard'),
-                  subtitle: const Text('Mỗi cấu hình một dòng'),
+                  subtitle: const Text(
+                    'Dán nội dung cấu hình, mỗi dòng một cấu hình',
+                  ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   tileColor: ProxyColors.input,
                   shape: RoundedRectangleBorder(
@@ -537,8 +539,9 @@ class _ProxyFormView extends StatelessWidget {
                             maxLines: 8,
                             onChanged: logic.clearImportError,
                             decoration: InputDecoration(
-                              hintText: 'Dán dữ liệu',
+                              hintText: 'Dán nội dung cấu hình',
                               helperText:
+                                  'Để đọc Excel/TXT, chọn Import data > Từ file.\n'
                                   'host:port:user:pass|email|mật khẩu TikTok|mật khẩu email OTP[|0/1]\n'
                                   'Mỗi dòng một cấu hình. 1: đã đăng ký; 0 hoặc bỏ qua: chưa đăng ký.',
                               helperMaxLines: 6,

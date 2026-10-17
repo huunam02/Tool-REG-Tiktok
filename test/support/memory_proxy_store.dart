@@ -18,6 +18,7 @@ class MemoryProxyStore extends ProxyStore {
   AccountCredentials? currentAccount;
   AccountStatus currentStatus = AccountStatus.unregistered;
   int? currentId;
+  bool? currentAccountLoggedIn;
   final entries = <SavedProxy>[];
   bool failWrites = false;
   bool failReads = false;
@@ -56,6 +57,8 @@ class MemoryProxyStore extends ProxyStore {
   @override
   Future<void> setCurrent(WebViewProxy? proxy) async {
     if (failWrites) throw StateError('Storage unavailable');
+    final previousId = currentId;
+    final previousProxy = current;
     final saved = entries.where((entry) => sameProxy(entry.proxy, proxy));
     if (saved.isNotEmpty) {
       currentUserAgent = saved.first.userAgent;
@@ -76,6 +79,9 @@ class MemoryProxyStore extends ProxyStore {
       currentTimeZoneId = '';
       currentStatus = AccountStatus.unregistered;
     }
+    if (currentId != previousId || !sameProxy(previousProxy, proxy)) {
+      currentAccountLoggedIn = false;
+    }
   }
 
   @override
@@ -85,6 +91,13 @@ class MemoryProxyStore extends ProxyStore {
   Future<void> useSaved(int id) async {
     if (failWrites) throw StateError('Storage unavailable');
     final entry = entries.singleWhere((entry) => entry.id == id);
+    if (currentId != id ||
+        !sameProxy(current, entry.proxy) ||
+        currentUserAgent != entry.userAgent ||
+        currentTimeZoneId != entry.timeZoneId ||
+        !sameAccount(currentAccount, entry.account)) {
+      currentAccountLoggedIn = false;
+    }
     current = entry.proxy;
     currentUserAgent = entry.userAgent;
     currentName = entry.name;
@@ -93,6 +106,24 @@ class MemoryProxyStore extends ProxyStore {
     currentStatus = entry.statusAccount;
     currentId = entry.id;
     await setUsed(id, true);
+  }
+
+  @override
+  Future<bool> canReuseCurrentAccountSession() async =>
+      currentAccountLoggedIn != false;
+
+  @override
+  Future<bool> setCurrentAccountLoggedIn(
+    int configurationId,
+    String email,
+    bool loggedIn,
+  ) async {
+    if (failWrites) throw StateError('Storage unavailable');
+    if (currentId != configurationId || currentAccount?.email != email.trim()) {
+      return false;
+    }
+    currentAccountLoggedIn = loggedIn;
+    return true;
   }
 
   @override

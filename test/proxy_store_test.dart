@@ -35,6 +35,69 @@ void main() {
   });
 
   test(
+    'changing configuration resets persisted login and rejects stale confirmation',
+    () async {
+      const firstAccount = AccountCredentials(
+        email: 'first@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      const secondAccount = AccountCredentials(
+        email: 'second@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      final first = await store.save(
+        name: 'First',
+        proxy: null,
+        account: firstAccount,
+      );
+      final second = await store.save(
+        name: 'Second',
+        proxy: null,
+        account: secondAccount,
+      );
+      await store.useSaved(first);
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
+      expect(
+        await store.setCurrentAccountLoggedIn(first, firstAccount.email, true),
+        isTrue,
+      );
+      await store.useSaved(first);
+      expect(await store.canReuseCurrentAccountSession(), isTrue);
+      await store.useSaved(second);
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
+      expect(
+        await store.setCurrentAccountLoggedIn(first, firstAccount.email, true),
+        isFalse,
+      );
+      expect(
+        await store.setCurrentAccountLoggedIn(second, firstAccount.email, true),
+        isFalse,
+      );
+      await store.close();
+      store = openStore();
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
+      expect(
+        await store.setCurrentAccountLoggedIn(
+          second,
+          secondAccount.email,
+          true,
+        ),
+        isTrue,
+      );
+      await store.close();
+      store = openStore();
+      expect(await store.canReuseCurrentAccountSession(), isTrue);
+      await store.useSaved(first);
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
+      await store.setCurrentAccountLoggedIn(first, firstAccount.email, true);
+      await store.setCurrent(null);
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
+    },
+  );
+
+  test(
     'signup marks only the opened configuration and survives reopening',
     () async {
       const account = AccountCredentials(

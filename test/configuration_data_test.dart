@@ -72,6 +72,32 @@ void main() {
     );
   });
 
+  test('pasted file names and paths explain how to select the file', () {
+    for (final input in [
+      'proxy_email_accounts_corrected.xlsx',
+      '/Downloads/profiles.XLSX',
+      'file:///Downloads/profiles.xls',
+      ' profiles.txt\r\n',
+    ]) {
+      expect(
+        () => ImportedConfiguration.parseMany(input),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('Import data > Từ file'),
+          ),
+        ),
+      );
+    }
+    expect(
+      ImportedConfiguration.parseMany(
+        '$record.xlsx',
+      ).single.account.mailboxPassword,
+      'Mailbox-password.xlsx',
+    );
+  });
+
   test(
     'rejects incomplete or multiple records and separators other than pipes',
     () {

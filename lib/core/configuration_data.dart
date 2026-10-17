@@ -67,6 +67,14 @@ class ImportedConfiguration {
   final AccountStatus statusAccount;
 
   static List<ImportedConfiguration> parseMany(String input) {
+    if (RegExp(
+      r'^[^\r\n|]+\.(xlsx|xls|txt)$',
+      caseSensitive: false,
+    ).hasMatch(input.trim())) {
+      throw const FormatException(
+        'Đây là tên hoặc đường dẫn file. Chọn Import data > Từ file để đọc dữ liệu Excel/TXT.',
+      );
+    }
     final lines = input.split(RegExp(r'\r\n|[\r\n]'));
     final records = <ImportedConfiguration>[];
     for (var index = 0; index < lines.length; index++) {

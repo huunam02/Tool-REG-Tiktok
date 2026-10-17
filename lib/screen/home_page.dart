@@ -56,8 +56,9 @@ class _HomeView extends StatelessWidget {
 
   Future<void> _openTikTok(
     BuildContext context,
-    TikTokLaunchAction action,
-  ) async {
+    TikTokLaunchAction action, {
+    bool startWithNurture = false,
+  }) async {
     TikTokFlowResult? result;
     AppConfiguration? signupConfiguration;
     await logic.openTikTok(action, (configuration, action) async {
@@ -66,6 +67,7 @@ class _HomeView extends StatelessWidget {
           builder: (_) => TikTokPage(
             configuration: configuration,
             launchAction: action,
+            startWithNurture: startWithNurture,
             proxyStore: logic.proxyStore,
           ),
         ),
@@ -343,17 +345,13 @@ class _HomeView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Tài khoản · ${logic.nurtureAccounts.length}',
+                  'Tài khoản số lượng: ${logic.nurtureAccounts.length}',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Số phút xem, số video đã xem và bình luận đã gửi thành công được lưu trên máy.',
-                  style: TextStyle(color: _HomeStyle.muted, height: 1.5),
-                ),
+
                 const SizedBox(height: 16),
                 if (logic.loadingAccounts) const LinearProgressIndicator(),
                 if (logic.accountsLoadFailed)
@@ -518,11 +516,13 @@ class _HomeView extends StatelessWidget {
                             logic.proxyLoadFailed ||
                             logic.currentProxy?.account == null
                         ? null
-                        : () => _openTikTok(context, logic.accountAction),
+                        : () => _openTikTok(
+                            context,
+                            logic.accountAction,
+                            startWithNurture: logic.hasCurrentAccountSession,
+                          ),
                     child: Text(
-                      logic.accountAction == TikTokLaunchAction.login
-                          ? 'Đăng nhập và nuôi Account'
-                          : 'Đăng ký tài khoản',
+                      logic.accountActionLabel,
                       textAlign: TextAlign.center,
                     ),
                   ),

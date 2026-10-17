@@ -134,7 +134,136 @@ void main() {
   }
 
   for (final scenario in [
+    'login-modal',
+    'hidden-home',
+    'signup-method',
+    'auto-open-login',
+    'auto-open-signup',
+    'moving-signup-target',
+    'missing-signup-target',
+    'disabled-signup-target',
+    'misaligned-signup-target',
+    'page-loading',
+    'cancel-modal',
+  ]) {
+    testWidgets('starts from an open account modal: $scenario', (tester) async {
+      final started = tester.binding.clock.now();
+      Duration elapsed() => tester.binding.clock.now().difference(started);
+      final accessibility = _RecordedAccessibility(profile, recording)
+        ..state = scenario.startsWith('auto-open')
+            ? 'home-ready'
+            : scenario == 'signup-method'
+            ? 'signup-method'
+            : 'login-modal';
+      accessibility.onSnapshot = (data) {
+        if (scenario.startsWith('auto-open') &&
+            accessibility.state == 'home-ready' &&
+            elapsed().inSeconds >= 4) {
+          accessibility.state = scenario == 'auto-open-login'
+              ? 'login-modal'
+              : 'signup-method';
+          data
+            ..clear()
+            ..addAll(jsonDecode(jsonEncode(recording[accessibility.state])));
+        }
+        if (accessibility.state != 'login-modal') return;
+        final nodes = data['nodes'] as List;
+        if (scenario == 'hidden-home') {
+          nodes.removeWhere((n) => n['text'] == 'Log in');
+          // Background navigation must not make the modal look authenticated.
+          nodes.add({...nodes.first, 'id': 'background', 'text': 'Messages'});
+        }
+        if (scenario == 'missing-signup-target') {
+          nodes.removeWhere((n) => n['text'] == 'Sign up');
+        }
+        for (final node in nodes) {
+          if (node['text'] != 'Sign up') continue;
+          if (scenario == 'disabled-signup-target') node['enabled'] = false;
+          if (scenario == 'misaligned-signup-target') {
+            node['bounds'] = [10, 10, 50, 50];
+          }
+          if (scenario == 'moving-signup-target' &&
+              elapsed().inSeconds >= 4 &&
+              elapsed().inSeconds < 6) {
+            node['bounds'] = [597, 1616, 656, 1636];
+          }
+        }
+      };
+      final runner = SignupCoordinateRunner(
+        profile: profile,
+        accessibility: accessibility,
+        configuration: AppConfiguration(
+          userAgent: '',
+          comments: [],
+          signupEmail: '',
+          signupPassword: '',
+          loginUsername: '',
+          loginPassword: '',
+        ),
+        isActive: () => true,
+        isTikTok: () async => true,
+        isPageReady: () => scenario != 'page-loading',
+        getOtp: () async => throw StateError('Must not fetch OTP'),
+        onStatus: (_) {},
+        now: tester.binding.clock.now,
+      );
+      Duration? firstTapAt;
+      accessibility.afterTap = (name) {
+        firstTapAt ??= elapsed();
+        if (name == 'signup-phone-email') runner.cancel();
+      };
+      Object? failure;
+      var finished = false;
+      final run = runner.run().then<void>(
+        (_) => finished = true,
+        onError: (Object error) {
+          failure = error;
+          finished = true;
+        },
+      );
+      for (var i = 0; i < 650 && !finished; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        if (scenario == 'cancel-modal' && elapsed().inSeconds >= 2) {
+          runner.cancel();
+        }
+      }
+      expect(finished, isTrue);
+      await run;
+      if (scenario.endsWith('signup-target') &&
+              scenario != 'moving-signup-target' ||
+          scenario == 'page-loading') {
+        expect(failure, isA<StateError>());
+        expect(accessibility.actions, isEmpty);
+      } else if (scenario == 'cancel-modal') {
+        expect(failure, isA<SignupCancelled>());
+        expect(accessibility.actions, isEmpty);
+      } else {
+        expect(failure, isA<SignupCancelled>());
+        expect(
+          accessibility.actions,
+          scenario == 'signup-method' || scenario == 'auto-open-signup'
+              ? ['signup-phone-email']
+              : ['open-signup', 'signup-phone-email'],
+        );
+        final minimumSeconds = scenario == 'moving-signup-target'
+            ? 8
+            : scenario.startsWith('auto-open')
+            ? 6
+            : 5;
+        expect(
+          firstTapAt,
+          greaterThanOrEqualTo(Duration(seconds: minimumSeconds)),
+        );
+      }
+      expect(runner.alreadyLoggedIn, isFalse);
+      expect(accessibility.pastes, isEmpty);
+    });
+  }
+
+  for (final scenario in [
     'success',
+    'resume-login-modal',
+    'resume-signup-method',
     'paste-rejected',
     'cancel-after-otp',
     'skip-rejected',
@@ -150,6 +279,9 @@ void main() {
       tester,
     ) async {
       final accessibility = _RecordedAccessibility(profile, recording);
+      if (scenario.startsWith('resume-')) {
+        accessibility.state = scenario.substring('resume-'.length);
+      }
       final configuration = AppConfiguration(
         userAgent: 'test',
         comments: [],
@@ -218,6 +350,8 @@ void main() {
       await run;
       if ([
         'success',
+        'resume-login-modal',
+        'resume-signup-method',
         'leap-day',
         'last-day',
         'earliest-year',
@@ -379,6 +513,7 @@ class _RecordedAccessibility extends SignupAccessibility {
   };
   void Function()? afterOtpPaste;
   void Function(Map<String, dynamic>)? onHomeSnapshot;
+  void Function(Map<String, dynamic>)? onSnapshot;
   void Function(String)? afterTap;
   final actions = <String>[];
   final pastes = <String>[];
@@ -387,6 +522,7 @@ class _RecordedAccessibility extends SignupAccessibility {
     final data =
         jsonDecode(jsonEncode(recording[state])) as Map<String, dynamic>;
     if (state == 'home-ready') onHomeSnapshot?.call(data);
+    onSnapshot?.call(data);
     for (final node in data['nodes'] as List) {
       if ('${node['className']}'.endsWith('Spinner')) {
         for (final field in selected.keys) {

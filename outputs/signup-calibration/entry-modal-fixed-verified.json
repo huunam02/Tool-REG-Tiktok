@@ -1,0 +1,167 @@
+{
+  "verification": "Live SignupCoordinateRunner entry check; cancelled at form before field input or OTP.",
+  "ready": true,
+  "webBounds": [
+    6,
+    289,
+    1073,
+    2423
+  ],
+  "keyboardVisible": false,
+  "nodes": [
+    {
+      "text": "Sign up | TikTok",
+      "description": "",
+      "hint": "",
+      "bounds": [
+        6,
+        289,
+        1073,
+        2423
+      ],
+      "editable": false,
+      "enabled": true,
+      "length": 0
+    },
+    {
+      "text": "Sign up",
+      "description": "",
+      "hint": "",
+      "bounds": [
+        368,
+        1114,
+        722,
+        1158
+      ],
+      "editable": false,
+      "enabled": true,
+      "length": 0
+    },
+    {
+      "text": "When’s your birthday?*",
+      "description": "",
+      "hint": "",
+      "bounds": [
+        353,
+        1182,
+        737,
+        1208
+      ],
+      "editable": false,
+      "enabled": true,
+      "length": 0
+    },
+    {
+      "text": "Month",
+      "description": "",
+      "hint": "Month. Double-tap for more options",
+      "bounds": [
+        353,
+        1218,
+        476,
+        1264
+      ],
+      "editable": false,
+      "enabled": true,
+      "length": 0
+    },
+    {
+      "text": "Day",
+      "description": "",
+      "hint": "Day. Double-tap for more options",
+      "bounds": [
+        484,
+        1218,
+        607,
+        1264
+      ],
+      "editable": false,
+      "enabled": true,
+      "length": 0
+    },
+    {
+      "text": "Year",
+      "description": "",
+      "hint": "Year. Double-tap for more options",
+      "bounds": [
+        615,
+        1218,
+        737,
+        1264
+      ],
+      "editable": false,
+      "enabled": true,
+      "length": 0
+    },
+    {
+      "text": "Your birthday won't be shown publicly.",
+      "description": "",
+      "hint": "",
+      "bounds": [
+        361,
+        1270,
+        737,
+        1294
+      ],
+      "editable": false,
+      "enabled": true,
+      "length": 0
+    },
+    {
+      "text": "",
+      "description": "",
+      "hint": "Phone number",
+      "bounds": [
+        461,
+        1345,
+        734,
+        1391
+      ],
+      "editable": true,
+      "enabled": true,
+      "length": 0
+    },
+    {
+      "text": "",
+      "description": "Use email",
+      "hint": "",
+      "bounds": [
+        361,
+        1403,
+        434,
+        1425
+      ],
+      "editable": false,
+      "enabled": true,
+      "length": 0
+    },
+    {
+      "text": "Use email",
+      "description": "",
+      "hint": "",
+      "bounds": [
+        361,
+        1404,
+        434,
+        1423
+      ],
+      "editable": false,
+      "enabled": true,
+      "length": 0
+    },
+    {
+      "text": "Send code",
+      "description": "",
+      "hint": "",
+      "bounds": [
+        353,
+        1506,
+        737,
+        1559
+      ],
+      "editable": false,
+      "enabled": false,
+      "length": 0
+    }
+  ]
+}

@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
+import 'package:test_tiktok/core/tiktok_launch_action.dart';
 import 'package:test_tiktok/core/scripts/auto_login_script.dart';
 import 'package:test_tiktok/core/scripts/auto_signup_script.dart';
 import 'package:test_tiktok/core/scripts/auto_watch_script.dart';
 import 'package:test_tiktok/core/scripts/authenticated_session_script.dart';
+import 'support/memory_nurture_store.dart';
 
 class _WatchView extends PlatformInAppWebViewController {
   _WatchView()
@@ -18,9 +22,11 @@ class _WatchView extends PlatformInAppWebViewController {
   String signupResult = 'signup-success';
   bool acceptsWatch = true;
   bool authenticated = false;
+  Completer<bool>? authentication;
   int authChecks = 0;
   int starts = 0;
   int stops = 0;
+  int loginChecks = 0;
 
   @override
   Future<WebUri?> getUrl() async => WebUri('https://www.tiktok.com/');
@@ -30,10 +36,14 @@ class _WatchView extends PlatformInAppWebViewController {
     required String source,
     ContentWorld? contentWorld,
   }) async {
-    if (source.contains(autoLoginStepScript)) return loginResult;
+    if (source.contains(autoLoginStepScript)) {
+      loginChecks++;
+      return loginResult;
+    }
     if (source.contains(autoSignupStepScript)) return signupResult;
     if (source == checkAuthenticatedSessionScript) {
       authChecks++;
+      if (authentication != null) return authentication!.future;
       return authenticated;
     }
     if (source.contains(autoWatchStartScript)) {
@@ -46,7 +56,12 @@ class _WatchView extends PlatformInAppWebViewController {
 }
 
 class _Session {
-  _Session(WidgetTester tester, {DateTime Function()? now}) {
+  _Session(
+    WidgetTester tester, {
+    DateTime Function()? now,
+    TikTokLaunchAction launchAction = TikTokLaunchAction.login,
+    bool startWithNurture = false,
+  }) {
     logic = TikTokController(
       configuration: AppConfiguration(
         userAgent: 'test-agent',
@@ -57,7 +72,10 @@ class _Session {
         loginPassword: 'test-password',
       ),
       now: now ?? tester.binding.clock.now,
+      launchAction: launchAction,
+      startWithNurture: startWithNurture,
       useAccessibility: false,
+      nurtureRepository: MemoryNurtureRepository(() async => []),
     )..onInit();
     logic.webViewController = InAppWebViewController.fromPlatform(
       platform: view,
@@ -92,6 +110,116 @@ class _Session {
 }
 
 void main() {
+  testWidgets(
+    'retained session starts another ten minutes without logging in',
+    (tester) async {
+      final session = _Session(
+        tester,
+        launchAction: TikTokLaunchAction.browse,
+        startWithNurture: true,
+      );
+      session.view.authenticated = true;
+      session.logic.initialPageLoaded = true;
+      await session.logic.runInitialAction();
+      expect(session.logic.autoWatchEnabled, isTrue);
+      expect(session.view.authChecks, 1);
+      expect(session.view.loginChecks, 0);
+      await tester.pump(const Duration(minutes: 10));
+      expect(session.logic.autoWatchEnabled, isFalse);
+      expect(session.notices.last, 'Đã nuôi xong sau 10 phút.');
+    },
+  );
+
+  testWidgets(
+    'a retained cookie cannot start nurturing without a live session',
+    (tester) async {
+      final session = _Session(
+        tester,
+        launchAction: TikTokLaunchAction.browse,
+        startWithNurture: true,
+      );
+      session.logic.initialPageLoaded = true;
+      final run = session.logic.runInitialAction();
+      for (var attempt = 0; attempt <= 20; attempt++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+      await run;
+      expect(session.logic.autoWatchEnabled, isFalse);
+      expect(session.logic.loginConfirmed, isFalse);
+      expect(session.logic.autoWatchBusy, isFalse);
+      expect(session.view.starts, 0);
+      expect(session.view.loginChecks, 0);
+      expect(session.notices.last, contains('Hãy đăng nhập lại'));
+    },
+  );
+
+  testWidgets('manual browsing only starts nurturing when the user enables it', (
+    tester,
+  ) async {
+    final session = _Session(tester, launchAction: TikTokLaunchAction.browse);
+    session.view.authenticated = true;
+    session.logic.initialPageLoaded = true;
+    await session.logic.runInitialAction();
+    expect(session.logic.autoWatchEnabled, isFalse);
+    expect(session.view.starts, 0);
+    expect(session.view.authChecks, 0);
+    await session.logic.toggleAutoWatch();
+    expect(session.logic.loginConfirmed, isTrue);
+    expect(session.logic.autoWatchEnabled, isTrue);
+    expect(session.view.authChecks, 1);
+    expect(session.view.loginChecks, 0);
+    expect(session.view.starts, 1);
+    await session.logic.toggleAutoWatch();
+    expect(session.logic.autoWatchEnabled, isFalse);
+    expect(session.view.authChecks, 1);
+    // Recheck the actual session on every manual start, including after logout.
+    session.view.authenticated = false;
+    await session.logic.toggleAutoWatch();
+    expect(session.logic.loginConfirmed, isFalse);
+    expect(session.logic.autoWatchEnabled, isFalse);
+    expect(session.view.starts, 1);
+    expect(session.notices.last, contains('Hãy đăng nhập TikTok'));
+    // Signing in directly on the page is enough; automatic login is optional.
+    session.view.authenticated = true;
+    await session.logic.toggleAutoWatch();
+    expect(session.logic.autoWatchEnabled, isTrue);
+    expect(session.view.starts, 2);
+    expect(session.view.loginChecks, 0);
+  });
+
+  testWidgets('manual browsing cannot nurture before TikTok is logged in', (
+    tester,
+  ) async {
+    final session = _Session(tester, launchAction: TikTokLaunchAction.browse);
+    await session.logic.toggleAutoWatch();
+    expect(session.logic.loginConfirmed, isFalse);
+    expect(session.logic.autoWatchEnabled, isFalse);
+    expect(session.logic.autoWatchBusy, isFalse);
+    expect(session.view.authChecks, 1);
+    expect(session.view.starts, 0);
+    expect(session.view.loginChecks, 0);
+    expect(session.notices.last, contains('Hãy đăng nhập TikTok'));
+  });
+
+  testWidgets('manual session confirmation cannot start on a different page', (
+    tester,
+  ) async {
+    final session = _Session(tester, launchAction: TikTokLaunchAction.browse);
+    session.view.authentication = Completer<bool>();
+    final starting = session.logic.toggleAutoWatch();
+    await tester.pump();
+    expect(session.logic.autoWatchBusy, isTrue);
+    await session.logic.toggleAutoWatch();
+    expect(session.view.authChecks, 1);
+    session.logic.navigationId++;
+    session.view.authentication!.complete(true);
+    await starting;
+    expect(session.logic.loginConfirmed, isFalse);
+    expect(session.logic.autoWatchEnabled, isFalse);
+    expect(session.logic.autoWatchBusy, isFalse);
+    expect(session.view.starts, 0);
+  });
+
   for (final result in ['login-success', 'already-logged-in']) {
     testWidgets('$result starts watching and stops after ten minutes', (
       tester,

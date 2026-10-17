@@ -142,13 +142,30 @@ class SignupCoordinateRunner {
   static RegExp exact(String text) =>
       RegExp('^${RegExp.escape(text)}\$', caseSensitive: false);
 
-  Future<SignupSnapshot> _waitForHomeReady() async {
-    onStatus('Đang chờ trang tải xong và nút Log in ổn định…');
+  String _entryAction(SignupSnapshot snapshot) {
+    // TikTok can open this modal before the runner starts. Its controls take
+    // precedence over any home-page nodes still exposed behind the overlay.
+    if (snapshot.contains(exact('Sign up for TikTok'))) {
+      return 'signup-phone-email';
+    }
+    if (snapshot.contains(exact('Log in to TikTok'))) return 'open-signup';
+    return 'open-login';
+  }
+
+  RegExp _entryLabel(String action) => exact(switch (action) {
+    'open-signup' => 'Sign up',
+    'signup-phone-email' => 'Use phone or email',
+    _ => 'Log in',
+  });
+
+  Future<SignupSnapshot> _waitForEntryReady() async {
+    onStatus('Đang chờ trang và nút đăng ký sẵn sàng…');
     final deadline = now().add(const Duration(seconds: 60));
     DateTime? pageReadySince;
     DateTime? targetStableSince;
     Rect? previousViewport;
     Rect? previousTarget;
+    String? previousAction;
     while (now().isBefore(deadline)) {
       final snapshot = await _snapshot(allowNotReady: true);
       if (!(isPageReady?.call() ?? true) ||
@@ -158,25 +175,26 @@ class SignupCoordinateRunner {
         targetStableSince = null;
         previousViewport = null;
         previousTarget = null;
+        previousAction = null;
         await _pause(300);
         continue;
       }
       if (_authenticated(snapshot)) return snapshot;
       final timestamp = now();
       pageReadySince ??= timestamp;
-      final point = snapshot.viewport.toScreen(profile.point('open-login'));
+      final action = _entryAction(snapshot);
+      final label = _entryLabel(action);
+      final point = snapshot.viewport.toScreen(profile.point(action));
       final targets = snapshot.nodes.where(
-        (n) =>
-            n.enabled &&
-            exact('Log in').hasMatch(n.label) &&
-            n.bounds.contains(point),
+        (n) => n.enabled && label.hasMatch(n.label) && n.bounds.contains(point),
       );
       final target = targets.isEmpty ? null : targets.last;
       if (target == null) {
         targetStableSince = null;
         previousTarget = null;
       } else {
-        if (previousViewport != snapshot.viewport.bounds ||
+        if (previousAction != action ||
+            previousViewport != snapshot.viewport.bounds ||
             previousTarget != target.bounds) {
           targetStableSince = timestamp;
         }
@@ -188,11 +206,12 @@ class SignupCoordinateRunner {
         }
         previousTarget = target.bounds;
       }
+      previousAction = action;
       previousViewport = snapshot.viewport.bounds;
       await _pause(300);
     }
     throw StateError(
-      'Trang hoặc nút Log in chưa ổn định; đã dừng trước khi bấm.',
+      'Trang hoặc nút đăng nhập/đăng ký chưa ổn định; đã dừng trước khi bấm.',
     );
   }
 
@@ -260,6 +279,8 @@ class SignupCoordinateRunner {
       s.contains(exact('Messages')) &&
       s.contains(exact('Profile')) &&
       !s.contains(exact('Log in')) &&
+      !s.contains(exact('Log in to TikTok')) &&
+      !s.contains(exact('Sign up for TikTok')) &&
       !s.nodes.any((n) => n.password) &&
       !s.contains(
         RegExp(r'^create (a |your )?username$', caseSensitive: false),
@@ -417,22 +438,27 @@ class SignupCoordinateRunner {
     if (!profile.complete) {
       throw StateError('Profile tọa độ chưa thu thập đầy đủ.');
     }
-    final home = await _waitForHomeReady();
-    if (_authenticated(home)) {
+    final entry = await _waitForEntryReady();
+    if (_authenticated(entry)) {
       alreadyLoggedIn = true;
       onStatus('Tài khoản TikTok đã đăng nhập.');
       return;
     }
-    await _tap('open-login', expected: exact('Log in'));
-    await _wait(
-      (s) => s.contains(exact('Log in to TikTok')),
-      'Đang mở hộp đăng nhập…',
-    );
-    await _tap('open-signup', expected: exact('Sign up'));
-    await _wait(
-      (s) => s.contains(exact('Sign up for TikTok')),
-      'Đang mở đăng ký…',
-    );
+    final entryAction = _entryAction(entry);
+    if (entryAction == 'open-login') {
+      await _tap('open-login', expected: exact('Log in'));
+      await _wait(
+        (s) => s.contains(exact('Log in to TikTok')),
+        'Đang mở hộp đăng nhập…',
+      );
+    }
+    if (entryAction != 'signup-phone-email') {
+      await _tap('open-signup', expected: exact('Sign up'));
+      await _wait(
+        (s) => s.contains(exact('Sign up for TikTok')),
+        'Đang mở đăng ký…',
+      );
+    }
     await _tap('signup-phone-email', expected: exact('Use phone or email'));
     await _wait((s) => s.contains(exact('Use email')), 'Đang mở biểu mẫu…');
     await _tap('use-email', expected: exact('Use email'));

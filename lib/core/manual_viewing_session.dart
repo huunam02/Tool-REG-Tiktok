@@ -4,7 +4,7 @@ import 'dart:math';
 import 'nurture_data.dart';
 import 'nurture_store.dart';
 
-/// Persists passive statistics from a manually operated WebView.
+/// Persists passive statistics from manual viewing or automatic nurturing.
 class ManualViewingSession {
   ManualViewingSession({
     required this.repository,
@@ -95,10 +95,19 @@ class ManualViewingSession {
     );
   }
 
-  Future<void> finish({bool error = false}) {
+  Future<void> finish({bool error = false, bool completed = false}) {
     if (_finished) return _writes;
     _finished = true;
     if (!_started) return _writes;
-    return _enqueue(() => repository.setPhase(id, error ? 'error' : 'stopped'));
+    return _enqueue(
+      () => repository.setPhase(
+        id,
+        error
+            ? 'error'
+            : completed
+            ? 'completed'
+            : 'stopped',
+      ),
+    );
   }
 }

@@ -30,6 +30,7 @@ class TikTokPage extends StatelessWidget {
     super.key,
     required this.configuration,
     this.launchAction = TikTokLaunchAction.browse,
+    this.startWithNurture = false,
     this.startWithBrowserCheck = false,
     this.startWithIpCheck = false,
     bool useNativeWebView = false,
@@ -42,6 +43,7 @@ class TikTokPage extends StatelessWidget {
 
   final AppConfiguration configuration;
   final TikTokLaunchAction launchAction;
+  final bool startWithNurture;
   final bool startWithBrowserCheck;
   final bool startWithIpCheck;
   final bool useNativeWebView;
@@ -62,6 +64,7 @@ class TikTokPage extends StatelessWidget {
     controller: TikTokController(
       configuration: configuration,
       launchAction: launchAction,
+      startWithNurture: startWithNurture,
       startWithBrowserCheck: startWithBrowserCheck,
       startWithIpCheck: startWithIpCheck,
       useNativeWebView: useNativeWebView,
@@ -94,20 +97,23 @@ class _TikTokView extends StatelessWidget {
     final enabled =
         !logic.waitingToLogout &&
         !logic.logoutBusy &&
-        logic.loginConfirmed &&
+        (logic.loginConfirmed ||
+            logic.launchAction == TikTokLaunchAction.browse) &&
         logic.webViewController != null &&
         !logic.autoWatchBusy &&
         !logic.autoLoginBusy &&
         !logic.autoSignupBusy &&
         logic.loadingProgress == 100 &&
         logic.pageFailure == null &&
+        logic.accountFailure == null &&
         (logic.initialActionStarted ||
             logic.launchAction == TikTokLaunchAction.browse);
 
     return Tooltip(
       message: logic.autoWatchEnabled
           ? 'Dừng tự động xem video và bình luận'
-          : !logic.loginConfirmed
+          : !logic.loginConfirmed &&
+                logic.launchAction != TikTokLaunchAction.browse
           ? 'Đăng nhập tự động thành công để bật Auto nuôi'
           : 'Bật tự động xem video và bình luận',
       child: SizedBox(

@@ -339,6 +339,18 @@ class ProxyStore {
   }
 
   static Future<void> _applyCurrent(DatabaseExecutor db, int? id) async {
+    final previous = await db.query(
+      'configurations',
+      columns: ['id'],
+      where: 'is_current = 1',
+      limit: 1,
+    );
+    if ((previous.isEmpty ? null : previous.single['id']) != id) {
+      await db.insert('app_settings', {
+        'key': 'current_configuration_logged_in',
+        'value': 'false',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
     await db.update('configurations', {
       'is_current': 0,
     }, where: 'is_current = 1');
@@ -389,6 +401,41 @@ class ProxyStore {
       );
       if (rows.isEmpty) throw StateError('Configuration no longer exists');
       await _applyCurrent(txn, id);
+    });
+  }
+
+  /// Older installations can recover their existing cookie-backed session.
+  /// Once selection changes, cookies alone cannot confirm the new account.
+  Future<bool> canReuseCurrentAccountSession() async {
+    final rows = await (await _database).query(
+      'app_settings',
+      where: 'key = ?',
+      whereArgs: ['current_configuration_logged_in'],
+      limit: 1,
+    );
+    return rows.isEmpty || rows.single['value'] == 'true';
+  }
+
+  Future<bool> setCurrentAccountLoggedIn(
+    int configurationId,
+    String email,
+    bool loggedIn,
+  ) async {
+    final db = await _database;
+    return db.transaction((txn) async {
+      final selected = await txn.query(
+        'configurations',
+        columns: ['id'],
+        where: 'id = ? AND is_current = 1 AND account_email = ?',
+        whereArgs: [configurationId, email.trim()],
+        limit: 1,
+      );
+      if (selected.isEmpty) return false;
+      await txn.insert('app_settings', {
+        'key': 'current_configuration_logged_in',
+        'value': loggedIn ? 'true' : 'false',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return true;
     });
   }
 

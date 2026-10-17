@@ -51,6 +51,7 @@ class SignupNode {
       hint = '${data['hint'] ?? ''}',
       className = '${data['className'] ?? ''}',
       enabled = data['enabled'] == true,
+      clickable = data['clickable'] == true,
       editable = data['editable'] == true,
       password = data['password'] == true,
       focused = data['focused'] == true,
@@ -60,7 +61,14 @@ class SignupNode {
       length = (data['length'] as num?)?.toInt() ?? 0,
       bounds = rectFrom(data['bounds']);
   final String id, text, description, hint, className;
-  final bool enabled, editable, password, focused, selected, picker, scrollable;
+  final bool enabled,
+      clickable,
+      editable,
+      password,
+      focused,
+      selected,
+      picker,
+      scrollable;
   final int length;
   final Rect bounds;
   String get label =>
@@ -150,6 +158,14 @@ class SignupAccessibility {
 
   Future<Map<String, dynamic>> paste(String text, String field) =>
       FlutterAccessibilityService.signupPasteFocused(text, field);
+  Future<void> setKeyboardSuppressed(bool suppressed) async {
+    if (!await FlutterAccessibilityService.signupSetKeyboardSuppressed(
+      suppressed,
+    )) {
+      throw StateError('Không điều khiển được bàn phím để nhập bình luận.');
+    }
+  }
+
   Future<void> dismissKeyboard() async {
     if (!await FlutterAccessibilityService.signupDismissKeyboard()) {
       throw StateError('Không đóng được bàn phím.');

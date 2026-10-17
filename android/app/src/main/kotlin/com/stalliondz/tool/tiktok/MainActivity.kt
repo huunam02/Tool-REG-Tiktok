@@ -29,7 +29,7 @@ class MainActivity: FlutterActivity() {
         val action = intent.getStringExtra("signupCalibration") ?: return
         val requestId = intent.getStringExtra("requestId") ?: return
         if (!requestId.matches(Regex("[a-f0-9]{32}"))) return
-        if (action !in listOf("snapshot", "select-birthday", "paste-email", "paste-password", "paste-otp", "paste-user-otp", "back", "tap")) return
+        if (action !in listOf("snapshot", "login-profile", "nurture-profile", "nurture-layout", "nurture-swipe", "nurture-prepare-input", "nurture-release-input", "paste-comment", "select-birthday", "paste-email", "paste-password", "paste-otp", "paste-user-otp", "back", "tap")) return
         signupCalibration?.invokeMethod("calibrate", mapOf(
             "action" to action,
             "userOtp" to intent.getStringExtra("userOtp"),
@@ -46,6 +46,8 @@ class MainActivity: FlutterActivity() {
             }
             override fun error(code: String, message: String?, details: Any?) {
                 android.util.Log.i("SignupCalibration", "Failed: $action ($code)")
+                val document = JSONObject(mapOf("ok" to false, "reason" to "calibration-failed:$code", "requestId" to requestId))
+                java.io.File(filesDir, "signup-calibration-$requestId.json").writeText(document.toString())
             }
             override fun notImplemented() { }
         })

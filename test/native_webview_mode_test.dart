@@ -73,6 +73,7 @@ class _RecordingController extends TikTokController {
     : super(
         configuration: AppConfiguration.defaults('Chrome/155.0.0.0'),
         launchAction: action,
+        useAccessibility: true,
       );
   int logins = 0;
   int signups = 0;
@@ -298,12 +299,10 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(channel, (call) async {
               if (call.method == 'configureSignupViewport') {
-                expect(action, TikTokLaunchAction.signup);
                 return true;
               }
               expect(call.method, 'configureEngine');
-              expect(call.arguments.keys, action == TikTokLaunchAction.signup
-                  ? ['id', 'fixedSignupViewport'] : ['id']);
+              expect(call.arguments.keys, ['id', 'fixedSignupViewport']);
               return gate.future;
             });
         addTearDown(
@@ -326,12 +325,15 @@ void main() {
         await created;
         expect(logic.effectiveUserAgent, agent);
         expect(controller.loads.single.url.toString(), tiktokHomeUrl);
-        if (action == TikTokLaunchAction.signup) {
-          expect(controller.handlers, isNot(contains('FlutterSignupSendCode')));
-          expect(controller.handlers, isNot(contains('FlutterSignupPaste')));
-        } else {
-          expect(controller.handlers,
-            containsAll(['FlutterLoginSendCode', 'FlutterSignupSendCode']));
+        expect(controller.handlers, isNot(contains('FlutterSignupSendCode')));
+        expect(controller.handlers, isNot(contains('FlutterSignupPaste')));
+        expect(controller.handlers, isNot(contains('FlutterLoginSendCode')));
+        expect(controller.handlers, isNot(contains('FlutterLoginPaste')));
+        if (action != TikTokLaunchAction.signup) {
+          expect(
+            controller.handlers,
+            containsAll(['FlutterAutoWatch', 'FlutterNurtureStats']),
+          );
         }
         await logic.handlePageLoadComplete(WebUri(tiktokHomeUrl));
         logic.onLoadStart(wrapped, WebUri(tiktokHomeUrl));

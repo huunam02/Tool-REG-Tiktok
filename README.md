@@ -183,6 +183,27 @@ Có thể đặt tiêu đề `Proxy` hoặc `Data` ở dòng đầu. Dòng trố
 lỗi Excel hiển thị tên sheet và số dòng. Ô nhập thủ công vẫn dùng được,
 nhấn dấu ✓ trong ô để import dữ liệu đã nhập.
 
+Vào **Cài đặt → Xuất dữ liệu Excel → Xuất Excel data** để mở hộp thoại
+chọn nơi lưu file `.xlsx`. File có một sheet **Data**, mỗi cấu hình một hàng:
+
+- Năm cột đầu giữ định dạng import **Proxy | Email | Password | Mail Password |
+  status(Đã dăng ký)** (`0/1`), tiếp theo là User-Agent, múi giờ và
+  trạng thái đã sử dụng (`0/1`).
+- Các cột tiếp theo là thống kê nuôi ghép theo email (không phân biệt hoa/thường):
+  thời gian xem theo ms và phút, số video đã xem/xem hết/lướt sớm, bình luận,
+  chế độ và từ khóa. Cấu hình chưa có thống kê
+  xuất các số đếm bằng 0. Nếu nhiều cấu hình dùng cùng email, mỗi hàng hiển thị
+  cùng thống kê tổng của tài khoản đó.
+- Tài khoản chỉ còn lịch sử nuôi sau khi cấu hình bị xóa vẫn có một hàng riêng,
+  với phần proxy, mật khẩu và trạng thái đăng ký để trống.
+
+Khi import lại file xuất, app đọc năm cột đầu; các cột bổ sung chỉ dùng để tra
+cứu, không khôi phục lịch sử nuôi. Hàng chỉ có thống kê nuôi được bỏ qua.
+File xuất theo định dạng hai sheet trước đây vẫn nhập được.
+Quy tắc kiểm tra import cũ vẫn áp dụng: cần proxy có xác thực và đủ tài khoản;
+cấu hình dùng mạng mặc định hoặc chưa có tài khoản vẫn được xuất để tra cứu.
+File xuất có chứa các mật khẩu đã lưu.
+
 Đăng ký, đăng nhập và xem TikTok đều áp dụng cùng proxy trước khi mở WebView.
 Các thao tác tự động nhập email/mật khẩu/OTP, chọn Email, gửi biểu mẫu và Skip
 chạy trong cùng WebView, giữ cùng User-Agent/Client Hints và cấu hình proxy.
@@ -284,8 +305,44 @@ Luồng đăng ký và đăng nhập dùng tài khoản và mật khẩu hộp t
 cấu hình đang chọn. Tạo hoặc sửa dữ liệu qua **Quản lý cấu hình** trên
 màn **Home**, rồi chọn cấu hình để sử dụng.
 
-Các mô tả thao tác JavaScript bên dưới thuộc luồng cũ và đăng nhập;
-luồng đăng ký Android dùng profile Accessibility nêu trên.
+**Đăng nhập Android hiện tại:** toàn bộ thao tác UI dùng
+`flutter_accessibility_service`, chung cơ chế snapshot, gesture và paste với
+đăng ký. App mở Log in → Use phone or email → Email / Username, dán tài khoản
+và mật khẩu bằng `ACTION_PASTE`, rồi chạm nút đăng nhập. Khi có xác minh,
+app chờ ô Email ổn định 5 giây, chọn Email, chờ màn OTP hoặc xác nhận gửi mã
+rồi mới lấy OTP từ API. OTP sáu ô dùng nhấn giữ → menu Paste; OTP một ô dạng
+số dùng `ACTION_SET_TEXT` của Accessibility vì WebView không nhận Paste cho
+kiểu ô này. Next/Continue cũng
+được chạm bằng Accessibility. Tọa độ đăng nhập lưu trong
+`assets/login-coordinate-profile.json` và `SharedPreferences`, phát lại trong
+cùng khung WebView 400×800 qua ScreenUtil như đăng ký. Đã ghi thực tế 12 điểm,
+gồm mở biểu mẫu, focus tài khoản/mật khẩu, Continue, Email xác minh, focus OTP,
+Next, Resend code và 2 điểm hỗ trợ quay lại/xóa email khi ghi mẫu. Tài khoản
+thứ ba đã xác minh OTP thật và về trang chủ có Messages + Profile.
+Lượt này chọn Email tự gửi mã, không có Send code riêng. App lưu điểm của bước chưa có
+trước thao tác đầu rồi dùng lại cho các lượt sau. Điểm đã có mà lệch control
+sẽ dừng để ghi lại. Xem [ghi mẫu đăng nhập](docs/android-login-coordinate-calibration.md).
+Luồng không đọc DOM,
+không dùng JavaScript click/fill hay `InputConnection` cho đăng nhập Android.
+Mỗi bước gửi chỉ chạm một lần; Dừng, đưa app ra nền, rời TikTok, CAPTCHA hoặc
+lỗi biểu mẫu sẽ dừng luồng. Sau khi xác nhận đăng nhập, app vẫn lưu phiên và
+tự bật Auto nuôi 10 phút. Kiểm thử tự động dùng màn hình mô phỏng; luồng mới
+chưa được xác minh trọn vẹn với tài khoản TikTok thật.
+
+Các mô tả thao tác JavaScript/DOM/cache và bộ nhập native bên dưới thuộc
+luồng cũ trên các nền tảng khác. Hai luồng tài khoản Android dùng Accessibility
+như mô tả ở trên. Auto nuôi Android cũng đã chuyển sang Accessibility: đọc
+đồng hồ phát, chuyển video và nhập/gửi bình luận qua plugin, không dùng JS.
+Tọa độ nút bình luận được tách theo video dọc/ngang và geometry khung phát trong
+[`assets/nurture-coordinate-profile.json`](assets/nurture-coordinate-profile.json).
+Đã ghi mẫu mở/đóng bình luận và chuyển bài thật ở cả hai dạng. Xem
+[ghi mẫu nuôi tài khoản](docs/android-nurture-coordinate-calibration.md) để biết
+giới hạn đồng hồ một giây, cách ghi thêm bố cục và phạm vi kiểm chứng.
+
+Đăng nhập Android gửi lại mã **tối đa 1 lần mỗi lượt** khi API lấy OTP hết
+thời gian chờ. App hủy request cũ, chờ Resend code bật rồi chạm tại tọa độ đã
+lưu, chờ TikTok hiện đếm ngược mới gọi API lấy mã mới. Nếu lại timeout, app
+dừng; lỗi token/hộp thư/kết nối và bản nháp trong ô OTP không kích hoạt gửi lại.
 Ở luồng đăng ký cũ, app tự tạo ngày sinh ngẫu nhiên trong khoảng 1960–2004,
 bao gồm ngày hợp lệ theo số ngày của từng tháng và năm nhuận.
 Luồng **Tự động đăng ký** mở trang chủ TikTok → xem video → bấm tim → mở dialog Login
@@ -307,7 +364,7 @@ Nếu đăng xuất không thành công hoặc cấu hình thay đổi, app dừ
 không đăng nhập tài khoản khác. **Auto nuôi** chỉ bật sau khi luồng đăng nhập
 tự động xác nhận thành công.
 
-Luồng **Tự động đăng nhập** mở trang chủ TikTok → xem video → bấm tim → mở dialog Login
+Luồng **Tự động đăng nhập cũ** mở trang chủ TikTok → xem video → bấm tim → mở dialog Login
 → Use phone or email → Username or Email, rồi tiếp tục nhập tài khoản, mật khẩu
 và xử lý OTP như trước, kể cả khi dialog giữ nguyên URL trang chủ.
 Khi luồng đăng nhập tự động xác nhận thành công (hoặc tài khoản đã đăng nhập), app tự
@@ -323,6 +380,10 @@ hoặc CAPTCHA; avatar của tác giả video và liên kết Profile không đ�
 Nếu luồng tự động dừng để người dùng xử lý OTP/CAPTCHA hoặc nhập thủ công,
 app không theo dõi để tự bật Auto nuôi. Cần chạy lại luồng đăng nhập tự động
 và được xác nhận thành công mới bật nuôi.
+
+Mô tả watcher cũ dưới đây áp dụng trên các nền tảng dùng JavaScript. Android
+giữ quy tắc chọn kế hoạch/bình luận nhưng quan sát đồng hồ Accessibility một giây;
+bài ảnh/bố cục không có đồng hồ chưa hỗ trợ sẽ dừng để kiểm tra.
 
 Auto nuôi bốc thăm độc lập cho mỗi video: 50% xem đến hết, 50% lướt sớm sau
 khoảng 2–5 giây phát thực tế (clip ngắn hơn sẽ lướt trước khi hết). Không ép

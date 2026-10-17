@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui' show Rect;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -338,7 +339,7 @@ void main() {
           finished = true;
         },
       );
-      for (var i = 0; i < 160 && !finished; i++) {
+      for (var i = 0; i < 600 && !finished; i++) {
         await tester.pump(const Duration(seconds: 1));
       }
       expect(
@@ -428,7 +429,7 @@ void main() {
       final run = runner.selectBirthday().whenComplete(() {
         finished = true;
       });
-      for (var i = 0; i < 100 && !finished; i++) {
+      for (var i = 0; i < 300 && !finished; i++) {
         await tester.pump(const Duration(seconds: 1));
       }
       await run;
@@ -470,6 +471,111 @@ void main() {
       expect(accessibility.pastes, isEmpty);
     },
   );
+
+  for (final maximum in [false, true]) {
+    testWidgets(
+      'signup actions wait ${maximum ? 7 : 2}s while post-OTP wait stays 650ms',
+      (tester) async {
+        final accessibility = _RecordedAccessibility(profile, recording);
+        final actions = <({String name, DateTime at})>[];
+        accessibility.onAction = (name) =>
+            actions.add((name: name, at: tester.binding.clock.now()));
+        final runner = SignupCoordinateRunner(
+          profile: profile,
+          accessibility: accessibility,
+          configuration: AppConfiguration(
+            userAgent: 'agent',
+            comments: [],
+            signupEmail: 'test@example.org',
+            signupPassword: 'Example12!a',
+            loginUsername: '',
+            loginPassword: '',
+            birthday: DateTime(2001, 2, 3),
+          ),
+          isActive: () => true,
+          isTikTok: () async => true,
+          getOtp: () async => '123456',
+          onStatus: (_) {},
+          now: tester.binding.clock.now,
+          random: _BoundaryRandom(maximum),
+        );
+        var finished = false;
+        final run = runner.run().whenComplete(() => finished = true);
+        for (var i = 0; i < 10000 && !finished; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(finished, isTrue);
+        await run;
+        expect(accessibility.state, 'authenticated-home');
+        expect(actions.any((action) => action.name.endsWith('-swipe')), isTrue);
+        expect(actions.any((action) => action.name == 'paste-email'), isTrue);
+        expect(
+          actions.any((action) => action.name == 'paste-password'),
+          isTrue,
+        );
+        for (var i = 1; i < actions.length; i++) {
+          final previous = actions[i - 1];
+          final next = actions[i];
+          expect(
+            next.at.difference(previous.at),
+            previous.name == 'paste-otp'
+                ? const Duration(milliseconds: 650)
+                : Duration(seconds: maximum ? 7 : 2),
+            reason: '${previous.name} → ${next.name}',
+          );
+        }
+      },
+    );
+  }
+
+  testWidgets('cancelling during an action delay prevents the next gesture', (
+    tester,
+  ) async {
+    final accessibility = _RecordedAccessibility(profile, recording);
+    final runner = SignupCoordinateRunner(
+      profile: profile,
+      accessibility: accessibility,
+      configuration: AppConfiguration(
+        userAgent: '',
+        comments: [],
+        signupEmail: 'test@example.org',
+        signupPassword: 'Example12!a',
+        loginUsername: '',
+        loginPassword: '',
+      ),
+      isActive: () => true,
+      isTikTok: () async => true,
+      getOtp: () async => throw StateError('Must not fetch OTP'),
+      onStatus: (_) {},
+      now: tester.binding.clock.now,
+      random: _BoundaryRandom(true),
+    );
+    Object? failure;
+    final run = runner.run().catchError((Object error) {
+      failure = error;
+    });
+    while (accessibility.actions.isEmpty) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pump(const Duration(seconds: 1));
+    runner.cancel();
+    await tester.pump(const Duration(seconds: 7));
+    await run;
+    expect(failure, isA<SignupCancelled>());
+    expect(accessibility.actions, ['open-login']);
+    expect(accessibility.pastes, isEmpty);
+  });
+}
+
+class _BoundaryRandom implements Random {
+  _BoundaryRandom(this.maximum);
+  final bool maximum;
+  @override
+  int nextInt(int max) => maximum ? max - 1 : 0;
+  @override
+  bool nextBool() => maximum;
+  @override
+  double nextDouble() => maximum ? 0.999999 : 0;
 }
 
 class _RecordedAccessibility extends SignupAccessibility {
@@ -515,6 +621,7 @@ class _RecordedAccessibility extends SignupAccessibility {
   void Function(Map<String, dynamic>)? onHomeSnapshot;
   void Function(Map<String, dynamic>)? onSnapshot;
   void Function(String)? afterTap;
+  void Function(String)? onAction;
   final actions = <String>[];
   final pastes = <String>[];
   @override
@@ -598,7 +705,9 @@ class _RecordedAccessibility extends SignupAccessibility {
       final physical = viewport.toScreen(point);
       final index = ((physical.dy - 1280) / 60).floor() + optionStart;
       selected[picker!] = allOptions[index];
-      actions.add('select-${picker!.toLowerCase()}');
+      final name = 'select-${picker!.toLowerCase()}';
+      actions.add(name);
+      onAction?.call(name);
       picker = null;
       return;
     }
@@ -607,6 +716,7 @@ class _RecordedAccessibility extends SignupAccessibility {
       (name) => profile.point(name) == point,
     );
     actions.add(name);
+    onAction?.call(name);
     if (name == 'skip-username' && rejectSkip) {
       throw StateError('Skip gesture failed');
     }
@@ -637,6 +747,7 @@ class _RecordedAccessibility extends SignupAccessibility {
   @override
   Future<void> swipe(SignupViewport viewport, Offset from, Offset to) async {
     actions.add('${picker!.toLowerCase()}-swipe');
+    onAction?.call('${picker!.toLowerCase()}-swipe');
     if (freezeDropdown) return;
     optionStart = (optionStart + (from.dy > to.dy ? 4 : -4)).clamp(
       0,
@@ -647,6 +758,7 @@ class _RecordedAccessibility extends SignupAccessibility {
   @override
   Future<Map<String, dynamic>> paste(String text, String field) async {
     pastes.add(field);
+    onAction?.call('paste-$field');
     if (field == 'email' && rejectEmail) {
       return {'ok': false, 'reason': 'paste-rejected'};
     }

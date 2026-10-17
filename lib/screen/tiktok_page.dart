@@ -90,8 +90,9 @@ class _TikTokView extends StatelessWidget {
   const _TikTokView(this.logic);
   final TikTokController logic;
 
-  Widget _signupViewport(Widget child) =>
-      logic.usesCoordinateSignup ? StandardSignupViewport(child: child) : child;
+  Widget _signupViewport(Widget child) => logic.usesAccessibilityAccountFlow
+      ? StandardSignupViewport(child: child)
+      : child;
 
   Widget _autoWatchButton() {
     final enabled =
@@ -186,7 +187,7 @@ class _TikTokView extends StatelessWidget {
                                     logic.activeSignupOtp.isEmpty)
                           ? 'Đang chờ API lấy OTP… (tối đa ${logic.configuration.otpApi?.waitSeconds ?? 180} giây)'
                           : logic.autoLoginBusy
-                          ? 'Đang đăng nhập tự động…'
+                          ? logic.loginStatus
                           : logic.signupStatus,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -328,19 +329,22 @@ class _TikTokView extends StatelessWidget {
                     ),
                     if (forceEnglishWebViewLocale && !logic.useNativeWebView)
                       englishWebViewLocaleUserScript(),
-                    if (!logic.useNativeWebView && !logic.usesCoordinateSignup)
+                    if (!logic.useNativeWebView &&
+                        !logic.usesAccessibilityAccountFlow)
                       UserScript(
                         source: inlineVideoScript,
                         injectionTime:
                             UserScriptInjectionTime.AT_DOCUMENT_START,
                       ),
-                    if (!logic.useNativeWebView && !logic.usesCoordinateSignup)
+                    if (!logic.useNativeWebView &&
+                        !logic.usesAccessibilityAccountFlow)
                       UserScript(
                         source: autoAcceptCookieScript,
                         injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
                         forMainFrameOnly: true,
                       ),
-                    if (!logic.useNativeWebView && !logic.usesCoordinateSignup)
+                    if (!logic.useNativeWebView &&
+                        !logic.usesAccessibilityAccountFlow)
                       UserScript(
                         source: autoSelectInterestScript,
                         injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
@@ -355,8 +359,8 @@ class _TikTokView extends StatelessWidget {
                     useWideViewPort: true,
                     loadWithOverviewMode: true,
                     initialScale: 0,
-                    supportZoom: !logic.usesCoordinateSignup,
-                    builtInZoomControls: !logic.usesCoordinateSignup,
+                    supportZoom: !logic.usesAccessibilityAccountFlow,
+                    builtInZoomControls: !logic.usesAccessibilityAccountFlow,
                     displayZoomControls: false,
                     textZoom: 100,
                     javaScriptEnabled: true,

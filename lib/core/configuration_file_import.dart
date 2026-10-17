@@ -8,6 +8,7 @@ import 'package:path/path.dart' as path;
 import 'package:xml/xml.dart';
 
 import 'configuration_data.dart';
+import 'data_excel_layout.dart';
 
 class ConfigurationImportFile {
   const ConfigurationImportFile(this.name, this.bytes);
@@ -78,6 +79,21 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
   final records = <ImportedConfiguration>[];
   for (final sheet in workbook.tables.entries) {
     final rows = sheet.value.rows;
+    final headers = rows.isEmpty
+        ? <String>[]
+        : rows.first.map((cell) => cell?.displayText ?? '').toList();
+    // The exported statistics are a report, not extra configurations.
+    if (sheet.key == nurtureExcelSheetName &&
+        matchesExcelHeaders(headers, nurtureExcelHeaders)) {
+      continue;
+    }
+    final combinedExport =
+        matchesExcelHeaders(headers, dataExcelHeaders) ||
+        matchesExcelHeaders(headers, legacyDataExcelHeaders);
+    final exportedConfiguration =
+        combinedExport ||
+        matchesExcelHeaders(headers, configurationExcelHeaders) ||
+        matchesExcelHeaders(headers, legacyConfigurationExcelHeaders);
     for (var index = 0; index < rows.length; index++) {
       final cells = rows[index].map((cell) => cell?.displayText ?? '').toList();
       while (cells.isNotEmpty && cells.last.trim().isEmpty) {
@@ -93,6 +109,16 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
         continue;
       }
       try {
+        // A historical account can have statistics but no saved credentials.
+        if (combinedExport &&
+            cells.length >= 5 &&
+            [0, 2, 3, 4].every((column) => cells[column].trim().isEmpty)) {
+          continue;
+        }
+        // Additional exported configuration columns are for reference only.
+        if (exportedConfiguration && cells.length > 5) {
+          cells.removeRange(5, cells.length);
+        }
         final line = switch (cells.length) {
           1 => cells.first,
           2 || 4 || 5 => cells.join('|'),

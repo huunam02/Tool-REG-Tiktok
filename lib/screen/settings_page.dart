@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controller/settings_controller.dart';
 import '../core/accessibility_permission.dart';
 import '../core/otp_settings_store.dart';
+import '../core/proxy_store.dart';
 import 'otp_settings_page.dart';
 import 'usage_guide_page.dart';
 import 'widgets/controller_scope.dart';
@@ -17,6 +18,7 @@ class SettingsPage extends StatelessWidget {
     this.accessibilityPermission,
     this.onOpenBrowserCheck,
     this.onOpenIpCheck,
+    this.proxyStore,
   });
 
   final OtpApiSettings initialOtpSettings;
@@ -25,6 +27,7 @@ class SettingsPage extends StatelessWidget {
   final AccessibilityPermissionService? accessibilityPermission;
   final VoidCallback? onOpenBrowserCheck;
   final VoidCallback? onOpenIpCheck;
+  final ProxyStore? proxyStore;
 
   @override
   Widget build(BuildContext context) => ControllerScope<SettingsController>(
@@ -33,6 +36,7 @@ class SettingsPage extends StatelessWidget {
           store: otpSettingsStore,
           onSettingsChanged: onOtpSettingsChanged,
           accessibilityPermission: accessibilityPermission,
+          proxyStore: proxyStore,
         ),
         builder: (controller) => _SettingsView(
           controller,
@@ -90,6 +94,40 @@ class _SettingsView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
+                SettingsPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Xuất dữ liệu Excel',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Lưu cấu hình và thống kê nuôi Account chung một sheet Excel, mỗi cấu hình một hàng.',
+                        style: TextStyle(
+                          color: SettingsStyle.muted,
+                          fontSize: 12,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      FilledButton.icon(
+                        key: const Key('exportExcel'),
+                        onPressed: controller.exporting ? null : controller.exportExcel,
+                        icon: controller.exporting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.file_download_outlined),
+                        label: Text(controller.exporting ? 'Đang xuất…' : 'Xuất Excel data'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
                 SettingsPanel(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

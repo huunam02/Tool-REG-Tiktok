@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "complete": true,
+  "designSize": [
+    400,
+    800
+  ],
+  "cssWidth": 980,
+  "language": "en",
+  "points": {
+    "open-login": [
+      370.95,
+      19.68
+    ],
+    "phone-email": [
+      202.06,
+      369.45
+    ],
+    "use-email": [
+      217.62,
+      347.14
+    ],
+    "focus-email": [
+      202.06,
+      379.38
+    ],
+    "focus-password": [
+      202.06,
+      404.12
+    ],
+    "submit-password": [
+      202.06,
+      452.11
+    ],
+    "back-to-methods": [
+      125.4,
+      297.47
+    ],
+    "clear-email": [
+      260.73,
+      379.19
+    ],
+    "select-verification-email": [
+      198.69,
+      362.32
+    ],
+    "focus-otp": [
+      197.56,
+      354.26
+    ],
+    "submit-otp": [
+      197.38,
+      410.31
+    ],
+    "resend-code": [
+      125.21,
+      377.69
+    ]
+  },
+  "validation": "Live Android calibration completed through password, Email identity verification, user-provided OTP, Next, and authenticated home with Messages and Profile. All observed UI actions used saved design coordinates and Accessibility only. Resend code geometry recorded while enabled; resend dispatch tested with fixtures, not triggered in the successful live login. Full unattended replay with OTP API remains unverified.",
+  "calibrationDevice": "Pixel_9 / Android / 1080x2424 / density420",
+  "evidence": "outputs/login-calibration/actions.jsonl",
+  "recordedActions": [
+    "open-login",
+    "phone-email",
+    "use-email",
+    "focus-email",
+    "focus-password",
+    "submit-password",
+    "back-to-methods",
+    "clear-email",
+    "select-verification-email",
+    "focus-otp",
+    "submit-otp",
+    "resend-code"
+  ],
+  "pendingActions": [],
+  "pendingValidationActions": [
+    "resend-code"
+  ],
+  "optionalUnobservedActions": [
+    "send-code"
+  ]
+}

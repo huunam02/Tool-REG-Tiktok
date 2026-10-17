@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "designSize": [
+    400,
+    800
+  ],
+  "cssWidth": 980,
+  "language": "en",
+  "points": {
+    "portrait/panel/focus-comment/292-778-339-788": [
+      315.28,
+      783.13
+    ],
+    "landscape/panel/close-comments/382-6-393-18": [
+      387.44,
+      12.37
+    ],
+    "portrait/panel/post-comment/380-777-393-790": [
+      386.5,
+      783.51
+    ],
+    "portrait/panel/close-comments/382-6-393-18": [
+      387.44,
+      12.37
+    ],
+    "portrait/panel/close-comments/386-6-398-18": [
+      392.13,
+      12.37
+    ],
+    "landscape/panel/focus-comment/292-778-339-788": [
+      315.28,
+      783.13
+    ],
+    "landscape/panel/post-comment/380-777-393-790": [
+      386.5,
+      783.51
+    ],
+    "landscape/36-328-348-472/open-comments": [
+      363.82,
+      387.25
+    ],
+    "landscape/36-312-348-488/open-comments": [
+      363.82,
+      387.25
+    ],
+    "landscape/36-283-348-517/open-comments": [
+      363.82,
+      387.25
+    ],
+    "portrait/panel/post-comment/385-786-398-800": [
+      391.38,
+      792.88
+    ],
+    "portrait/49-136-352-674/open-comments": [
+      368.13,
+      571.51
+    ],
+    "portrait/feed/next-video": [
+      386.5,
+      409.56
+    ],
+    "landscape/feed/next-video": [
+      386.5,
+      409.56
+    ],
+    "portrait/49-134-348-666/open-comments": [
+      363.82,
+      564.57
+    ],
+    "portrait/36-229-233-580/open-comments": [
+      249.3,
+      477.41
+    ],
+    "portrait/panel/focus-comment/296-788-343-798": [
+      319.21,
+      792.69
+    ]
+  },
+  "validation": "Live portrait/landscape geometry recorded; opening/closing comments and next-video taps verified. Focused real comment editor remains visible with IME temporarily suppressed. Post geometry recorded, public posting and a full unattended ten-minute live session remain unverified.",
+  "observedOrientations": [
+    "landscape",
+    "portrait"
+  ],
+  "calibrationDevice": "Pixel_9 / Android / 1080x2424 / density420",
+  "evidence": "outputs/nurture-calibration/"
+}

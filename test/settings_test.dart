@@ -221,6 +221,8 @@ void main() {
     expect(saved.url, 'http://10.0.2.2:5678/api/code');
     expect(saved.token, 'saved-reader-token');
 
+    await tester.ensureVisible(find.byKey(const Key('openUsageGuide')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('openUsageGuide')));
     await tester.pumpAndSettle();
     expect(find.byType(UsageGuidePage), findsOneWidget);

@@ -7,6 +7,7 @@ import android.accessibilityservice.GestureDescription;
 import android.graphics.Path;
 import android.graphics.Rect;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PersistableBundle;
@@ -19,12 +20,39 @@ import java.util.List;
 import java.util.Map;
 import io.flutter.plugin.common.MethodChannel;
 
-/** On-demand snapshots and real ACTION_PASTE, restricted to the host app's WebView. */
+/** Accessibility-only snapshots and field input, restricted to the host app's WebView. */
 final class SignupAccessibilityBridge {
+    private static final java.util.regex.Pattern PLACEHOLDER_LETTER = java.util.regex.Pattern.compile("[\\p{L}&&[^eE]]");
     private static boolean pasting;
     private static boolean pasteCancelled;
 
-    static void cancelPaste() { pasteCancelled = true; }
+    private static AccessibilityListener keyboardOwner;
+    private static final Handler keyboardHandler = new Handler(Looper.getMainLooper());
+    private static final Runnable keyboardExpiry = () -> restoreKeyboard();
+
+    private static void restoreKeyboard() {
+        keyboardHandler.removeCallbacks(keyboardExpiry);
+        if (keyboardOwner != null) {
+            keyboardOwner.getSoftKeyboardController().setShowMode(android.accessibilityservice.AccessibilityService.SHOW_MODE_AUTO);
+            keyboardOwner = null;
+        }
+    }
+
+    static void cancelPaste() { pasteCancelled = true; restoreKeyboard(); }
+
+    static void setKeyboardSuppressed(boolean suppress, MethodChannel.Result result) {
+        AccessibilityListener service = AccessibilityListener.currentInstance();
+        if (!suppress) { restoreKeyboard(); result.success(true); return; }
+        if (service == null || webRoot(service) == null) { result.success(false); return; }
+        boolean hidden = service.getSoftKeyboardController().setShowMode(android.accessibilityservice.AccessibilityService.SHOW_MODE_HIDDEN);
+        if (hidden) {
+            keyboardOwner = service;
+            keyboardHandler.removeCallbacks(keyboardExpiry);
+            // Lease bounds cancellation/crash recovery; a comment input is short.
+            keyboardHandler.postDelayed(keyboardExpiry, 10000);
+        }
+        keyboardHandler.postDelayed(() -> result.success(hidden), 300);
+    }
 
     static AccessibilityNodeInfo webRoot(AccessibilityListener service) {
         if (service == null) return null;
@@ -103,9 +131,9 @@ final class SignupAccessibilityBridge {
         AccessibilityListener service = AccessibilityListener.currentInstance();
         AccessibilityNodeInfo web = webRoot(service);
         if (web == null) { result.success(false); return; }
-        if (!keyboardVisible(service)) { result.success(true); return; }
         AccessibilityNodeInfo focused = web.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
         if (focused != null) focused.performAction(AccessibilityNodeInfo.ACTION_CLEAR_FOCUS);
+        if (!keyboardVisible(service)) { result.success(true); return; }
         // GLOBAL_ACTION_BACK can pop Flutter's route instead of consuming IME.
         // Hide only the soft keyboard, then immediately restore normal policy.
         boolean hidden = service.getSoftKeyboardController().setShowMode(android.accessibilityservice.AccessibilityService.SHOW_MODE_HIDDEN);
@@ -127,6 +155,54 @@ final class SignupAccessibilityBridge {
             .replaceAll("\\b[0-9]{6}\\b", "[code]");
     }
 
+    private static CharSequence editorValue(AccessibilityNodeInfo editor) {
+        // Chromium may expose the placeholder as getText() on empty editors.
+        // A hint is not a draft and must not contribute to entered length.
+        if ((Build.VERSION.SDK_INT >= 26 && editor.isShowingHintText()) || numericPlaceholder(editor)) return null;
+        CharSequence value = editor.getText();
+        // TikTok's empty contenteditable can expose a newline/zero-width filler
+        // instead of null. This is neither a draft nor entered comment content.
+        if (isCommentEditor(editor) && comparableComment(value).isEmpty()) return null;
+        return value;
+    }
+
+    private static boolean isCommentEditor(AccessibilityNodeInfo editor) {
+        CharSequence raw = editorHint(editor);
+        String hint = raw == null ? "" : raw.toString().toLowerCase(java.util.Locale.ROOT);
+        return !editor.isPassword() && (hint.contains("comment") || hint.contains("bình luận"));
+    }
+
+    static String comparableComment(CharSequence value) {
+        if (value == null) return "";
+        // Normalize only the edges; preserve meaningful internal whitespace and
+        // emoji joiners. Login/password values must never use this normalization.
+        String text = value.toString();
+        int start = 0, end = text.length();
+        while (start < end && commentFiller(text.codePointAt(start))) start += Character.charCount(text.codePointAt(start));
+        while (end > start && commentFiller(text.codePointBefore(end))) end -= Character.charCount(text.codePointBefore(end));
+        return text.substring(start, end);
+    }
+
+    private static boolean commentFiller(int codePoint) {
+        return Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint) ||
+            (Character.getType(codePoint) == Character.FORMAT && codePoint != 0x200C && codePoint != 0x200D);
+    }
+
+    private static boolean numericPlaceholder(AccessibilityNodeInfo editor) {
+        int inputClass = editor.getInputType() & InputType.TYPE_MASK_CLASS;
+        // WebView 134 omits both hintText and showingHintText for number inputs.
+        // Letters other than exponent e/E cannot be an HTML number value.
+        return !editor.isPassword() &&
+            inputClass == InputType.TYPE_CLASS_NUMBER &&
+            editor.getText() != null && PLACEHOLDER_LETTER.matcher(editor.getText()).find();
+    }
+
+    private static CharSequence editorHint(AccessibilityNodeInfo editor) {
+        CharSequence hint = Build.VERSION.SDK_INT >= 26 ? editor.getHintText() : null;
+        if (hint != null && hint.length() > 0) return hint;
+        return numericPlaceholder(editor) ? editor.getText() : null;
+    }
+
     private static void collect(AccessibilityNodeInfo node, String path, List<Map<String, Object>> nodes, int depth) {
         if (node == null || depth > 40 || nodes.size() >= 1200) return;
         if (node.isVisibleToUser()) {
@@ -143,11 +219,12 @@ final class SignupAccessibilityBridge {
             item.put("focused", node.isFocused());
             item.put("selected", node.isSelected());
             item.put("inputType", node.getInputType());
-            item.put("length", node.isEditable() && node.getText() != null ? node.getText().length() : 0);
+            CharSequence value = node.isEditable() ? editorValue(node) : null;
+            item.put("length", value == null ? 0 : value.length());
             // Field values must never reach calibration files or debug logs.
             item.put("text", node.isEditable() || node.isPassword() ? "" : safe(node.getText()));
             item.put("description", node.isEditable() || node.isPassword() ? "" : safe(node.getContentDescription()));
-            item.put("hint", Build.VERSION.SDK_INT >= 26 ? safe(node.getHintText()) : "");
+            item.put("hint", node.isEditable() ? safe(editorHint(node)) : Build.VERSION.SDK_INT >= 26 ? safe(node.getHintText()) : "");
             nodes.add(item);
         }
         for (int i = 0; i < node.getChildCount(); i++) collect(node.getChild(i), path + "." + i, nodes, depth + 1);
@@ -157,11 +234,11 @@ final class SignupAccessibilityBridge {
         AccessibilityListener service = AccessibilityListener.currentInstance();
         AccessibilityNodeInfo web = webRoot(service);
         AccessibilityNodeInfo editor = web == null ? null : web.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-        if (pasting || field == null || text == null || text.isEmpty() || editor == null || !editor.isVisibleToUser() ||
+        if (pasting || field == null || text == null || text.isEmpty() || editor == null || !editor.refresh() || !editor.isVisibleToUser() ||
                 !editor.isEditable() || !editor.isEnabled() || !service.getPackageName().contentEquals(editor.getPackageName())) {
             result.success(status(false, "editor-unavailable")); return;
         }
-        if (!field.equals("email") && !field.equals("password") && !field.equals("otp") ||
+        if (!field.equals("email") && !field.equals("password") && !field.equals("otp") && !field.equals("comment") ||
                 field.equals("password") != editor.isPassword() ||
                 field.equals("otp") && !text.matches("[0-9]{6}")) {
             result.success(status(false, "wrong-field")); return;
@@ -171,13 +248,16 @@ final class SignupAccessibilityBridge {
                 (editor.getInputType() & InputType.TYPE_MASK_VARIATION) != InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS) {
             result.success(status(false, "wrong-email-field")); return;
         }
+        if (field.equals("comment") && !hint.contains("comment") && !hint.contains("bình luận")) {
+            result.success(status(false, "wrong-comment-field")); return;
+        }
         int inputClass = editor.getInputType() & InputType.TYPE_MASK_CLASS;
         boolean splitOtp = field.equals("otp") && editableCount(web, 0) == 6;
         if (field.equals("otp") && !splitOtp && inputClass != InputType.TYPE_CLASS_NUMBER && inputClass != InputType.TYPE_CLASS_PHONE &&
                 !hint.contains("code") && !hint.contains("otp") && !hint.contains("mã")) {
             result.success(status(false, "wrong-otp-field")); return;
         }
-        CharSequence previous = editor.getText();
+        CharSequence previous = editorValue(editor);
         if (previous != null && previous.length() > 0) {
             result.success(status(text.contentEquals(previous), "draft-exists")); return;
         }
@@ -191,6 +271,18 @@ final class SignupAccessibilityBridge {
         pasteCancelled = false;
         try {
             clipboard.setPrimaryClip(clip);
+            if (field.equals("otp") && !splitOtp && inputClass == InputType.TYPE_CLASS_NUMBER) {
+                // Chromium acknowledges ACTION_PASTE for HTML number inputs
+                // without inserting, and exposes no floating Paste menu.
+                // Use the editor's Accessibility action, never DOM/InputConnection.
+                Bundle arguments = new Bundle();
+                arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+                if (!editor.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) {
+                    failPaste(clipboard, oldClip, text, result, "numeric-input-rejected"); return;
+                }
+                verifyPaste(editor, text, field, clipboard, oldClip, result, 0);
+                return;
+            }
             if (field.equals("otp")) {
                 // Chromium's ACTION_PASTE acknowledges the six-slot OTP view
                 // without filling it. The real floating Paste menu does work.
@@ -294,12 +386,16 @@ final class SignupAccessibilityBridge {
                     failPaste(clipboard, oldClip, text, result, "cancelled"); return;
                 }
                 boolean attached = editor.refresh();
-                CharSequence value = attached ? editor.getText() : null;
-                boolean exact = value != null && text.contentEquals(value);
+                CharSequence value = attached ? editorValue(editor) : null;
+                boolean exact = value != null && (field.equals("comment")
+                    ? comparableComment(text).equals(comparableComment(value)) : text.contentEquals(value));
                 boolean passwordLength = field.equals("password") && value != null && value.length() == text.length();
                 // A six-digit paste can immediately replace the OTP view.
                 AccessibilityNodeInfo web = field.equals("otp") ? webRoot(AccessibilityListener.currentInstance()) : null;
-                boolean otpAdvanced = field.equals("otp") && hasPasswordEditor(web, 0);
+                // Report a view transition, not successful authentication. The
+                // Dart runner independently waits for the signed-in screen.
+                boolean otpAdvanced = field.equals("otp") && web != null &&
+                    (!attached || !editor.isEditable() || editableCount(web, 0) == 0 || hasPasswordEditor(web, 0));
                 boolean splitMatched = field.equals("otp") && text.equals(editableText(web, 0));
                 if (exact || passwordLength || otpAdvanced || splitMatched || retry >= 19) {
                     restoreClipboard(clipboard, oldClip, text); pasting = false;
@@ -326,7 +422,10 @@ final class SignupAccessibilityBridge {
 
     private static String editableText(AccessibilityNodeInfo node, int depth) {
         if (node == null || depth > 40) return "";
-        if (node.isVisibleToUser() && node.isEditable() && !node.isPassword()) return node.getText() == null ? "" : node.getText().toString();
+        if (node.isVisibleToUser() && node.isEditable() && !node.isPassword()) {
+            CharSequence value = editorValue(node);
+            return value == null ? "" : value.toString();
+        }
         StringBuilder values = new StringBuilder();
         for (int i=0; i<node.getChildCount(); i++) values.append(editableText(node.getChild(i), depth+1));
         return values.toString();

@@ -50,6 +50,8 @@ dependencies:
   archive: ^4.5.2
   xml: ^7.0.1
   flutter_screenutil: ^5.9.3
+  firebase_core: ^5.0.0
+  firebase_remote_config: ^7.0.0
 
 
 flutter_launcher_icons:

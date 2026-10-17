@@ -97,6 +97,13 @@ trạng thái Accessibility; gặp lỗi OTP/email hoặc giới hạn thử th�
 công cần Messages + Profile và không còn Login/form mật khẩu/username.
 Nếu đã đăng nhập từ đầu, app không gửi lại biểu mẫu.
 
+Sau mỗi thao tác bấm, chọn mục ngày sinh, cuộn dropdown, dán email/mật khẩu
+hoặc đóng bàn phím, bộ chạy chờ ngẫu nhiên **2–7 giây** trước thao tác tiếp.
+Riêng ngay sau khi dán OTP vẫn chờ **650 ms** như trước để chuyển sang bước
+xác minh/mật khẩu. Nhịp kiểm tra trạng thái, chờ API OTP và điều kiện trang
+ổn định trước thao tác đầu tiên giữ nguyên. Hủy trong lúc delay sẽ chặn
+thao tác tiếp theo.
+
 ## Công cụ và kiểm chứng
 
 `tools/signup_calibrate.py` điều khiển bridge debug bằng ADB để ghi snapshot

@@ -1,7 +1,10 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get/get.dart';
+import 'package:test_tiktok/core/services/remote_config_service.dart';
+import 'package:test_tiktok/firebase_options.dart';
 
 import 'controller/startup_controller.dart';
 import 'core/app_action_theme.dart';
@@ -14,6 +17,8 @@ import 'screen/widgets/accessibility_permission_prompt.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await RemoteConfig.init();
 
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
     await InAppWebViewController.setWebContentsDebuggingEnabled(kDebugMode);
@@ -40,15 +45,17 @@ class MyApp extends StatelessWidget {
     return GetMaterialApp(
       title: 'TikTok',
       debugShowCheckedModeBanner: false,
-      theme: AppActionTheme.apply(ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppActionTheme.primary,
+      theme: AppActionTheme.apply(
+        ThemeData(
           brightness: Brightness.dark,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: AppActionTheme.primary,
+            brightness: Brightness.dark,
+          ),
+          scaffoldBackgroundColor: Colors.black,
+          useMaterial3: true,
         ),
-        scaffoldBackgroundColor: Colors.black,
-        useMaterial3: true,
-      )),
+      ),
       home: _AppStartupPage(
         proxyStore: proxyStore,
         otpSettingsStore: otpSettingsStore,
@@ -64,26 +71,26 @@ class _AppStartupPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ControllerScope<StartupController>(
-        controller: StartupController(
-          store: proxyStore,
-          otpSettingsStore: otpSettingsStore,
-        ),
-        builder: (logic) {
-          if (logic.userAgent != null) {
-            return AccessibilityPermissionPrompt(
-              child: HomePage(
-                userAgent: logic.userAgent!,
-                proxyStore: proxyStore,
-                initialOtpSettings: logic.otpSettings,
-                otpSettingsStore: otpSettingsStore,
-              ),
-            );
-          }
-          return SplashPage(
-            loading: logic.loading,
-            failed: logic.failed,
-            onRetry: () => logic.load(),
-          );
-        },
+    controller: StartupController(
+      store: proxyStore,
+      otpSettingsStore: otpSettingsStore,
+    ),
+    builder: (logic) {
+      if (logic.userAgent != null) {
+        return AccessibilityPermissionPrompt(
+          child: HomePage(
+            userAgent: logic.userAgent!,
+            proxyStore: proxyStore,
+            initialOtpSettings: logic.otpSettings,
+            otpSettingsStore: otpSettingsStore,
+          ),
+        );
+      }
+      return SplashPage(
+        loading: logic.loading,
+        failed: logic.failed,
+        onRetry: () => logic.load(),
       );
+    },
+  );
 }

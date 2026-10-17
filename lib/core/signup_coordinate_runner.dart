@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/services.dart';
 
@@ -43,7 +44,9 @@ class SignupCoordinateRunner {
     this.isPageReady,
     this.readBirthdayMenu,
     DateTime Function()? now,
+    Random? random,
   }) : now = now ?? DateTime.now,
+       _random = random ?? Random(),
        birthday =
            configuration.birthday ?? AppConfiguration.randomSignupBirthday();
   final SignupCoordinateProfile profile;
@@ -53,6 +56,7 @@ class SignupCoordinateRunner {
   /// Choose once per attempt, including when Home already generated the date.
   final DateTime birthday;
   final DateTime Function() now;
+  final Random _random;
   static const _months = [
     'January',
     'February',
@@ -95,6 +99,9 @@ class SignupCoordinateRunner {
     await Future<void>.delayed(Duration(milliseconds: ms));
     await _guard();
   }
+
+  Future<void> _pauseAfterAction({bool afterOtp = false}) =>
+      _pause(afterOtp ? 650 : 2000 + _random.nextInt(5001));
 
   Future<SignupSnapshot> _snapshot({bool allowNotReady = false}) async {
     await _guard();
@@ -244,7 +251,7 @@ class SignupCoordinateRunner {
     _actions.add(name); // A gesture is never repeated on timeout/navigation.
     await accessibility.tap(snapshot.viewport, point);
     await onTapped?.call();
-    await _pause();
+    await _pauseAfterAction();
   }
 
   Future<void> _paste(String field, String text) async {
@@ -257,7 +264,7 @@ class SignupCoordinateRunner {
         'Accessibility chưa dán được $field (${result['reason'] ?? 'unknown'}).',
       );
     }
-    await _pause();
+    await _pauseAfterAction(afterOtp: field == 'otp');
   }
 
   Future<void> _hideKeyboard() async {
@@ -265,6 +272,7 @@ class SignupCoordinateRunner {
     if (!snapshot.keyboardVisible) return;
     await accessibility.dismissKeyboard();
     await _wait((s) => !s.keyboardVisible, 'Đang đóng bàn phím…', seconds: 5);
+    await _pauseAfterAction();
   }
 
   bool _birthdayValue(SignupSnapshot s, String field, String value) =>
@@ -384,7 +392,7 @@ class SignupCoordinateRunner {
       if (matches.isNotEmpty) {
         final visible = matches.first.bounds.intersect(listBounds);
         await accessibility.tap(snapshot.viewport, visible.center);
-        await _pause();
+        await _pauseAfterAction();
         await _wait(
           (s) =>
               _birthdayValue(s, field, value) && !s.nodes.any((n) => n.picker),
@@ -426,7 +434,7 @@ class SignupCoordinateRunner {
         Offset(listBounds.center.dx, forward ? bottom : top),
         Offset(listBounds.center.dx, forward ? top : bottom),
       );
-      await _pause(450);
+      await _pauseAfterAction();
     }
     throw StateError('Chưa tìm được $value trong danh sách $field.');
   }

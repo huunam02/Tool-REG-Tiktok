@@ -58,6 +58,8 @@ public class SignupAccessibilityBridgeTest {
                 "<input maxlength='1' style='width:35px'><input maxlength='1' style='width:35px'>" +
                 "<input maxlength='1' style='width:35px'><input maxlength='1' style='width:35px'></div>" +
                 "<select aria-label='Month'><option>Month</option><option>January</option><option>February</option></select>" +
+                "<div id='commentFixtureBox' contenteditable='true' role='textbox' aria-placeholder='Add comment...' " +
+                "style='display:none;position:fixed;bottom:16px;width:85%;min-height:40px'></div>" +
                 "<script>slots.firstElementChild.addEventListener('paste',e=>{" +
                 "e.preventDefault();const code=e.clipboardData.getData('text/plain');" +
                 "Array.from(slots.children).forEach((el,i)=>el.value=code[i]||'');" +
@@ -93,6 +95,113 @@ public class SignupAccessibilityBridgeTest {
             @Override public void notImplemented() { done.countDown(); }
         }));
         assertTrue("Paste completed", done.await(10, TimeUnit.SECONDS)); return value.get();
+    }
+
+    private void keyboardSuppressed(boolean suppressed) throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<Object> value = new AtomicReference<>();
+        instrumentation().runOnMainSync(() -> SignupAccessibilityBridge.setKeyboardSuppressed(suppressed, new MethodChannel.Result() {
+            @Override public void success(Object result) { value.set(result); done.countDown(); }
+            @Override public void error(String code, String message, Object detail) { done.countDown(); }
+            @Override public void notImplemented() { done.countDown(); }
+        }));
+        assertTrue(done.await(3, TimeUnit.SECONDS));
+        assertEquals(Boolean.TRUE, value.get());
+    }
+
+    @Test public void treatsOnlyCommentEdgeFillersAsEmpty() {
+        assertEquals("", SignupAccessibilityBridge.comparableComment("\n\u200B\u200E\uFEFF\u00A0"));
+        assertEquals("draft text", SignupAccessibilityBridge.comparableComment("\u200B draft text\n"));
+        assertEquals("a  b", SignupAccessibilityBridge.comparableComment(" a  b "));
+        assertEquals("👩‍💻", SignupAccessibilityBridge.comparableComment(" 👩‍💻\n"));
+    }
+
+    @Test public void pastesIntoEmptyContenteditableWithInvisibleFillerAndPreservesRealDraft() throws Exception {
+        instrumentation().runOnMainSync(() -> web.requestFocus());
+        keyboardSuppressed(true);
+        evaluate("email.style.display='none';slots.style.display='none';" +
+            "commentFixtureBox.style.display='block';commentFixtureBox.textContent='\\u200B';" +
+            "commentFixtureBox.addEventListener('paste',e=>window.commentPasteTrusted=e.isTrusted);" +
+            "commentFixtureBox.focus();true");
+        Thread.sleep(500);
+        tapFocusedEditor();
+        Thread.sleep(500);
+        AtomicReference<Map<String,Object>> state = new AtomicReference<>();
+        instrumentation().runOnMainSync(() -> state.set(SignupAccessibilityBridge.snapshot()));
+        List<Map<String,Object>> nodes = (List<Map<String,Object>>) state.get().get("nodes");
+        Map<String,Object> editor = nodes.stream().filter(n -> Boolean.TRUE.equals(n.get("editable")) &&
+            String.valueOf(n.get("hint")).contains("comment")).findFirst().get();
+        assertEquals(0, editor.get("length"));
+        assertEquals(Boolean.TRUE, editor.get("focused"));
+        Map<String,Object> result = paste("Video đẹp quá!", "comment");
+        assertEquals(result.toString(), Boolean.TRUE, result.get("ok"));
+        assertEquals("true", evaluate("window.commentPasteTrusted"));
+        assertEquals("\"Video đẹp quá!\"", evaluate("commentFixtureBox.textContent.replace(/\\u200B/g,'').trim()"));
+        assertEquals(Boolean.FALSE, paste("Replacement", "comment").get("ok"));
+        assertEquals("\"Video đẹp quá!\"", evaluate("commentFixtureBox.textContent.replace(/\\u200B/g,'').trim()"));
+        keyboardSuppressed(false);
+    }
+
+    @Test public void pastesUnicodeCommentThroughAccessibilityAndKeepsExistingDraft() throws Exception {
+        instrumentation().runOnMainSync(() -> web.requestFocus());
+        keyboardSuppressed(true);
+        evaluate("email.type='text';email.placeholder='Add comment...';email.style.position='fixed';email.style.bottom='8px';email.focus();true");
+        Thread.sleep(500);
+        tapFocusedEditor();
+        Thread.sleep(500);
+        AtomicReference<Map<String,Object>> state = new AtomicReference<>();
+        instrumentation().runOnMainSync(() -> state.set(SignupAccessibilityBridge.snapshot()));
+        assertEquals(Boolean.FALSE, state.get().get("keyboardVisible"));
+        Map<String,Object> result = paste("Video đẹp quá!", "comment");
+        if (!Boolean.TRUE.equals(result.get("ok"))) {
+            fail(result.toString() + " snapshot=" + state.get());
+        }
+        assertEquals(result.toString(), Boolean.TRUE, result.get("ok"));
+        assertEquals("\"Video đẹp quá!\"", evaluate("email.value"));
+        result = paste("Replacement", "comment");
+        assertEquals(Boolean.FALSE, result.get("ok"));
+        assertEquals("draft-exists", result.get("reason"));
+        assertEquals("\"Video đẹp quá!\"", evaluate("email.value"));
+        keyboardSuppressed(false);
+        assertEquals(android.accessibilityservice.AccessibilityService.SHOW_MODE_AUTO,
+            AccessibilityListener.currentInstance().getSoftKeyboardController().getShowMode());
+    }
+
+    @Test public void rejectsCommentInputIntoLoginEmail() throws Exception {
+        instrumentation().runOnMainSync(() -> web.requestFocus());
+        evaluate("email.focus();true");
+        Thread.sleep(500);
+        tapFocusedEditor();
+        Thread.sleep(500);
+        Map<String,Object> result = paste("Configured comment", "comment");
+        assertEquals(Boolean.FALSE, result.get("ok"));
+        assertEquals("wrong-comment-field", result.get("reason"));
+        assertEquals("\"\"", evaluate("email.value"));
+    }
+
+    @Test public void confirmsNumericOtpWhenInputImmediatelyReplacesEditor() throws Exception {
+        instrumentation().runOnMainSync(() -> web.requestFocus());
+        evaluate("document.body.innerHTML='<h1>Enter code</h1><input id=\"otp\" type=\"number\" placeholder=\"6-digit code\">';" +
+            "otp.addEventListener('input',e=>{window.trustedOtpInput=e.isTrusted;" +
+            "if(otp.value==='123456')" +
+            "document.body.innerHTML='<nav><a href=\"/messages\">Messages</a><a href=\"/profile\">Profile</a></nav>';});" +
+            "otp.focus();true");
+        Thread.sleep(500);
+        tapFocusedEditor();
+        Thread.sleep(500);
+        assertEquals("\"\"", evaluate("otp.value"));
+        AtomicReference<Map<String,Object>> editorState = new AtomicReference<>();
+        instrumentation().runOnMainSync(() -> {
+            List<Map<String,Object>> nodes = (List<Map<String,Object>>) SignupAccessibilityBridge.snapshot().get("nodes");
+            editorState.set(nodes.stream().filter(n -> Boolean.TRUE.equals(n.get("editable"))).findFirst().get());
+        });
+        assertEquals(0, editorState.get().get("length"));
+        assertEquals("6-digit code", editorState.get().get("hint"));
+        Map<String,Object> result = paste("123456", "otp");
+        assertEquals(result.toString(), Boolean.TRUE, result.get("ok"));
+        assertEquals("otp-view-replaced", result.get("reason"));
+        assertEquals("0", evaluate("document.querySelectorAll('input').length"));
+        assertEquals("true", evaluate("window.trustedOtpInput"));
     }
 
     @Test public void pastesThroughRealMenuIntoSixOtpSlots() throws Exception {

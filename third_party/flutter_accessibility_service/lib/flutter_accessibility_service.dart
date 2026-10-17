@@ -16,6 +16,11 @@ class FlutterAccessibilityService {
   static Future<void> signupCancelPaste() =>
       _methodChannel.invokeMethod('signupCancelPaste');
 
+  /// Temporarily hide IME while preserving editor focus in a fixed viewport.
+  /// Native cancellation and a ten-second lease restore the keyboard policy.
+  static Future<bool> signupSetKeyboardSuppressed(bool suppressed) async =>
+      await _methodChannel.invokeMethod<bool>('signupSetKeyboardSuppressed', {'suppressed': suppressed}) ?? false;
+
   static Future<bool> signupDismissKeyboard() async =>
       await _methodChannel.invokeMethod<bool>('signupDismissKeyboard') ?? false;
 
@@ -25,8 +30,10 @@ class FlutterAccessibilityService {
               .invokeMapMethod<String, dynamic>('signupSnapshot') ??
           {});
 
-  /// Clipboard staging and ACTION_PASTE are performed by AccessibilityService.
-  /// Existing drafts are preserved; no ACTION_SET_TEXT or InputConnection fallback.
+  /// Field input is performed exclusively by AccessibilityService.
+  /// Email, password, OTP and comment editors are checked before input.
+  /// Existing drafts are preserved. Single numeric OTP uses ACTION_SET_TEXT;
+  /// other OTP uses the real Paste menu. No DOM or InputConnection fallback.
   static Future<Map<String, dynamic>> signupPasteFocused(
           String text, String field) async =>
       Map<String, dynamic>.from(await _methodChannel

@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../core/accessibility_permission.dart';
+import '../core/data_file_export.dart';
 import '../core/otp_settings_store.dart';
+import '../core/proxy_store.dart';
 import 'app_controller.dart';
 
 class SettingsController extends AppController with WidgetsBindingObserver {
@@ -12,11 +14,15 @@ class SettingsController extends AppController with WidgetsBindingObserver {
     required this.store,
     required this.onSettingsChanged,
     AccessibilityPermissionService? accessibilityPermission,
-  })  : otpSettings = initialSettings,
-        accessibilityPermission =
-            accessibilityPermission ?? AccessibilityPermissionService();
+    ProxyStore? proxyStore,
+  }) : otpSettings = initialSettings,
+       proxyStore = proxyStore ?? ProxyStore.instance,
+       accessibilityPermission =
+           accessibilityPermission ?? AccessibilityPermissionService();
 
   final OtpSettingsStore store;
+  final ProxyStore proxyStore;
+  bool exporting = false;
   final ValueChanged<OtpApiSettings> onSettingsChanged;
   OtpApiSettings otpSettings;
   final AccessibilityPermissionService accessibilityPermission;
@@ -26,6 +32,42 @@ class SettingsController extends AppController with WidgetsBindingObserver {
   String? accessibilityError;
   bool get accessibilityBusy =>
       checkingAccessibility || openingAccessibilitySettings;
+
+  Future<void> exportExcel() async {
+    if (!active || exporting) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    mutate(() => exporting = true);
+    try {
+      final configurations = await proxyStore.list();
+      final accounts = await proxyStore.nurture.listAccounts();
+      if (!active) return;
+      if (configurations.isEmpty && accounts.isEmpty) {
+        notify('Chưa có dữ liệu cấu hình hoặc nuôi Account để xuất.');
+        return;
+      }
+      final bytes = encodeDataExport(
+        configurations: configurations,
+        accounts: accounts,
+      );
+      final timestamp = DateTime.now().toIso8601String().replaceAll(
+        RegExp(r'[:.]'),
+        '-',
+      );
+      final saved = await saveDataExportFile(
+        'tiktok_data_$timestamp.xlsx',
+        bytes,
+      );
+      if (saved && active) {
+        notify(
+          'Đã xuất ${configurations.length} cấu hình và ${accounts.length} tài khoản nuôi.',
+        );
+      }
+    } catch (_) {
+      if (active) notify('Không thể xuất Excel. Hãy thử lại.');
+    } finally {
+      if (active) mutate(() => exporting = false);
+    }
+  }
 
   @override
   void onInit() {
@@ -93,7 +135,7 @@ class SettingsController extends AppController with WidgetsBindingObserver {
   }
 
   void applyOtpSettings(OtpApiSettings settings) => mutate(() {
-        otpSettings = settings;
-        onSettingsChanged(settings);
-      });
+    otpSettings = settings;
+    onSettingsChanged(settings);
+  });
 }

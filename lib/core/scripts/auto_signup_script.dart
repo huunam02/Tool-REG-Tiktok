@@ -407,18 +407,13 @@ const String autoSignupStepScript = r'''
     // attempt can reuse a region when the live button still occupies it.
     const cache = window.__flutterNativeTapTargets ||= new Map();
     const pointIn = rect => {
-      let x = rect.left + rect.width / 2;
-      let y = rect.top + rect.height / 2;
+      // Always the exact centre of the control; no random offset.
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
       if (![x, y, viewportWidth, viewportHeight].every(Number.isFinite) ||
           rect.width <= 0 || rect.height <= 0 || viewportWidth <= 0 || viewportHeight <= 0 ||
           x < offsetX || y < offsetY || x >= offsetX + viewportWidth ||
           y >= offsetY + viewportHeight) return null;
-      const jitterX = Math.min(6, rect.width * 0.15,
-        (x - offsetX) * 0.8, (offsetX + viewportWidth - x) * 0.8);
-      const jitterY = Math.min(6, rect.height * 0.15,
-        (y - offsetY) * 0.8, (offsetY + viewportHeight - y) * 0.8);
-      x += (Math.random() * 2 - 1) * jitterX;
-      y += (Math.random() * 2 - 1) * jitterY;
       // A cache hit still has to land on the currently authorized control.
       const hit = document.elementFromPoint(x, y);
       if (!hit || hit !== control && !control.contains(hit)) return null;

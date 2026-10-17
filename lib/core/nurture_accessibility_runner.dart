@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import 'nurture_coordinate_profile.dart';
 import 'nurture_data.dart';
 import 'signup_accessibility.dart';
 
-enum NurtureVideoOrientation { portrait, landscape }
+/// `detail` is the search-result player: a modal with its own comment box.
+enum NurtureVideoOrientation { portrait, landscape, detail }
 
 /// Geometry comes from the playing video's accessible container, not the phone.
 class NurtureVideo {
@@ -17,13 +20,25 @@ class NurtureVideo {
     required this.bounds,
     required this.comments,
     this.next,
+    this.root = '',
+    this.detail = false,
   });
   final String key;
   final int position, duration;
   final Rect bounds;
-  final SignupNode comments;
+
+  /// The feed's "Read or add comments" button; null in the detail player,
+  /// whose comment box is always open.
+  final SignupNode? comments;
   final SignupNode? next;
-  NurtureVideoOrientation get orientation => bounds.width > bounds.height
+
+  /// Accessibility id of the post's container; its text is content, never a
+  /// system prompt.
+  final String root;
+  final bool detail;
+  NurtureVideoOrientation get orientation => detail
+      ? NurtureVideoOrientation.detail
+      : bounds.width > bounds.height
       ? NurtureVideoOrientation.landscape
       : NurtureVideoOrientation.portrait;
 
@@ -32,6 +47,15 @@ class NurtureVideo {
     final b = viewport.fromScreen(bounds.bottomRight);
     // A 4:5 portrait and a 9:16 portrait can also have different button rows.
     return '${orientation.name}/${a.dx.round()}-${a.dy.round()}-${b.dx.round()}-${b.dy.round()}';
+  }
+
+  /// The action column shifts with optional rows (music disc, CapCut label)
+  /// even when the media frame is identical, so the button's own geometry is
+  /// part of the key.
+  String commentsKey(SignupViewport viewport) {
+    final a = viewport.fromScreen(comments!.bounds.topLeft);
+    final b = viewport.fromScreen(comments!.bounds.bottomRight);
+    return '${layout(viewport)}/open-comments/${a.dx.round()}-${a.dy.round()}-${b.dx.round()}-${b.dy.round()}';
   }
 
   static final _time = RegExp(
@@ -86,22 +110,7 @@ class NurtureVideo {
       final page = feed.contains('.')
           ? feed.substring(0, feed.lastIndexOf('.'))
           : '';
-      final up = nodes['$page.1.0.0.0'];
-      final down = nodes['$page.1.0.1.0'];
-      final pairedNavigation =
-          up != null &&
-          down != null &&
-          up.className.endsWith('Button') &&
-          down.className.endsWith('Button') &&
-          up.clickable &&
-          down.clickable &&
-          down.enabled &&
-          up.label.isEmpty &&
-          down.label.isEmpty &&
-          (up.bounds.width - down.bounds.width).abs() <= 2 &&
-          (up.bounds.center.dx - down.bounds.center.dx).abs() <= 2 &&
-          up.bounds.bottom < down.bounds.top &&
-          down.bounds.left > media.right;
+      final down = _pairedDown(nodes, page, media.right);
       candidates.add(
         NurtureVideo(
           // Music labels can disappear/reappear when the comment panel opens.
@@ -111,12 +120,139 @@ class NurtureVideo {
           duration: duration,
           bounds: media,
           comments: button,
-          next: pairedNavigation ? down : null,
+          next: down,
+          root: card,
         ),
       );
     }
+    // The search-result player is a modal over the page; it wins when open.
+    final detail = _readDetail(snapshot, nodes);
+    if (detail != null) return detail;
     // Multiple exposed posts are ambiguous; don't comment on a guessed card.
     return candidates.length == 1 ? candidates.single : null;
+  }
+
+  /// The panel shows the post link; the snapshot masks its `@handle` part
+  /// like an email, so only the numeric video id identifies the post.
+  static final _videoUrl = RegExp(r'^https:\S*/video/(\d{6,})');
+
+  /// The player opened from search results. Accessibility ids under the
+  /// modal shift when focus enters it, so the post is keyed by its URL.
+  static NurtureVideo? _readDetail(
+    SignupSnapshot snapshot,
+    Map<String, SignupNode> nodes,
+  ) {
+    for (final dialog in snapshot.nodes.where(
+      (n) => n.className.endsWith('Dialog'),
+    )) {
+      final inside = snapshot.nodes
+          .where((n) => n.id.startsWith('${dialog.id}.'))
+          .toList();
+      final times = inside.where((n) => _time.hasMatch(n.text.trim()));
+      if (times.length != 1) continue;
+      final url = inside
+          .map((n) => _videoUrl.firstMatch(n.text.trim())?.group(1))
+          .nonNulls
+          .toSet();
+      if (url.length != 1) continue;
+      final match = _time.firstMatch(times.single.text.trim())!;
+      final duration = _seconds(match[2]!);
+      final position = _seconds(match[1]!);
+      if (duration <= 0 || position > duration) continue;
+      final pane = times.single.id
+          .substring(dialog.id.length + 1)
+          .split('.')
+          .first;
+      final media = nodes['${dialog.id}.$pane']?.bounds;
+      if (media == null) continue;
+      final next = inside
+          .where(
+            (n) =>
+                n.clickable &&
+                n.enabled &&
+                n.description.trim() == 'Go to next video',
+          )
+          .firstOrNull;
+      return NurtureVideo(
+        key: 'detail|${url.single}|$duration',
+        position: position,
+        duration: duration,
+        bounds: media,
+        comments: null,
+        next: next,
+        root: dialog.id,
+        detail: true,
+      );
+    }
+    return null;
+  }
+
+  /// The search-result player's "Go to next video" button, read without the
+  /// clock so a post that never starts can still be skipped.
+  static SignupNode? playerNext(SignupSnapshot snapshot) {
+    for (final dialog in snapshot.nodes.where(
+      (n) => n.className.endsWith('Dialog'),
+    )) {
+      final next = snapshot.nodes
+          .where(
+            (n) =>
+                n.id.startsWith('${dialog.id}.') &&
+                n.clickable &&
+                n.enabled &&
+                n.description.trim() == 'Go to next video',
+          )
+          .firstOrNull;
+      if (next != null) return next;
+    }
+    return null;
+  }
+
+  /// The feed's unlabeled up/down pair beside the cards.
+  static SignupNode? _pairedDown(
+    Map<String, SignupNode> nodes,
+    String page,
+    double right,
+  ) {
+    final up = nodes['$page.1.0.0.0'];
+    final down = nodes['$page.1.0.1.0'];
+    final paired =
+        up != null &&
+        down != null &&
+        up.className.endsWith('Button') &&
+        down.className.endsWith('Button') &&
+        up.clickable &&
+        down.clickable &&
+        down.enabled &&
+        up.label.isEmpty &&
+        down.label.isEmpty &&
+        (up.bounds.width - down.bounds.width).abs() <= 2 &&
+        (up.bounds.center.dx - down.bounds.center.dx).abs() <= 2 &&
+        up.bounds.bottom < down.bounds.top &&
+        down.bounds.left > right;
+    return paired ? down : null;
+  }
+
+  /// A LIVE post in the feed has no playback clock or comment button, so it
+  /// is never watched; this returns the feed's next button to skip it.
+  static SignupNode? liveNext(SignupSnapshot snapshot) {
+    if (!snapshot.ready || !snapshot.viewport.valid) return null;
+    final nodes = {for (final n in snapshot.nodes) n.id: n};
+    // Badge, preview and the "Join my LIVE" overlay all name the post LIVE.
+    final live = RegExp(
+      r'^(LIVE\b|Watch LIVE|Click to watch LIVE|Join my LIVE)',
+    );
+    final badges = snapshot.nodes.where(
+      (n) => !n.editable && live.hasMatch(n.text.trim()),
+    );
+    for (final badge in badges) {
+      var page = badge.id;
+      while (page.contains('.')) {
+        page = page.substring(0, page.lastIndexOf('.'));
+        final down = _pairedDown(nodes, page, badge.bounds.right);
+        if (down != null) return down;
+      }
+    }
+    return null;
   }
 }
 
@@ -128,9 +264,12 @@ class _CommentNotReady implements Exception {
 }
 
 class _WatchPlan {
-  _WatchPlan(this.full, this.skipAt, this.commentAt);
+  _WatchPlan(this.full, this.skipAt, this.commentAt, this.cap);
   final bool full;
   final int skipAt, commentAt;
+
+  /// Seconds a full watch lasts on a long video; null watches to the end.
+  final int? cap;
   int watched = 0;
   bool completed = false, commentAttempted = false;
 }
@@ -146,6 +285,7 @@ class NurtureAccessibilityRunner {
     required this.onProgress,
     this.onComment,
     this.onCommentSkipped,
+    this.searchKeyword,
     Random? random,
     DateTime Function()? now,
     Future<void> Function(Duration)? delay,
@@ -161,6 +301,11 @@ class NurtureAccessibilityRunner {
   final Future<void> Function(NurtureTotals, int) onProgress;
   final void Function()? onComment;
   final void Function(String)? onCommentSkipped;
+
+  /// Search-mode nurture: the keyword is entered and submitted through
+  /// Accessibility, then a result from the Videos tab is watched. Null or
+  /// empty watches the For You feed.
+  final String? searchKeyword;
   final Random _random;
   final DateTime Function() _now;
   final Future<void> Function(Duration)? _delay;
@@ -245,7 +390,10 @@ class NurtureAccessibilityRunner {
 
   _WatchPlan _plan(NurtureVideo video) => _plans.putIfAbsent(video.key, () {
     final full = _random.nextBool();
-    final latest = (video.duration * .7).floor() - 6;
+    // Long videos (over 4 minutes) are watched for a random 2–4 minutes.
+    final cap = video.duration > 240 ? 120 + _random.nextInt(121) : null;
+    final latest =
+        (min(video.duration, cap ?? video.duration) * .7).floor() - 6;
     final commentAt = latest >= 5 && comments.isNotEmpty
         ? 5 + _random.nextInt(latest - 4)
         : -1;
@@ -253,6 +401,7 @@ class NurtureAccessibilityRunner {
       full,
       min(2 + _random.nextInt(4), max(1, video.duration ~/ 2)),
       commentAt,
+      cap,
     );
   });
 
@@ -264,47 +413,61 @@ class NurtureAccessibilityRunner {
       throw StateError('Đã rời TikTok; dừng nuôi tài khoản.');
     }
     _check();
-    final s = await accessibility.snapshot();
+    var s = await accessibility.snapshot();
+    // The WebView node is briefly missing while Flutter rebuilds semantics
+    // (button state, snackbar). Only a persistent absence stops nurture.
+    final until = _now().add(const Duration(seconds: 3));
+    while ((!s.ready || !s.viewport.valid) && _now().isBefore(until)) {
+      await _sleep(200);
+      s = await accessibility.snapshot();
+    }
     _check();
     if (!s.ready || !s.viewport.valid) {
       throw StateError('Khung nuôi cần cố định 400×800.');
     }
-    final current = NurtureVideo.read(s);
-    final editor = _editor(s);
-    final close = _close(s);
-    String? panelRoot;
-    if (editor != null && close != null) {
-      final a = editor.id.split('.'), b = close.id.split('.');
-      var common = 0;
-      while (common < min(a.length, b.length) && a[common] == b[common]) {
-        common++;
+    // Hover cards and popovers can expose a Dialog briefly and close by
+    // themselves. Nothing is tapped while one is open; only a dialog that
+    // persists stops nurture.
+    final dialogUntil = _now().add(const Duration(seconds: 10));
+    while (true) {
+      final prompts = _prompts(s);
+      bool hasPrompt(RegExp pattern) => prompts.any(
+        (n) => [n.text, n.description, n.hint].any(pattern.hasMatch),
+      );
+      // Verification and sign-out stop immediately, even inside a dialog.
+      if (hasPrompt(
+        RegExp(
+          r'captcha|drag.*slider|verify to continue|kéo.*thanh trượt',
+          caseSensitive: false,
+        ),
+      )) {
+        throw StateError('TikTok yêu cầu xác minh; đã dừng nuôi để bạn xử lý.');
       }
-      if (common > 0) panelRoot = a.take(common).join('.');
+      if (hasPrompt(RegExp(r'^Log in to TikTok$', caseSensitive: false))) {
+        throw StateError('TikTok yêu cầu đăng nhập lại; đã dừng nuôi.');
+      }
+      final dialogs = prompts
+          .where((n) => n.className.endsWith('Dialog'))
+          .toList();
+      if (dialogs.isEmpty) break;
+      if (!_now().isBefore(dialogUntil)) {
+        final root = dialogs.first.id;
+        final text = s.nodes
+            .where((n) => n.id == root || n.id.startsWith('$root.'))
+            .map((n) => n.label.trim())
+            .where((label) => label.isNotEmpty)
+            .join(' · ');
+        final detail = text.isEmpty
+            ? ''
+            : ' (${text.length > 80 ? '${text.substring(0, 80)}…' : text})';
+        throw StateError('TikTok đang mở hộp thoại$detail; đã dừng nuôi.');
+      }
+      await _sleep(500);
+      final next = await accessibility.snapshot();
+      _check();
+      if (next.ready && next.viewport.valid) s = next;
     }
-    final cardRoot = current?.key.split('|').first;
-    bool within(String id, String? root) =>
-        root != null && (id == root || id.startsWith('$root.'));
-    // Video captions and public comments are content, never system prompts.
-    final prompts = s.nodes
-        .where((n) => !within(n.id, cardRoot) && !within(n.id, panelRoot))
-        .toList();
-    bool hasPrompt(RegExp pattern) => prompts.any(
-      (n) => [n.text, n.description, n.hint].any(pattern.hasMatch),
-    );
-    if (hasPrompt(
-      RegExp(
-        r'captcha|drag.*slider|verify to continue|kéo.*thanh trượt',
-        caseSensitive: false,
-      ),
-    )) {
-      throw StateError('TikTok yêu cầu xác minh; đã dừng nuôi để bạn xử lý.');
-    }
-    if (prompts.any((n) => n.className.endsWith('Dialog'))) {
-      throw StateError('TikTok đang mở hộp thoại; đã dừng nuôi.');
-    }
-    if (hasPrompt(RegExp(r'^Log in to TikTok$', caseSensitive: false))) {
-      throw StateError('TikTok yêu cầu đăng nhập lại; đã dừng nuôi.');
-    }
+    final current = NurtureVideo.read(s);
     final previous = _previous;
     final sampledAt = _sampledAt;
     final now = _now();
@@ -339,6 +502,48 @@ class NurtureAccessibilityRunner {
     return s;
   }
 
+  /// Nodes outside the playing card and the comment panel. Video captions
+  /// and public comments are content, never system prompts.
+  List<SignupNode> _prompts(SignupSnapshot s) {
+    final current = NurtureVideo.read(s);
+    final editor = _editor(s);
+    final close = _close(s);
+    String? panelRoot;
+    if (editor != null && close != null) {
+      final a = editor.id.split('.'), b = close.id.split('.');
+      var common = 0;
+      while (common < min(a.length, b.length) && a[common] == b[common]) {
+        common++;
+      }
+      if (common > 0) panelRoot = a.take(common).join('.');
+    }
+    final cardRoot = current?.root;
+    bool within(String id, String? root) =>
+        root != null && (id == root || id.startsWith('$root.'));
+    // The search-result player is itself a Dialog; while its clock is hidden
+    // it is still recognised by its next button or post URL.
+    final players = s.nodes
+        .where((n) => n.className.endsWith('Dialog'))
+        .where(
+          (dialog) => s.nodes.any(
+            (n) =>
+                within(n.id, dialog.id) &&
+                (n.description.trim() == 'Go to next video' ||
+                    NurtureVideo._videoUrl.hasMatch(n.text.trim())),
+          ),
+        )
+        .map((dialog) => dialog.id)
+        .toList();
+    return s.nodes
+        .where(
+          (n) =>
+              !within(n.id, cardRoot) &&
+              !within(n.id, panelRoot) &&
+              !players.any((root) => within(n.id, root)),
+        )
+        .toList();
+  }
+
   Future<void> _tap(
     String key,
     SignupSnapshot s,
@@ -368,10 +573,40 @@ class NurtureAccessibilityRunner {
 
   Future<void> _run() async {
     DateTime? missingSince;
+    var unplayable = 0;
     try {
+      final keyword = searchKeyword?.trim() ?? '';
+      if (keyword.isNotEmpty) await _search(keyword);
       while (true) {
         final s = await _snapshot();
         final video = NurtureVideo.read(s);
+        final live = video == null ? NurtureVideo.liveNext(s) : null;
+        if (live != null) {
+          missingSince = null;
+          await _skipLive(s, live);
+          continue;
+        }
+        final stuck = video == null ? NurtureVideo.playerNext(s) : null;
+        if (stuck != null &&
+            missingSince != null &&
+            _now().difference(missingSince) > const Duration(seconds: 10)) {
+          // The search-result player opened a post that never starts (no
+          // clock): move on rather than wait for it.
+          if (++unplayable > 3) {
+            throw StateError(
+              'Nhiều video tìm kiếm liên tiếp không phát được; đã dừng nuôi.',
+            );
+          }
+          final a = s.viewport.fromScreen(stuck.bounds.topLeft);
+          await _tap(
+            'detail/feed/skip-unplayable/${a.dx.round()}-${a.dy.round()}',
+            s,
+            stuck,
+          );
+          missingSince = null;
+          await _sleep(1500);
+          continue;
+        }
         if (video == null) {
           missingSince ??= _now();
           if (_now().difference(missingSince) > const Duration(seconds: 20)) {
@@ -383,6 +618,7 @@ class NurtureAccessibilityRunner {
           continue;
         }
         missingSince = null;
+        unplayable = 0;
         final plan = _plan(video);
         // An empty panel left by a cancelled attempt is safe to close. A real
         // draft must be retained; opening comments alone must not stop nurture.
@@ -394,7 +630,9 @@ class NurtureAccessibilityRunner {
           }
           continue;
         }
-        if (plan.completed || (!plan.full && plan.watched >= plan.skipAt)) {
+        if (plan.completed ||
+            (!plan.full && plan.watched >= plan.skipAt) ||
+            (plan.full && plan.cap != null && plan.watched >= plan.cap!)) {
           await _advance(s, video, plan);
         } else if (plan.full &&
             !plan.commentAttempted &&
@@ -413,6 +651,156 @@ class NurtureAccessibilityRunner {
     } finally {
       await _emit();
     }
+  }
+
+  /// Each step reads the current screen, so a restarted runner resumes where
+  /// the previous one stopped. A step fires at most twice, 6s apart.
+  Future<void> _search(String keyword) async {
+    final fired = <String, int>{};
+    final last = <String, DateTime>{};
+    final deadline = _now().add(const Duration(seconds: 60));
+    try {
+      await accessibility.setKeyboardSuppressed(true);
+      _check();
+      while (_now().isBefore(deadline)) {
+        final s = await _snapshot();
+        // Done once the player is open; an unplayable post is skipped by
+        // the watch loop with the player's next button.
+        if (NurtureVideo.read(s)?.detail == true ||
+            NurtureVideo.playerNext(s) != null) {
+          return;
+        }
+        final step = _searchStep(s, keyword, fired);
+        final previous = step == null ? null : last[step.$1];
+        if (step == null ||
+            (previous != null &&
+                _now().difference(previous) < const Duration(seconds: 6))) {
+          await _sleep();
+          continue;
+        }
+        final (name, node) = step;
+        final count = fired[name] = (fired[name] ?? 0) + 1;
+        if (count > 2) {
+          throw StateError(
+            'Không tìm kiếm được "$keyword" (bước $name); đã dừng nuôi.',
+          );
+        }
+        last[name] = _now();
+        if (name == 'paste') {
+          final result = await accessibility.paste(keyword, 'search');
+          _check();
+          if (result['ok'] != true) {
+            throw StateError(
+              'Không nhập được từ khóa tìm kiếm (${result['reason']}); '
+              'đã dừng nuôi.',
+            );
+          }
+        } else {
+          final a = s.viewport.fromScreen(node.bounds.topLeft);
+          final b = s.viewport.fromScreen(node.bounds.bottomRight);
+          // Result rows are plain views; the gesture target is their box.
+          await _tap(
+            'search/$name/${a.dx.round()}-${a.dy.round()}-${b.dx.round()}-${b.dy.round()}',
+            s,
+            SignupNode({
+              'id': node.id,
+              'enabled': true,
+              'clickable': true,
+              'bounds': [
+                node.bounds.left,
+                node.bounds.top,
+                node.bounds.right,
+                node.bounds.bottom,
+              ],
+            }),
+          );
+        }
+        await _sleep(1500);
+      }
+      throw StateError(
+        'Không mở được video từ kết quả tìm kiếm "$keyword"; đã dừng nuôi.',
+      );
+    } finally {
+      await accessibility.setKeyboardSuppressed(false);
+    }
+  }
+
+  (String, SignupNode)? _searchStep(
+    SignupSnapshot s,
+    String keyword,
+    Map<String, int> fired,
+  ) {
+    final v = s.viewport.bounds;
+    // The player opens as a Dialog over the grid, whose tiles stay in the
+    // tree. Never tap the grid through it (that lands on the player's
+    // Like/Favorite buttons); wait for its clock instead.
+    if (s.nodes.any((n) => n.className.endsWith('Dialog'))) return null;
+    final videosTab = s.nodes
+        .where(
+          (n) =>
+              n.clickable &&
+              n.className.endsWith('Button') &&
+              n.text.trim() == 'Videos',
+        )
+        .firstOrNull;
+    if (videosTab != null) {
+      // The Top tab mixes in users and LIVE rooms; Videos holds only posts.
+      if ((fired['videos-tab'] ?? 0) == 0) return ('videos-tab', videosTab);
+      final tiles = s.nodes
+          .where(
+            (n) =>
+                n.clickable &&
+                n.enabled &&
+                n.description.trim() == 'Watch in full screen' &&
+                v.contains(n.bounds.topLeft) &&
+                n.bounds.bottom <= v.bottom,
+          )
+          .toList();
+      if (tiles.isNotEmpty) {
+        return ('result', tiles[_random.nextInt(min(tiles.length, 8))]);
+      }
+      return null;
+    }
+    final query = keyword.toLowerCase();
+    final viewAll = s.nodes
+        .where(
+          (n) =>
+              n.text.trim().startsWith('View all results for') &&
+              n.text.toLowerCase().contains(query),
+        )
+        .firstOrNull;
+    if (viewAll != null) return ('view-all', viewAll);
+    final drawer = s.nodes
+        .where(
+          (n) =>
+              n.editable &&
+              n.focused &&
+              n.bounds.width > v.width * .2 &&
+              n.bounds.center.dx < v.left + v.width * .5 &&
+              !RegExp('comment', caseSensitive: false).hasMatch(n.hint),
+        )
+        .firstOrNull;
+    if (drawer != null) return ('paste', drawer);
+    final sidebar = s.nodes
+        .where((n) => n.editable && n.bounds.center.dx < v.left + v.width * .1)
+        .firstOrNull;
+    if (sidebar != null) return ('open', sidebar);
+    return null;
+  }
+
+  Future<void> _skipLive(SignupSnapshot s, SignupNode next) async {
+    await _tap('live/feed/next-video', s, next);
+    // One tap only; never repeated if the feed did not move.
+    final deadline = _now().add(const Duration(seconds: 8));
+    while (_now().isBefore(deadline)) {
+      await _sleep();
+      final fresh = await _snapshot();
+      if (NurtureVideo.read(fresh) != null ||
+          NurtureVideo.liveNext(fresh) == null) {
+        return;
+      }
+    }
+    throw StateError('Chưa bỏ qua được bài LIVE; đã dừng để kiểm tra tọa độ.');
   }
 
   Future<void> _advance(
@@ -474,7 +862,12 @@ class NurtureAccessibilityRunner {
       if (current != null && current.key != video.key) {
         if (!plan.completed) {
           plan.completed = true;
-          _skipped++;
+          // A capped long video counts as watched, not skipped.
+          if (plan.full) {
+            _full++;
+          } else {
+            _skipped++;
+          }
           await _emit();
         }
         _previous = current;
@@ -499,6 +892,7 @@ class NurtureAccessibilityRunner {
     bool Function(SignupSnapshot) ready,
   ) async {
     final until = _now().add(const Duration(seconds: 8));
+    var seen = 'chưa đọc được video';
     do {
       await _sleep(200);
       final s = await _snapshot();
@@ -510,8 +904,13 @@ class NurtureAccessibilityRunner {
         throw StateError('Video đã thay đổi khi bình luận; đã dừng.');
       }
       if (ready(s)) return s;
+      // Last observed state, so a timeout says what was missing.
+      seen =
+          'bàn phím ${s.keyboardVisible ? 'hiện' : 'ẩn'}, ô nhập '
+          '${s.editors.map((n) => '${n.length}${n.focused ? '*' : ''}').join('/')}';
     } while (_now().isBefore(until));
-    throw const _CommentNotReady('Bình luận chưa sẵn sàng.');
+    debugPrint('Nurture comment wait timed out: $seen');
+    throw _CommentNotReady('Bình luận chưa sẵn sàng ($seen).');
   }
 
   Future<bool> _closeEmptyComments() async {
@@ -564,18 +963,19 @@ class NurtureAccessibilityRunner {
       s.nodes.where((n) => !n.editable && n.text.trim() == text.trim()).length;
 
   Future<void> _comment(SignupSnapshot s, NurtureVideo video) async {
-    var pasteAttempted = false;
+    var pasteAttempted = false, keepSuppressed = false;
     try {
       final kind = video.orientation.name;
-      await _tap(
-        '${video.layout(s.viewport)}/open-comments',
-        s,
-        video.comments,
-      );
-      s = await _waitFor(
-        video.key,
-        (s) => _editor(s) != null && _close(s) != null,
-      );
+      if (video.detail) {
+        // The search-result player keeps its comment box open beside it.
+        s = await _waitFor(video.key, (s) => _editor(s) != null);
+      } else {
+        await _tap(video.commentsKey(s.viewport), s, video.comments!);
+        s = await _waitFor(
+          video.key,
+          (s) => _editor(s) != null && _close(s) != null,
+        );
+      }
       if (NurtureVideo.read(s)!.position + 4 >= video.duration * .7) {
         throw const _CommentNotReady(
           'Không còn đủ thời gian để nhập bình luận.',
@@ -613,51 +1013,132 @@ class NurtureAccessibilityRunner {
         final result = await accessibility.paste(text, 'comment');
         _check();
         if (result['ok'] != true) {
+          final reason = '${result['reason']}';
+          if (reason.startsWith('editor-unavailable') ||
+              reason == 'paste-rejected' ||
+              reason == 'paste-not-inserted') {
+            // Nothing reached the editor (verified empty): no draft to keep.
+            pasteAttempted = false;
+            throw _CommentNotReady('Ô bình luận chưa sẵn sàng ($reason).');
+          }
           throw StateError(
-            'Không nhập được bình luận qua Accessibility; đã giữ bản nháp.',
+            'Không nhập được bình luận qua Accessibility '
+            '(${result['reason']}); đã giữ bản nháp.',
           );
         }
-        await accessibility.dismissKeyboard();
+        // The search-result player keeps the keyboard suppressed through
+        // submit: dismissKeyboard restores the normal policy after 300ms,
+        // which would reopen it on the still-focused editor.
+        if (!video.detail) await accessibility.dismissKeyboard();
+        keepSuppressed = video.detail;
       } finally {
-        await accessibility.setKeyboardSuppressed(false);
+        if (!keepSuppressed) await accessibility.setKeyboardSuppressed(false);
       }
-      s = await _waitFor(
-        video.key,
-        (s) =>
-            !s.keyboardVisible &&
-            s.find(RegExp(r'^Post$', caseSensitive: false)) != null,
-      );
-      if (NurtureVideo.read(s)!.position + 1 >= video.duration * .7) {
-        throw StateError(
-          'Đã quá thời điểm bình luận; đã dừng và giữ bản nháp.',
-        );
-      }
-      // Exact one Post dispatch; never retry an uncertain publication.
-      final post = s.find(RegExp(r'^Post$', caseSensitive: false))!;
-      await _tap(
-        NurtureCoordinateProfile.panelKey(
-          kind,
-          'post-comment',
-          s.viewport,
-          post,
-        ),
-        s,
-        post,
-        beforeDispatch: (point) async {
-          final fresh = await _sameVideo(video.key);
-          final current = NurtureVideo.read(fresh)!;
-          final button = fresh.find(RegExp(r'^Post$', caseSensitive: false));
-          if (fresh.viewport.bounds != s.viewport.bounds ||
-              button == null ||
-              !button.bounds.contains(fresh.viewport.toScreen(point)) ||
-              current.position < NurtureVideo.read(s)!.position ||
-              current.position + 1 >= current.duration * .7) {
+      if (video.detail) {
+        // In the search-result player the editor keeps focus after the
+        // keyboard is dismissed, so the keyboard stays suppressed until the
+        // comment is confirmed and the editor is blurred.
+        try {
+          await accessibility.setKeyboardSuppressed(true);
+          _check();
+          // A filled editor drops its "Add comment" hint: it is the filled
+          // editor in the lower half of the frame.
+          s = await _waitFor(
+            video.key,
+            (s) =>
+                !s.keyboardVisible &&
+                s.editors.any(
+                  (n) =>
+                      n.length > 0 &&
+                      n.bounds.center.dy > s.viewport.bounds.center.dy,
+                ),
+          );
+          if (NurtureVideo.read(s)!.position + 1 >= video.duration * .7) {
             throw StateError(
-              'Video hoặc thời điểm gửi đã đổi; đã dừng và giữ bản nháp.',
+              'Đã quá thời điểm bình luận; đã dừng và giữ bản nháp.',
             );
           }
-        },
-      );
+          // The Post button is clipped off-screen by the side panel, so it
+          // is pressed with ACTION_CLICK. Exactly one submit; never retried.
+          if (!await accessibility.submitComment()) {
+            throw StateError(
+              'Không gửi được bình luận; đã dừng và giữ bản nháp.',
+            );
+          }
+          _check();
+          s = await _waitFor(
+            video.key,
+            (s) => _editor(s)?.length == 0 && _matches(s, text) > baseline,
+          );
+          _comments++;
+          await _emit();
+          onComment?.call();
+          // Blur the editor by tapping the already-selected Comments tab.
+          final tab = s.nodes
+              .where((n) => RegExp(r'^Comments \(').hasMatch(n.text.trim()))
+              .firstOrNull;
+          if (tab != null) {
+            final a = s.viewport.fromScreen(tab.bounds.topLeft);
+            await _tap(
+              'detail/panel/blur-comment/${a.dx.round()}-${a.dy.round()}',
+              s,
+              SignupNode({
+                'id': tab.id,
+                'enabled': true,
+                'clickable': true,
+                'bounds': [
+                  tab.bounds.left,
+                  tab.bounds.top,
+                  tab.bounds.right,
+                  tab.bounds.bottom,
+                ],
+              }),
+            );
+            await _sleep(500);
+          }
+        } finally {
+          await accessibility.setKeyboardSuppressed(false);
+        }
+        return;
+      } else {
+        s = await _waitFor(
+          video.key,
+          (s) =>
+              !s.keyboardVisible &&
+              s.find(RegExp(r'^Post$', caseSensitive: false)) != null,
+        );
+        if (NurtureVideo.read(s)!.position + 1 >= video.duration * .7) {
+          throw StateError(
+            'Đã quá thời điểm bình luận; đã dừng và giữ bản nháp.',
+          );
+        }
+        // Exact one Post dispatch; never retry an uncertain publication.
+        final post = s.find(RegExp(r'^Post$', caseSensitive: false))!;
+        await _tap(
+          NurtureCoordinateProfile.panelKey(
+            kind,
+            'post-comment',
+            s.viewport,
+            post,
+          ),
+          s,
+          post,
+          beforeDispatch: (point) async {
+            final fresh = await _sameVideo(video.key);
+            final current = NurtureVideo.read(fresh)!;
+            final button = fresh.find(RegExp(r'^Post$', caseSensitive: false));
+            if (fresh.viewport.bounds != s.viewport.bounds ||
+                button == null ||
+                !button.bounds.contains(fresh.viewport.toScreen(point)) ||
+                current.position < NurtureVideo.read(s)!.position ||
+                current.position + 1 >= current.duration * .7) {
+              throw StateError(
+                'Video hoặc thời điểm gửi đã đổi; đã dừng và giữ bản nháp.',
+              );
+            }
+          },
+        );
+      }
       s = await _waitFor(
         video.key,
         (s) => _editor(s)?.length == 0 && _matches(s, text) > baseline,
@@ -679,7 +1160,8 @@ class NurtureAccessibilityRunner {
       );
       await _waitFor(video.key, (s) => _close(s) == null);
     } on _CommentNotReady catch (error) {
-      if (!pasteAttempted && await _closeEmptyComments()) {
+      final empty = video.detail && _editor(await _snapshot())?.length == 0;
+      if (!pasteAttempted && (empty || await _closeEmptyComments())) {
         onCommentSkipped?.call(
           '${error.message} Bỏ qua bình luận này và tiếp tục nuôi.',
         );

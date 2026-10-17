@@ -234,6 +234,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   final NurtureRepository? nurtureRepository;
   ManualViewingSession? _manualSession;
   ManualViewingSession? _autoViewingSession;
+
+  /// Chosen once per TikTok screen: the For You feed or one random keyword,
+  /// so each nurture run's mode is unpredictable.
+  late final NurturePlan _nurturePlan = NurturePlan.choose(
+    configuration.searchKeywords,
+  );
   int? _autoViewingNavigation;
   String? _autoViewingSegment;
   Future<void> _autoWatchOperations = Future.value();
@@ -535,6 +541,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             ),
             onCommentSkipped: (message) =>
                 notify(message, duration: const Duration(seconds: 2)),
+            searchKeyword: _nurturePlan.mode == NurtureMode.search
+                ? _nurturePlan.keyword
+                : null,
             now: _now,
           );
         }
@@ -674,7 +683,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       repository: nurtureRepository ?? proxyStore.nurture,
       email: email,
       configurationId: configuration.configurationId,
-      plan: const NurturePlan(NurtureMode.feed),
+      plan: usesAccessibilityLogin
+          ? _nurturePlan
+          : const NurturePlan(NurtureMode.feed),
       onError: () => notify('Không thể lưu thống kê nuôi vào tài khoản.'),
     );
     await session.start();
@@ -773,6 +784,23 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
   }
 
+  /// null when no snapshot exposed the WebView at all.
+  Future<bool?> _accessibilityAuthenticated() async {
+    // The tree can be briefly missing or half-rendered after a page or Flutter
+    // semantics update; retry before concluding the account is signed out.
+    bool? result;
+    for (var attempt = 0; attempt < 10; attempt++) {
+      final s = await signupAccessibility.snapshot();
+      if (s.ready) {
+        result = NurtureAccessibilityRunner.authenticated(s);
+        if (result) return true;
+      }
+      if (!active || !appActive) break;
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+    return result;
+  }
+
   Future<void> toggleAutoWatch() async {
     if (useNativeWebView) return;
     if (!active ||
@@ -805,9 +833,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         final navigation = navigationId;
         mutate(() => loginConfirmed = false);
         final authenticated = usesAccessibilityLogin
-            ? NurtureAccessibilityRunner.authenticated(
-                await signupAccessibility.snapshot(),
-              )
+            ? await _accessibilityAuthenticated()
             : await webViewController?.evaluateJavascript(
                 source: checkAuthenticatedSessionScript,
               );
@@ -817,6 +843,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             browserCheckOpen ||
             pageFailure != null ||
             accountFailure != null) {
+          return;
+        }
+        if (authenticated == null && usesAccessibilityLogin) {
+          // Unreadable is not signed out; keep the stored login state.
+          notify('Chưa đọc được trang TikTok qua Accessibility; hãy thử lại.');
           return;
         }
         if (authenticated != true) {
@@ -1231,16 +1262,17 @@ class TikTokController extends AppController with WidgetsBindingObserver {
               close,
             ): close,
         } else ...{
-          '${video.layout(snapshot.viewport)}/open-comments': video.comments,
+          if (video.comments case final comments?)
+            video.commentsKey(snapshot.viewport): comments,
           if (video.next case final next?) '$kind/feed/next-video': next,
         },
       };
       for (final entry in controls.entries) {
         await profile.target(entry.key, snapshot.viewport, entry.value);
       }
-      final point = profile.point(
-        '${video.layout(snapshot.viewport)}/open-comments',
-      );
+      final point = video.comments == null
+          ? null
+          : profile.point(video.commentsKey(snapshot.viewport));
       result = {
         'ok': true,
         'orientation': kind,
@@ -1268,6 +1300,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           ),
         ),
       );
+    } else if (action == 'submit-comment') {
+      result = {'ok': await signupAccessibility.submitComment()};
     } else if (action == 'paste-comment') {
       result = await signupAccessibility.paste(
         '${args['userOtp'] ?? ''}',

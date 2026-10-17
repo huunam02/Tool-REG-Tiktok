@@ -22,7 +22,9 @@ class AppConfiguration {
     this.webViewTimeZone,
     this.webViewLocalIp = '192.168.1.10',
     this.configurationId,
-  }) : comments = List.unmodifiable(comments);
+    List<String> searchKeywords = const [],
+  }) : comments = List.unmodifiable(comments),
+       searchKeywords = List.unmodifiable(searchKeywords);
 
   factory AppConfiguration.defaults(String userAgent) => AppConfiguration(
     userAgent: userAgent,
@@ -44,6 +46,9 @@ class AppConfiguration {
   final String loginMailboxPassword;
   final OtpApiConfiguration? otpApi;
   final List<String> comments;
+
+  /// Keywords for search-mode nurture; empty keeps every session on the feed.
+  final List<String> searchKeywords;
   final DateTime? birthday;
   final WebViewProxy? proxy;
   final String? webViewTimeZone;

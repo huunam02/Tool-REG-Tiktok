@@ -21,6 +21,11 @@ class FlutterAccessibilityService {
   static Future<bool> signupSetKeyboardSuppressed(bool suppressed) async =>
       await _methodChannel.invokeMethod<bool>('signupSetKeyboardSuppressed', {'suppressed': suppressed}) ?? false;
 
+  /// Accessibility ACTION_CLICK on the Post button beside the focused,
+  /// non-empty comment editor, for layouts where it is clipped off-screen.
+  static Future<bool> signupSubmitComment() async =>
+      await _methodChannel.invokeMethod<bool>('signupSubmitComment') ?? false;
+
   static Future<bool> signupDismissKeyboard() async =>
       await _methodChannel.invokeMethod<bool>('signupDismissKeyboard') ?? false;
 

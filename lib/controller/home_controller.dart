@@ -484,6 +484,7 @@ class HomeController extends AppController
             ? timeZone
             : null,
         comments: AppConfiguration.parseComments(comments.text),
+        searchKeywords: AppConfiguration.parseComments(keywords.text),
         signupEmail: account?.email ?? '',
         signupPassword: account?.password ?? '',
         loginUsername: account?.email ?? '',

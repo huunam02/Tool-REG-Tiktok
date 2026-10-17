@@ -87,7 +87,10 @@ final class SignupAccessibilityBridge {
         web.getBoundsInScreen(rect);
         result.put("webBounds", bounds(rect));
         List<Map<String, Object>> nodes = new ArrayList<>();
-        collect(web, "0", nodes, 0);
+        // Nodes present but not visible (e.g. a video clock faded out with its
+        // controls). Kept apart so callers reading "nodes" are unaffected.
+        List<Map<String, Object>> hidden = new ArrayList<>();
+        collect(web, "0", nodes, hidden, 0);
         // HTML select opens a native list outside the WebView subtree.
         java.util.Set<Integer> windows = new java.util.HashSet<>();
         AccessibilityNodeInfo active = service.getRootInActiveWindow();
@@ -102,6 +105,7 @@ final class SignupAccessibilityBridge {
             }
         }
         result.put("nodes", nodes);
+        result.put("hidden", hidden);
         return result;
     }
 
@@ -111,7 +115,7 @@ final class SignupAccessibilityBridge {
         String type = String.valueOf(node.getClassName());
         if (node.isVisibleToUser() && (type.equals("android.widget.ListView") || type.equals("android.widget.NumberPicker"))) {
             int start = nodes.size();
-            collect(node, path, nodes, 0);
+            collect(node, path, nodes, new ArrayList<>(), 0);
             for (int i=start; i<nodes.size(); i++) nodes.get(i).put("picker", true);
             return;
         }
@@ -203,8 +207,22 @@ final class SignupAccessibilityBridge {
         return numericPlaceholder(editor) ? editor.getText() : null;
     }
 
-    private static void collect(AccessibilityNodeInfo node, String path, List<Map<String, Object>> nodes, int depth) {
+    private static void collect(AccessibilityNodeInfo node, String path, List<Map<String, Object>> nodes,
+            List<Map<String, Object>> hidden, int depth) {
         if (node == null || depth > 40 || nodes.size() >= 1200) return;
+        if (!node.isVisibleToUser() && hidden.size() < 600) {
+            Rect rect = new Rect(); node.getBoundsInScreen(rect);
+            Map<String, Object> item = new HashMap<>();
+            item.put("id", path);
+            item.put("className", String.valueOf(node.getClassName()));
+            item.put("bounds", bounds(rect));
+            item.put("editable", node.isEditable());
+            item.put("focused", node.isFocused());
+            item.put("text", node.isEditable() || node.isPassword() ? "" : safe(node.getText()));
+            item.put("description", node.isEditable() || node.isPassword() ? "" : safe(node.getContentDescription()));
+            item.put("hint", node.isEditable() ? safe(editorHint(node)) : "");
+            hidden.add(item);
+        }
         if (node.isVisibleToUser()) {
             Rect rect = new Rect(); node.getBoundsInScreen(rect);
             Map<String, Object> item = new HashMap<>();
@@ -227,18 +245,27 @@ final class SignupAccessibilityBridge {
             item.put("hint", node.isEditable() ? safe(editorHint(node)) : Build.VERSION.SDK_INT >= 26 ? safe(node.getHintText()) : "");
             nodes.add(item);
         }
-        for (int i = 0; i < node.getChildCount(); i++) collect(node.getChild(i), path + "." + i, nodes, depth + 1);
+        for (int i = 0; i < node.getChildCount(); i++) collect(node.getChild(i), path + "." + i, nodes, hidden, depth + 1);
     }
 
     static void paste(String text, String field, MethodChannel.Result result) {
         AccessibilityListener service = AccessibilityListener.currentInstance();
         AccessibilityNodeInfo web = webRoot(service);
-        AccessibilityNodeInfo editor = web == null ? null : web.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-        if (pasting || field == null || text == null || text.isEmpty() || editor == null || !editor.refresh() || !editor.isVisibleToUser() ||
-                !editor.isEditable() || !editor.isEnabled() || !service.getPackageName().contentEquals(editor.getPackageName())) {
-            result.success(status(false, "editor-unavailable")); return;
+        AccessibilityNodeInfo inputFocus = web == null ? null : web.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        // Input focus is resolved through the Android view hierarchy. When a
+        // Flutter view (snackbar, semantics update) holds it, findFocus misses
+        // the WebView even though its editor is still focused in the page.
+        final AccessibilityNodeInfo editor = web != null && (inputFocus == null || !inputFocus.refresh() || !inputFocus.isEditable())
+            ? focusedEditor(web, 0) : inputFocus;
+        String unavailable = pasting ? "busy" : field == null || text == null || text.isEmpty() ? "no-text" :
+            web == null ? "no-webview" : editor == null ? "no-focused-editor" : !editor.refresh() ? "editor-detached" :
+            !editor.isVisibleToUser() ? "editor-hidden" : !editor.isEditable() || !editor.isEnabled() ? "editor-disabled" :
+            !service.getPackageName().contentEquals(editor.getPackageName()) ? "foreign-editor" : null;
+        if (unavailable != null) {
+            result.success(status(false, "editor-unavailable:" + unavailable)); return;
         }
-        if (!field.equals("email") && !field.equals("password") && !field.equals("otp") && !field.equals("comment") ||
+        if (!field.equals("email") && !field.equals("password") && !field.equals("otp") && !field.equals("comment") &&
+                !field.equals("search") ||
                 field.equals("password") != editor.isPassword() ||
                 field.equals("otp") && !text.matches("[0-9]{6}")) {
             result.success(status(false, "wrong-field")); return;
@@ -258,7 +285,16 @@ final class SignupAccessibilityBridge {
             result.success(status(false, "wrong-otp-field")); return;
         }
         CharSequence previous = editorValue(editor);
-        if (previous != null && previous.length() > 0) {
+        if (field.equals("search") && previous != null && previous.length() > 0) {
+            // A search box may keep the last query; select it so the paste
+            // replaces it. A query is not a draft worth preserving.
+            Bundle selection = new Bundle();
+            selection.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0);
+            selection.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, previous.length());
+            if (!editor.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selection)) {
+                result.success(status(false, "search-not-cleared")); return;
+            }
+        } else if (previous != null && previous.length() > 0) {
             result.success(status(text.contentEquals(previous), "draft-exists")); return;
         }
         ClipboardManager clipboard = (ClipboardManager) service.getSystemService(Context.CLIPBOARD_SERVICE);
@@ -280,28 +316,46 @@ final class SignupAccessibilityBridge {
                 if (!editor.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) {
                     failPaste(clipboard, oldClip, text, result, "numeric-input-rejected"); return;
                 }
-                verifyPaste(editor, text, field, clipboard, oldClip, result, 0);
+                verifyPaste(editor, text, field, clipboard, oldClip, result, 0, null);
                 return;
             }
-            if (field.equals("otp")) {
+            if (splitOtp) {
                 // Chromium's ACTION_PASTE acknowledges the six-slot OTP view
                 // without filling it. The real floating Paste menu does work.
-                Rect rect = new Rect(); editor.getBoundsInScreen(rect);
-                gesture(service, rect.exactCenterX(), rect.exactCenterY(), 850, () ->
-                    pasteMenu(service, editor, text, clipboard, oldClip, result, 0), () ->
-                    failPaste(clipboard, oldClip, text, result, "long-press-failed"));
+                longPressPaste(service, editor, text, field, clipboard, oldClip, result);
                 return;
             }
             boolean accepted = editor.performAction(AccessibilityNodeInfo.ACTION_PASTE);
             if (!accepted) {
+                // A single-field OTP may still accept the real Paste menu.
+                if (field.equals("otp")) { longPressPaste(service, editor, text, field, clipboard, oldClip, result); return; }
                 restoreClipboard(clipboard, oldClip, text); pasting = false;
                 result.success(status(false, "paste-rejected")); return;
             }
-            verifyPaste(editor, text, field, clipboard, oldClip, result, 0);
+            verifyPaste(editor, text, field, clipboard, oldClip, result, 0,
+                field.equals("otp") ? () -> longPressPaste(service, editor, text, field, clipboard, oldClip, result)
+                // TikTok's comment box sometimes acknowledges ACTION_PASTE
+                // without inserting. A long press there selects the
+                // placeholder text instead of offering Paste, so retry the
+                // action once on the still-focused, still-empty editor.
+                : field.equals("comment") || field.equals("search") ? () -> {
+                    if (!pasteCancelled && editor.refresh() && editor.isFocused() &&
+                            editor.performAction(AccessibilityNodeInfo.ACTION_PASTE)) {
+                        verifyPaste(editor, text, field, clipboard, oldClip, result, 0, null);
+                    } else failPaste(clipboard, oldClip, text, result, "paste-not-inserted");
+                } : null);
         } catch (Exception ignored) {
             restoreClipboard(clipboard, oldClip, text); pasting = false;
             result.success(status(false, "paste-failed"));
         }
+    }
+
+    private static void longPressPaste(AccessibilityListener service, AccessibilityNodeInfo editor, String text, String field,
+            ClipboardManager clipboard, ClipData oldClip, MethodChannel.Result result) {
+        Rect rect = new Rect(); editor.getBoundsInScreen(rect);
+        gesture(service, rect.exactCenterX(), rect.exactCenterY(), 850, () ->
+            pasteMenu(service, editor, text, field, clipboard, oldClip, result, 0), () ->
+            failPaste(clipboard, oldClip, text, result, "long-press-failed"));
     }
 
     private static void gesture(AccessibilityListener service, float x, float y, int duration,
@@ -317,7 +371,7 @@ final class SignupAccessibilityBridge {
         if (!sent) failed.run();
     }
 
-    private static void pasteMenu(AccessibilityListener service, AccessibilityNodeInfo editor, String text,
+    private static void pasteMenu(AccessibilityListener service, AccessibilityNodeInfo editor, String text, String field,
             ClipboardManager clipboard, ClipData oldClip, MethodChannel.Result result, int retry) {
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             if (pasteCancelled || AccessibilityListener.currentInstance() != service || webRoot(service) == null ||
@@ -333,13 +387,13 @@ final class SignupAccessibilityBridge {
                 }
             }
             if (menu == null) {
-                if (retry < 14) pasteMenu(service, editor, text, clipboard, oldClip, result, retry+1);
+                if (retry < 14) pasteMenu(service, editor, text, field, clipboard, oldClip, result, retry+1);
                 else failPaste(clipboard, oldClip, text, result, "paste-menu-unavailable");
                 return;
             }
             Rect rect = new Rect(); menu.getBoundsInScreen(rect);
             gesture(service, rect.exactCenterX(), rect.exactCenterY(), 140, () ->
-                verifyPaste(editor, text, "otp", clipboard, oldClip, result, 0), () ->
+                verifyPaste(editor, text, field, clipboard, oldClip, result, 0, null), () ->
                 failPaste(clipboard, oldClip, text, result, "paste-menu-tap-failed"));
         }, 100);
     }
@@ -371,6 +425,59 @@ final class SignupAccessibilityBridge {
         result.success(status(false, reason));
     }
 
+    /** ACTION_CLICK on the Post control beside the filled comment editor. */
+    static boolean submitComment() {
+        AccessibilityNodeInfo web = webRoot(AccessibilityListener.currentInstance());
+        return web != null && submitFrom(web, 0);
+    }
+
+    // A filled comment box drops its "Add comment" hint and loses focus once
+    // the keyboard is dismissed, so it is identified as a non-empty editor
+    // with a Post control inside its own container (at most four levels up).
+    private static boolean submitFrom(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 40) return false;
+        if (node.isEditable() && !node.isPassword() && node.getText() != null &&
+                !comparableComment(node.getText()).isEmpty()) {
+            AccessibilityNodeInfo scope = node;
+            for (int level = 0; level < 4 && scope != null; level++) {
+                scope = scope.getParent();
+                AccessibilityNodeInfo post = findPost(scope, 0);
+                if (post == null) continue;
+                // Enter submits a TikTok comment. A click on the clipped,
+                // zero-width Post button is acknowledged but lands nowhere.
+                if (Build.VERSION.SDK_INT >= 30 && node.performAction(
+                        AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId())) return true;
+                return post.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            }
+        }
+        for (int i=0; i<node.getChildCount(); i++) {
+            if (submitFrom(node.getChild(i), depth+1)) return true;
+        }
+        return false;
+    }
+
+    private static AccessibilityNodeInfo findPost(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 12) return null;
+        String label = (node.getContentDescription() != null ? node.getContentDescription() : node.getText() != null ? node.getText() : "")
+            .toString().trim();
+        if (node.isEnabled() && !node.isEditable() && label.equalsIgnoreCase("Post")) return node;
+        for (int i=0; i<node.getChildCount(); i++) {
+            AccessibilityNodeInfo found = findPost(node.getChild(i), depth+1);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static AccessibilityNodeInfo focusedEditor(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 40) return null;
+        if (node.isEditable() && node.isFocused() && node.isVisibleToUser()) return node;
+        for (int i=0; i<node.getChildCount(); i++) {
+            AccessibilityNodeInfo found = focusedEditor(node.getChild(i), depth+1);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
     private static int editableCount(AccessibilityNodeInfo node, int depth) {
         if (node == null || depth > 40) return 0;
         int count = node.isVisibleToUser() && node.isEditable() && !node.isPassword() ? 1 : 0;
@@ -379,7 +486,7 @@ final class SignupAccessibilityBridge {
     }
 
     private static void verifyPaste(AccessibilityNodeInfo editor, String text, String field,
-            ClipboardManager clipboard, ClipData oldClip, MethodChannel.Result result, int retry) {
+            ClipboardManager clipboard, ClipData oldClip, MethodChannel.Result result, int retry, Runnable emptyFallback) {
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             try {
                 if (pasteCancelled) {
@@ -397,11 +504,19 @@ final class SignupAccessibilityBridge {
                 boolean otpAdvanced = field.equals("otp") && web != null &&
                     (!attached || !editor.isEditable() || editableCount(web, 0) == 0 || hasPasswordEditor(web, 0));
                 boolean splitMatched = field.equals("otp") && text.equals(editableText(web, 0));
+                // Acknowledged but nothing inserted: one real-menu attempt.
+                // Any partial value is never pasted over.
+                if (!exact && !otpAdvanced && !splitMatched && retry >= 19 && emptyFallback != null &&
+                        attached && (value == null || value.length() == 0)) {
+                    emptyFallback.run(); return;
+                }
                 if (exact || passwordLength || otpAdvanced || splitMatched || retry >= 19) {
                     restoreClipboard(clipboard, oldClip, text); pasting = false;
+                    boolean empty = attached && (value == null || value.length() == 0);
                     result.success(status(exact || passwordLength || otpAdvanced || splitMatched,
-                        exact || splitMatched ? "value-matched" : passwordLength ? "password-length-matched" : otpAdvanced ? "otp-view-replaced" : "value-not-confirmed"));
-                } else verifyPaste(editor, text, field, clipboard, oldClip, result, retry + 1);
+                        exact || splitMatched ? "value-matched" : passwordLength ? "password-length-matched" : otpAdvanced ? "otp-view-replaced" :
+                        (field.equals("comment") || field.equals("search")) && empty ? "paste-not-inserted" : "value-not-confirmed"));
+                } else verifyPaste(editor, text, field, clipboard, oldClip, result, retry + 1, emptyFallback);
             } catch (Exception ignored) {
                 restoreClipboard(clipboard, oldClip, text); pasting = false;
                 result.success(status(false, "verification-failed"));
@@ -410,6 +525,8 @@ final class SignupAccessibilityBridge {
     }
 
     private static Map<String, Object> status(boolean ok, String reason) {
+        // Reason only; field values never reach logs.
+        if (!ok) android.util.Log.w("SignupAccessibility", "paste failed: " + reason);
         Map<String, Object> value = new HashMap<>(); value.put("ok", ok); value.put("reason", reason); return value;
     }
 

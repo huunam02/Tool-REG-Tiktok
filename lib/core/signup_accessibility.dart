@@ -166,6 +166,9 @@ class SignupAccessibility {
     }
   }
 
+  Future<bool> submitComment() =>
+      FlutterAccessibilityService.signupSubmitComment();
+
   Future<void> dismissKeyboard() async {
     if (!await FlutterAccessibilityService.signupDismissKeyboard()) {
       throw StateError('Không đóng được bàn phím.');

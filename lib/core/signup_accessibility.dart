@@ -207,6 +207,29 @@ class SignupAccessibility {
     if (!completed) throw StateError('Accessibility chưa hoàn tất cú chạm.');
   });
 
+  /// Physical coordinates, for WebViews that are not in the 1:2 frame.
+  Future<void> tapScreen(Rect bounds, Offset point) => _perform(() async {
+    if (!bounds.isFinite ||
+        bounds.isEmpty ||
+        !point.dx.isFinite ||
+        !point.dy.isFinite ||
+        !bounds.contains(point)) {
+      throw StateError('Điểm chạm nằm ngoài khung WebView.');
+    }
+    final completed = await FlutterAccessibilityService.dispatchGesture(
+      GestureDescription(
+        strokes: [
+          GestureStroke(
+            path: [GesturePoint(point.dx, point.dy)],
+            startTime: 0,
+            duration: 140,
+          ),
+        ],
+      ),
+    );
+    if (!completed) throw StateError('Accessibility chưa hoàn tất cú chạm.');
+  });
+
   Future<void> swipe(SignupViewport viewport, Offset from, Offset to) async =>
       swipeScreen(
         viewport.bounds,

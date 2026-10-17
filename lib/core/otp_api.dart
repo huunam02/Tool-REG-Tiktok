@@ -27,6 +27,11 @@ class OtpApiConfiguration {
         url.hasFragment) {
       throw const FormatException('Nhập URL API HTTP/HTTPS hợp lệ.');
     }
+    // Remote Config may hold only the service origin; the reader always
+    // serves POST /api/code, and the bare origin answers 405.
+    if (url.path.isEmpty || url.path == '/') {
+      return url.replace(path: '/api/code');
+    }
     return url;
   }
 }

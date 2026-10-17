@@ -570,9 +570,11 @@ void main() {
     WidgetTester tester, {
     double shiftY = 0,
     required List<Object> otpResults,
+    void Function(_RecordedAccessibility)? setup,
   }) async {
     final accessibility = _RecordedAccessibility(profile, recording)
       ..shiftY = shiftY;
+    setup?.call(accessibility);
     var otpRequests = 0;
     final runner = SignupCoordinateRunner(
       profile: profile,
@@ -672,6 +674,37 @@ void main() {
     expect(accessibility.pastes, ['email']);
     expect(accessibility.actions, isNot(contains('submit-password')));
   });
+
+  for (final scenario in ['on-load', 'mid-form', 'stays-open']) {
+    testWidgets('cookie banner is accepted once: $scenario', (tester) async {
+      final (failure, accessibility, _) = await runSignup(
+        tester,
+        otpResults: ['123456'],
+        setup: (a) {
+          a.cookieBanner = scenario != 'mid-form';
+          a.cookieBannerStays = scenario == 'stays-open';
+          if (scenario == 'mid-form') {
+            a.onAction = (name) {
+              if (name == 'use-email') a.cookieBanner = true;
+            };
+          }
+        },
+      );
+      expect(failure, isNull, reason: '${accessibility.actions}');
+      expect(accessibility.state, 'authenticated-home');
+      expect(
+        accessibility.actions.where((a) => a == 'accept-cookies'),
+        hasLength(1),
+      );
+      final accepted = accessibility.actions.indexOf('accept-cookies');
+      if (scenario == 'mid-form') {
+        expect(accessibility.actions[accepted - 1], 'use-email');
+      } else {
+        expect(accepted, 0);
+      }
+      expect(accessibility.pastes, ['email', 'otp', 'password']);
+    });
+  }
 }
 
 class _BoundaryRandom implements Random {
@@ -741,6 +774,11 @@ class _RecordedAccessibility extends SignupAccessibility {
   bool resendReady = false;
   bool resent = false;
 
+  /// TikTok's bottom cookie banner; [cookieBannerStays] ignores the tap.
+  bool cookieBanner = false;
+  bool cookieBannerStays = false;
+  static const _cookieButton = [560, 2340, 1060, 2400];
+
   List<dynamic> _shifted(List<dynamic> nodes, List<dynamic> web) => [
     for (final node in nodes)
       if (shiftY == 0 || '${node['bounds']}' == '$web')
@@ -762,6 +800,24 @@ class _RecordedAccessibility extends SignupAccessibility {
     if (state == 'home-ready') onHomeSnapshot?.call(data);
     onSnapshot?.call(data);
     data['nodes'] = _shifted(data['nodes'] as List, data['webBounds'] as List);
+    if (cookieBanner) {
+      (data['nodes'] as List)
+        ..add({
+          'id': 'cookie.title',
+          'text': 'Allow cookies from TikTok on this browser?',
+          'bounds': [23, 2235, 1056, 2260],
+          'enabled': true,
+        })
+        // Android WebView reports the banner button as disabled.
+        ..add({
+          'id': 'cookie.allow',
+          'text': 'Allow all',
+          'bounds': _cookieButton,
+          'className': 'android.widget.Button',
+          'enabled': false,
+          'clickable': true,
+        });
+    }
     for (final node in data['nodes'] as List) {
       if (node['text'] == 'Resend code') {
         node['enabled'] = resendReady && !resent;
@@ -832,6 +888,16 @@ class _RecordedAccessibility extends SignupAccessibility {
                 ),
             ],
     );
+  }
+
+  @override
+  Future<void> tapScreen(Rect bounds, Offset point) async {
+    if (!cookieBanner || !SignupNode.rectFrom(_cookieButton).contains(point)) {
+      throw StateError('Screen tap at $point hit no cookie button.');
+    }
+    actions.add('accept-cookies');
+    onAction?.call('accept-cookies');
+    if (!cookieBannerStays) cookieBanner = false;
   }
 
   @override

@@ -348,7 +348,7 @@ Luồng không đọc DOM,
 không dùng JavaScript click/fill hay `InputConnection` cho đăng nhập Android.
 Mỗi bước gửi chỉ chạm một lần; Dừng, đưa app ra nền, rời TikTok, CAPTCHA hoặc
 lỗi biểu mẫu sẽ dừng luồng. Sau khi xác nhận đăng nhập, app vẫn lưu phiên và
-tự bật Auto nuôi 10 phút. Kiểm thử tự động dùng màn hình mô phỏng; luồng mới
+tự bật Auto nuôi ngẫu nhiên 2–3 phút. Kiểm thử tự động dùng màn hình mô phỏng; luồng mới
 chưa được xác minh trọn vẹn với tài khoản TikTok thật.
 
 Các mô tả thao tác JavaScript/DOM/cache và bộ nhập native bên dưới thuộc
@@ -390,7 +390,7 @@ Luồng **Tự động đăng nhập cũ** mở trang chủ TikTok → xem video
 → Use phone or email → Username or Email, rồi tiếp tục nhập tài khoản, mật khẩu
 và xử lý OTP như trước, kể cả khi dialog giữ nguyên URL trang chủ.
 Khi luồng đăng nhập tự động xác nhận thành công (hoặc tài khoản đã đăng nhập), app tự
-bật Auto nuôi trong **10 phút** tính từ lần xác nhận đó. Khi hết thời gian, app
+bật Auto nuôi trong **2–3 phút** (ngẫu nhiên mỗi phiên) tính từ lần xác nhận đó. Khi hết thời gian, app
 dừng nuôi, tự quay về **Home** và báo **Đã nuôi xong**; giữ nguyên phiên đăng nhập,
 không đăng xuất và không xóa cookie. Tải lại trang hoặc
 đưa app ra nền rồi quay lại không đặt lại thời hạn. Có thể bấm nút dừng nuôi
@@ -411,8 +411,10 @@ Auto nuôi bốc thăm độc lập cho mỗi video: 50% xem đến hết, 50% l
 khoảng 2–5 giây phát thực tế (clip ngắn hơn sẽ lướt trước khi hết). Không ép
 xen kẽ; có thể gặp nhiều video cùng lựa chọn liên tiếp. Kế hoạch của mỗi bài
 được giữ khi tạm dừng rồi khởi động lại watcher trong cùng trang.
-Chỉ video có mục tiêu xem hết mới được bình luận. App chọn thời điểm gửi trong
-khoảng 5 giây đến 70% thời lượng video, chuẩn bị ô nhập trước đó và kiểm tra lại
+Video dài hơn 1 phút chỉ xem 1 phút rồi chuyển (vẫn tính là xem hết).
+Chỉ video có mục tiêu xem hết mới được bình luận. Android bắt đầu bình luận ở
+giây 3 đến tối đa nửa thời gian xem, không muộn hơn giây 20 (nền tảng JavaScript
+vẫn chọn trong khoảng 5 giây đến 70% thời lượng video), chuẩn bị ô nhập trước đó và kiểm tra lại
 mốc 70% ngay trước khi gửi. Chừa một nhịp kiểm tra 250 ms ở cuối khoảng để bù
 độ trễ; video quá ngắn hoặc chưa có thời lượng hợp lệ sẽ bỏ bình luận.
 Thời gian video đứng tải/tạm dừng không tính vào thời gian chờ. Nếu đã nhập bản

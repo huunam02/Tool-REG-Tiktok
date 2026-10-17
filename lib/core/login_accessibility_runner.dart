@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'app_configuration.dart';
+import 'cookie_consent_accessibility.dart';
 import 'login_coordinate_profile.dart';
 import 'signup_accessibility.dart';
 
@@ -119,6 +120,9 @@ class LoginAccessibilityRunner {
     'log in|login|continue|next|verify|confirm|đăng nhập|tiếp tục|tiếp theo|xác nhận',
   );
   static final _login = _exact('log in|login|đăng nhập');
+  static const _maxOpenLoginTaps = 3;
+  static const _openLoginRetryAfter = Duration(seconds: 10);
+  static const _focusWait = Duration(seconds: 2);
   static final _emailHint = RegExp(
     'email|e-mail|username|tên người dùng',
     caseSensitive: false,
@@ -229,14 +233,19 @@ class LoginAccessibilityRunner {
     await _setKeyboardSuppressed(true);
     try {
       await _tap('focus-$field', snapshot, editor, fast: field == 'otp');
-      final focused = await _snapshot();
-      if (!focused.editors.any(
+      // Chromium reports focus to Accessibility asynchronously; on large,
+      // dense screens it can trail the tap by more than the OTP pause.
+      final focusDeadline = now().add(_focusWait);
+      while (!(await _snapshot()).editors.any(
         (node) =>
             node.focused &&
             node.password == (field == 'password') &&
             (field != 'email' || _emailHint.hasMatch(node.hint)),
       )) {
-        throw StateError('Ô $field chưa nhận focus qua Accessibility.');
+        if (!now().isBefore(focusDeadline)) {
+          throw StateError('Ô $field chưa nhận focus qua Accessibility.');
+        }
+        await _pause(250);
       }
       await _setKeyboardSuppressed(true); // Renew the native 10s lease.
       await _guard();
@@ -377,6 +386,8 @@ class LoginAccessibilityRunner {
     DateTime? readySince, emailStableSince;
     Object? emailBounds;
     var otpFetched = false;
+    var loginTaps = 0;
+    DateTime? loginTappedAt;
     String? otp;
     while (now().isBefore(deadline)) {
       final snapshot = await _snapshot();
@@ -395,10 +406,7 @@ class LoginAccessibilityRunner {
         return;
       }
 
-      final cookie = _find(
-        snapshot,
-        _exact('accept all( cookies)?|allow all( cookies)?|chấp nhận tất cả'),
-      );
+      final cookie = CookieConsentAccessibility.button(snapshot);
       if (cookie != null && !_actions.contains('accept-cookies')) {
         await _tap('accept-cookies', snapshot, cookie);
         continue;
@@ -591,7 +599,15 @@ class LoginAccessibilityRunner {
           await _tap('use-email', snapshot, useEmail);
         } else if (phoneEmail != null && !_actions.contains('phone-email')) {
           await _tap('phone-email', snapshot, phoneEmail);
-        } else if (login != null && !_actions.contains('open-login')) {
+        } else if (login != null &&
+            loginTaps < _maxOpenLoginTaps &&
+            (loginTappedAt == null ||
+                now().difference(loginTappedAt) >= _openLoginRetryAfter)) {
+          // TikTok can drop a tap while the page still hydrates. Opening the
+          // login dialog submits nothing, so a bounded retry is safe.
+          _actions.remove('open-login');
+          loginTaps++;
+          loginTappedAt = now();
           await _tap('open-login', snapshot, login);
         }
       }

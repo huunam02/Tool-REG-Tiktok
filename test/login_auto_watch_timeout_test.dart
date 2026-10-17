@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -55,6 +56,18 @@ class _WatchView extends PlatformInAppWebViewController {
   }
 }
 
+/// Always draws the longest (3-minute) or shortest (2-minute) session.
+class _LongestRandom implements Random {
+  _LongestRandom({this.shortest = false});
+  final bool shortest;
+  @override
+  int nextInt(int max) => shortest ? 0 : max - 1;
+  @override
+  double nextDouble() => 0;
+  @override
+  bool nextBool() => false;
+}
+
 class _Session {
   _Session(
     WidgetTester tester, {
@@ -62,6 +75,7 @@ class _Session {
     TikTokLaunchAction launchAction = TikTokLaunchAction.login,
     bool startWithNurture = false,
     List<String> comments = const ['Test comment'],
+    bool shortestNurture = false,
   }) {
     logic = TikTokController(
       configuration: AppConfiguration(
@@ -73,6 +87,7 @@ class _Session {
         loginPassword: 'test-password',
       ),
       now: now ?? tester.binding.clock.now,
+      workflowRandom: _LongestRandom(shortest: shortestNurture),
       launchAction: launchAction,
       startWithNurture: startWithNurture,
       useAccessibility: false,
@@ -127,7 +142,7 @@ void main() {
   );
 
   testWidgets(
-    'retained session starts another ten minutes without logging in',
+    'retained session starts another nurture session without logging in',
     (tester) async {
       final session = _Session(
         tester,
@@ -140,9 +155,9 @@ void main() {
       expect(session.logic.autoWatchEnabled, isTrue);
       expect(session.view.authChecks, 1);
       expect(session.view.loginChecks, 0);
-      await tester.pump(const Duration(minutes: 10));
+      await tester.pump(const Duration(minutes: 3));
       expect(session.logic.autoWatchEnabled, isFalse);
-      expect(session.notices.last, 'Đã nuôi xong sau 10 phút.');
+      expect(session.notices.last, 'Đã nuôi xong.');
     },
   );
 
@@ -237,7 +252,7 @@ void main() {
   });
 
   for (final result in ['login-success', 'already-logged-in']) {
-    testWidgets('$result starts watching and stops after ten minutes', (
+    testWidgets('$result starts watching and stops after three minutes', (
       tester,
     ) async {
       final session = _Session(tester)..view.loginResult = result;
@@ -248,13 +263,13 @@ void main() {
         expect(session.view.starts, 1);
         final stops = session.view.stops;
         await tester.pump(
-          const Duration(minutes: 9, seconds: 59, milliseconds: 979),
+          const Duration(minutes: 2, seconds: 59, milliseconds: 979),
         );
         expect(session.logic.autoWatchEnabled, isTrue);
         await tester.pump(const Duration(milliseconds: 21));
         expect(session.logic.autoWatchEnabled, isFalse);
         expect(session.view.stops, stops + 1);
-        expect(session.notices.last, 'Đã nuôi xong sau 10 phút.');
+        expect(session.notices.last, 'Đã nuôi xong.');
         session.logic.didChangeAppLifecycleState(AppLifecycleState.resumed);
         await tester.pump();
         expect(session.view.starts, 1);
@@ -264,19 +279,37 @@ void main() {
     });
   }
 
+  testWidgets('the shortest nurture draw stops after two minutes', (
+    tester,
+  ) async {
+    final session = _Session(tester, shortestNurture: true);
+    try {
+      await session.login(tester);
+      await tester.pump(
+        const Duration(minutes: 1, seconds: 59, milliseconds: 979),
+      );
+      expect(session.logic.autoWatchEnabled, isTrue);
+      await tester.pump(const Duration(milliseconds: 21));
+      expect(session.logic.autoWatchEnabled, isFalse);
+      expect(session.notices.last, 'Đã nuôi xong.');
+    } finally {
+      session.logic.onDelete();
+    }
+  });
+
   testWidgets('reloading the document keeps the original watch deadline', (
     tester,
   ) async {
     final session = _Session(tester);
     try {
       await session.login(tester);
-      await tester.pump(const Duration(minutes: 5));
+      await tester.pump(const Duration(minutes: 1, seconds: 30));
       await session.logic.startAutoWatch();
       expect(session.view.starts, 2);
-      await tester.pump(const Duration(minutes: 5));
+      await tester.pump(const Duration(minutes: 1, seconds: 30));
       expect(session.logic.autoWatchEnabled, isFalse);
       expect(
-        session.notices.where((notice) => notice.contains('10 phút')),
+        session.notices.where((notice) => notice == 'Đã nuôi xong.'),
         hasLength(1),
       );
     } finally {
@@ -293,12 +326,12 @@ void main() {
       await session.login(tester);
       session.logic.didChangeAppLifecycleState(AppLifecycleState.paused);
       await tester.pump();
-      now = now.add(const Duration(minutes: 11));
+      now = now.add(const Duration(minutes: 4));
       session.logic.didChangeAppLifecycleState(AppLifecycleState.resumed);
       await tester.pump();
       expect(session.logic.autoWatchEnabled, isFalse);
       expect(session.view.starts, 1);
-      expect(session.notices.last, 'Đã nuôi xong sau 10 phút.');
+      expect(session.notices.last, 'Đã nuôi xong.');
     } finally {
       session.logic.onDelete();
     }
@@ -310,16 +343,16 @@ void main() {
       final session = _Session(tester);
       try {
         await session.login(tester);
-        await tester.pump(const Duration(minutes: 4));
+        await tester.pump(const Duration(minutes: 1));
         await session.logic.toggleAutoWatch();
         expect(session.logic.autoWatchEnabled, isFalse);
         await session.login(tester);
-        await tester.pump(const Duration(minutes: 6));
+        await tester.pump(const Duration(minutes: 2, seconds: 30));
         expect(session.logic.autoWatchEnabled, isTrue);
-        await tester.pump(const Duration(minutes: 4));
+        await tester.pump(const Duration(seconds: 30));
         expect(session.logic.autoWatchEnabled, isFalse);
         expect(
-          session.notices.where((notice) => notice.contains('10 phút')),
+          session.notices.where((notice) => notice == 'Đã nuôi xong.'),
           hasLength(1),
         );
       } finally {
@@ -475,7 +508,7 @@ void main() {
         await tester.pump(const Duration(minutes: 11));
         expect(session.view.starts, 0);
         expect(
-          session.notices.any((notice) => notice.contains('10 phút')),
+          session.notices.contains('Đã nuôi xong.'),
           isFalse,
         );
       } finally {

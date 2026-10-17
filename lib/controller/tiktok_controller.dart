@@ -16,6 +16,7 @@ import '../core/captcha_settings_store.dart';
 import '../core/scripts/authenticated_session_script.dart';
 import '../core/scripts/auto_logout_script.dart';
 import '../core/send_code_accessibility.dart';
+import '../core/cookie_consent_accessibility.dart';
 import '../core/signup_accessibility.dart';
 import '../core/signup_birthday_menu.dart';
 import '../core/signup_coordinate_runner.dart';
@@ -415,6 +416,43 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
   }
 
+  // Hookless instance: a cookie check must not trigger the CAPTCHA hooks.
+  late final _cookieConsent = CookieConsentAccessibility(
+    accessibility: SignupAccessibility(),
+    now: _now,
+  );
+  Timer? _cookieConsentTimer;
+
+  /// The JS auto-accept is off in Accessibility mode, so the banner is
+  /// accepted with a gesture while no signup/login runner is acting (both
+  /// accept it themselves) and no other Accessibility action is in flight.
+  void _startCookieConsentMonitor() {
+    if (_cookieConsentTimer != null || !active) return;
+    _cookieConsentTimer = Timer(const Duration(seconds: 2), () async {
+      try {
+        if (active &&
+            appActive &&
+            _tikTokScreenVisible &&
+            initialPageLoaded &&
+            pageFailure == null &&
+            !browserCheckOpen &&
+            !autoSignupBusy &&
+            !autoLoginBusy &&
+            !logoutBusy &&
+            _rotateCaptchaWork == null &&
+            !signupAccessibility.actionBusy &&
+            await _cookieConsent.check()) {
+          debugPrint('[Cookie] Tapped Allow all.');
+        }
+      } catch (error) {
+        debugPrint('[Cookie] Check failed (${error.runtimeType}).');
+      } finally {
+        _cookieConsentTimer = null;
+        if (active) _startCookieConsentMonitor();
+      }
+    });
+  }
+
   Future<void> _beforeAccessibilityAction() async {
     final signup = autoSignupBusy,
         login = autoLoginBusy,
@@ -650,7 +688,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   WebViewProxyIpChecker? _ipChecker;
   bool autoWatchEnabled = false;
   bool autoWatchBusy = false;
-  static const autoWatchAfterLoginDuration = Duration(minutes: 10);
+
+  /// Each nurture session lasts a random 2–3 minutes.
+  static const minNurtureDuration = Duration(minutes: 2);
+  static const maxNurtureDuration = Duration(minutes: 3);
   Timer? _autoWatchStopTimer;
   DateTime? _autoWatchStopsAt;
   bool appActive = true;
@@ -688,6 +729,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     _captchaSettingsSubscribed = false;
     captchaSettingsStore.removeListener(_captchaSettingsChanged);
     _stopRotateCaptchaMonitor();
+    _cookieConsentTimer?.cancel();
+    _cookieConsentTimer = null;
     _accessibilityNurture?.cancel();
     if (usesAccessibilityAccountFlow) {
       _signupCalibrationChannel.setMethodCallHandler(null);
@@ -881,7 +924,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         _flowFinished = true;
         onFlowFinished!(TikTokFlowResult.nurtureCompleted);
       } else {
-        notify('Đã nuôi xong sau 10 phút.');
+        notify('Đã nuôi xong.');
       }
     } finally {
       _finishingWatch = false;
@@ -892,11 +935,15 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     if (!loginConfirmed) return;
     _cancelAutoWatchTimers();
     // Keep one deadline across document reloads and app background/resume.
-    _autoWatchStopsAt = _now().add(autoWatchAfterLoginDuration);
-    _autoWatchStopTimer = Timer(
-      autoWatchAfterLoginDuration,
-      _finishTimedAutoWatch,
-    );
+    final duration =
+        minNurtureDuration +
+        Duration(
+          seconds: _workflowRandom.nextInt(
+            (maxNurtureDuration - minNurtureDuration).inSeconds + 1,
+          ),
+        );
+    _autoWatchStopsAt = _now().add(duration);
+    _autoWatchStopTimer = Timer(duration, _finishTimedAutoWatch);
     mutate(() => autoWatchEnabled = true);
     await startAutoWatch();
   }
@@ -2621,6 +2668,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     await updateNavigationState();
     if (pageFailure != null || browserCheckOpen || useNativeWebView) return;
     if (usesAccessibilityAccountFlow) {
+      _startCookieConsentMonitor();
       unawaited(checkProxyIp());
       await runInitialAction();
       await startAutoWatch();

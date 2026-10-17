@@ -262,6 +262,15 @@ void main() {
         expect(OtpApiConfiguration.parseUrl(url).toString(), url);
       }
       for (final url in [
+        'https://example.ngrok-free.dev',
+        'https://example.ngrok-free.dev/',
+      ]) {
+        expect(
+          OtpApiConfiguration.parseUrl(url).toString(),
+          'https://example.ngrok-free.dev/api/code',
+        );
+      }
+      for (final url in [
         'ftp://example.com/api/code',
         'http:///api/code',
         'http://token@10.0.2.2:5678/api/code',

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
@@ -177,25 +178,28 @@ class _TikTokView extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      logic.logoutBusy
-                          ? 'Đang đăng xuất TikTok để quay về Home…'
-                          : logic.waitingToLogout
-                          ? 'Đăng ký thành công. Chờ 2–4 phút trước khi đăng xuất…'
-                          : (logic.autoLoginBusy &&
-                                    logic.loginOtpRequest != null &&
-                                    logic.activeLoginOtp.isEmpty) ||
-                                (logic.autoSignupBusy &&
-                                    logic.signupOtpRequest != null &&
-                                    logic.activeSignupOtp.isEmpty)
-                          ? 'Đang chờ API lấy OTP… (tối đa ${logic.configuration.otpApi?.waitSeconds ?? 180} giây)'
-                          : logic.autoLoginBusy
-                          ? logic.loginStatus
-                          : logic.signupStatus,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: Colors.white),
-                    ),
+                    child: !logic.logoutBusy && logic.waitingToLogout
+                        ? _LogoutCountdown(logoutAt: logic.signupLogoutAt!)
+                        : Text(
+                            logic.logoutBusy
+                                ? 'Đang đăng xuất TikTok để quay về Home…'
+                                : (logic.autoLoginBusy &&
+                                          logic.loginOtpRequest != null &&
+                                          logic.activeLoginOtp.isEmpty) ||
+                                      (logic.autoSignupBusy &&
+                                          logic.signupOtpRequest != null &&
+                                          logic.activeSignupOtp.isEmpty)
+                                ? 'Đang chờ API lấy OTP… (tối đa ${logic.configuration.otpApi?.waitSeconds ?? 180} giây)'
+                                : logic.autoLoginBusy
+                                ? logic.loginStatus
+                                : logic.signupStatus,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white,
+                            ),
+                          ),
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton(
@@ -412,6 +416,52 @@ class _TikTokView extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Shows the exact remaining hold instead of the randomized 2–4 minute range.
+class _LogoutCountdown extends StatefulWidget {
+  const _LogoutCountdown({required this.logoutAt});
+
+  final DateTime logoutAt;
+
+  @override
+  State<_LogoutCountdown> createState() => _LogoutCountdownState();
+}
+
+class _LogoutCountdownState extends State<_LogoutCountdown> {
+  late final Timer _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => setState(() {}),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ticker.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = widget.logoutAt.difference(DateTime.now());
+    final seconds = (remaining.inMilliseconds / 1000).ceil();
+    final message = seconds <= 0
+        ? 'Đăng ký thành công. Sắp đăng xuất…'
+        : 'Đăng ký thành công. Tự đăng xuất sau '
+              '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+    return Text(
+      message,
+      key: const Key('signupLogoutCountdown'),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontSize: 12, color: Colors.white),
     );
   }
 }

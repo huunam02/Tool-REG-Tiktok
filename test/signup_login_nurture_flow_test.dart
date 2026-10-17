@@ -302,6 +302,8 @@ void main() {
       }
       await registration;
       expect(signup.waitingToLogout, isTrue);
+      await tester.pump();
+      expect(find.textContaining('Tự đăng xuất sau'), findsOneWidget);
       // Timer durations are covered below with an injected clock. Exercise the
       // production route callbacks through the overdue/resume path here.
       await tester.pump(const Duration(minutes: 4));
@@ -574,14 +576,15 @@ void main() {
   }
 
   testWidgets(
-    'automatic login nurtures for ten minutes then returns without logout',
+    'automatic login nurtures for two minutes then returns without logout',
     (tester) async {
       final session = _Session(tester);
       await session.init();
       await session.login();
       expect(session.logic.autoWatchEnabled, isTrue);
       expect(session.results, isEmpty);
-      await tester.pump(const Duration(minutes: 9, seconds: 58));
+      // _BoundaryRandom(false) draws the shortest, 2-minute session.
+      await tester.pump(const Duration(minutes: 1, seconds: 58));
       expect(session.results, isEmpty);
       await tester.pump(const Duration(seconds: 2));
       expect(session.results, [TikTokFlowResult.nurtureCompleted]);

@@ -326,6 +326,12 @@ class NurtureAccessibilityRunner {
     comments: _comments,
   );
 
+  /// Seconds a full watch lasts on a long video.
+  static const _maxWatchSeconds = 60;
+
+  /// Latest playback second at which a comment starts.
+  static const _latestCommentSeconds = 20;
+
   static bool authenticated(SignupSnapshot s) =>
       s.ready &&
       s.contains(RegExp(r'^(Messages|Tin nhắn)$', caseSensitive: false)) &&
@@ -390,12 +396,15 @@ class NurtureAccessibilityRunner {
 
   _WatchPlan _plan(NurtureVideo video) => _plans.putIfAbsent(video.key, () {
     final full = _random.nextBool();
-    // Long videos (over 4 minutes) are watched for a random 2–4 minutes.
-    final cap = video.duration > 240 ? 120 + _random.nextInt(121) : null;
-    final latest =
-        (min(video.duration, cap ?? video.duration) * .7).floor() - 6;
-    final commentAt = latest >= 5 && comments.isNotEmpty
-        ? 5 + _random.nextInt(latest - 4)
+    // Videos longer than a minute are watched for one minute only.
+    final cap = video.duration > _maxWatchSeconds ? _maxWatchSeconds : null;
+    // Comment early in the (short) watch: from 3s to half of it, at most 20s.
+    final latest = min(
+      (min(video.duration, cap ?? video.duration) * .5).floor(),
+      _latestCommentSeconds,
+    );
+    final commentAt = latest >= 3 && comments.isNotEmpty
+        ? 3 + _random.nextInt(latest - 2)
         : -1;
     return _WatchPlan(
       full,
@@ -854,8 +863,10 @@ class NurtureAccessibilityRunner {
       _check();
       await accessibility.swipe(s.viewport, a, b);
     }
-    // One advance only. No repeat if the UI failed to move.
-    final deadline = _now().add(const Duration(seconds: 8));
+    // One advance only. No repeat if the UI failed to move. The next post is
+    // unreadable until its clock reports a duration, which slow loads (large
+    // screens, landscape posts) can push well past a few seconds.
+    final deadline = _now().add(const Duration(seconds: 20));
     while (_now().isBefore(deadline)) {
       await _sleep();
       final current = NurtureVideo.read(await _snapshot());

@@ -33,7 +33,7 @@ class _View extends PlatformInAppWebViewController {
 
 void main() {
   testWidgets(
-    'Android nurture finishes at ten minutes without injecting any JS',
+    'Android nurture finishes its timed session without injecting any JS',
     (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);

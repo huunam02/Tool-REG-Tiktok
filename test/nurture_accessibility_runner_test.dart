@@ -21,6 +21,16 @@ class _Random implements Random {
   int nextInt(int max) => 0;
 }
 
+/// Always draws the latest random choice.
+class _LatestRandom implements Random {
+  @override
+  double nextDouble() => 0.999;
+  @override
+  bool nextBool() => true;
+  @override
+  int nextInt(int max) => max - 1;
+}
+
 Map<String, dynamic> _node(
   String id,
   Rect b, {
@@ -166,12 +176,17 @@ class _Service extends SignupAccessibility {
   bool focusWorks = true;
   int missingClockAfterOpen = 0, missingClockFrames = 0, panelDelaySeconds = 0;
   int closes = 0;
+  DateTime? postedAt;
   String? publicComment;
   final keyboardPolicies = <bool>[];
   int length = 0, taps = 0, swipes = 0, posts = 0, pastes = 0;
   int? forcePosition;
   int unreadyFrames = 0;
   int duration = 30;
+
+  /// The next post's clock is missing until it loads after a swipe.
+  int loadSecondsAfterMove = 0;
+  DateTime? _loadedAt;
 
   String? pasteReason;
   bool live = false;
@@ -212,6 +227,9 @@ class _Service extends SignupAccessibility {
         _node('9.0', const Rect.fromLTWH(110, 310, 180, 30), text: 'Popup'),
       );
     }
+    if (moved && _loadedAt != null && clock.isBefore(_loadedAt!)) {
+      nodes.removeWhere((n) => (n['text'] as String).contains(' / '));
+    }
     if (panel && missingClockFrames > 0) {
       missingClockFrames--;
       nodes.removeWhere((n) => (n['text'] as String).contains(' / '));
@@ -251,6 +269,7 @@ class _Service extends SignupAccessibility {
       closes++;
     } else if (p.dx > 370) {
       posts++;
+      postedAt ??= clock;
       posted = confirmPost;
       length = 0;
     } else {
@@ -263,6 +282,7 @@ class _Service extends SignupAccessibility {
   Future<void> swipe(SignupViewport viewport, Offset a, Offset b) async {
     swipes++;
     if (allowMove) moved = true;
+    _loadedAt = clock.add(Duration(seconds: loadSecondsAfterMove));
   }
 
   @override
@@ -583,7 +603,7 @@ void main() {
     expect(service.posts, 0);
   });
 
-  test('a long video is watched for 2–4 minutes then swiped', () async {
+  test('a long video is watched for one minute then swiped', () async {
     final service = _Service()..duration = 600;
     var active = true;
     NurtureTotals? totals;
@@ -605,7 +625,7 @@ void main() {
     expect(service.swipes, 1);
     expect(totals!.fullVideos, 1);
     expect(totals!.skippedVideos, 0);
-    expect(totals!.watchMilliseconds, inInclusiveRange(120000, 125000));
+    expect(totals!.watchMilliseconds, inInclusiveRange(60000, 65000));
   });
 
   for (final badge in ['LIVE now', 'Watch LIVE', 'LIVE']) {
@@ -747,6 +767,34 @@ void main() {
     expect(service.swipes, 0);
   });
 
+  for (final seconds in [12, 25]) {
+    test('next post loading for ${seconds}s after one swipe', () async {
+      final service = _Service()..loadSecondsAfterMove = seconds;
+      var active = true;
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: [],
+        isActive: () => active,
+        isTikTok: () async => true,
+        onProgress: (t, _) async {
+          if (t.videos > 0) active = false;
+        },
+        random: _Random(false),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      if (seconds < 20) {
+        await runner.start();
+        expect(runner.totals.videos, 1);
+      } else {
+        await expectLater(runner.start(), throwsStateError);
+        expect(runner.totals.videos, 0);
+      }
+      expect(service.swipes, 1);
+    });
+  }
+
   test('a failed swipe is never dispatched again', () async {
     final service = _Service()..allowMove = false;
     final runner = NurtureAccessibilityRunner(
@@ -805,6 +853,33 @@ void main() {
       },
     );
   }
+
+  test('a long video is commented within its first 20 seconds', () async {
+    final service = _Service()..duration = 600;
+    var active = true;
+    final runner = NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: ['Configured comment'],
+      isActive: () => active,
+      isTikTok: () async => true,
+      onProgress: (t, _) async {
+        if (t.fullVideos > 0) active = false;
+      },
+      random: _LatestRandom(),
+      now: () => service.clock,
+      delay: service.delay,
+    );
+    final start = service.clock;
+    await runner.start();
+    expect(service.posts, 1);
+    // The latest draw starts at 20s; opening the panel and pasting add <2s.
+    expect(
+      service.postedAt!.difference(start),
+      lessThanOrEqualTo(const Duration(seconds: 22)),
+    );
+    expect(runner.totals.watchMilliseconds, lessThanOrEqualTo(70000));
+  });
 
   test('preexisting draft is preserved without input or submission', () async {
     final service = _Service()..length = 5;

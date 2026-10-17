@@ -204,7 +204,7 @@ void main() {
       final results = <TikTokFlowResult>[];
       // The existing controller's completion notice follows the same awaited save path.
       logic.onNotice = (notice) {
-        if (notice.message == 'Đã nuôi xong sau 10 phút.') {
+        if (notice.message == 'Đã nuôi xong.') {
           expectSync(repository.totals.values.single.comments, 1);
           expectSync(repository.phases.values.single, 'completed');
           results.add(TikTokFlowResult.nurtureCompleted);
@@ -217,7 +217,8 @@ void main() {
       }
       await login;
       view.finalSnapshot = view.snapshot(1, comments: 1);
-      await tester.pump(const Duration(minutes: 10));
+      // Sessions last 2–3 minutes.
+      await tester.pump(const Duration(minutes: 3));
       expect(results, [TikTokFlowResult.nurtureCompleted]);
     },
   );

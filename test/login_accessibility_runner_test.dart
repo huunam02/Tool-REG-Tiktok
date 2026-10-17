@@ -15,6 +15,7 @@ import 'package:test_tiktok/core/login_coordinate_profile.dart';
 import 'package:test_tiktok/core/nurture_coordinate_profile.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_tiktok/core/otp_api.dart';
+import 'package:test_tiktok/core/services/remote_config_service.dart';
 import 'package:test_tiktok/core/signup_accessibility.dart';
 import 'package:test_tiktok/core/tiktok_launch_action.dart';
 import 'package:test_tiktok/core/scripts/auto_login_script.dart';
@@ -105,6 +106,73 @@ void main() {
             ? 1
             : 0,
       );
+    });
+  }
+
+  for (final dropped in [1, 3]) {
+    testWidgets(
+      'Log in tap ignored $dropped time(s) is retried at most 3 times',
+      (tester) async {
+        final screen = _Screen()
+          ..needsOtp = false
+          ..droppedLoginTaps = dropped;
+        final runner = LoginAccessibilityRunner(
+          accessibility: screen,
+          profile: LoginCoordinateProfile({}),
+          configuration: _configuration,
+          isActive: () => true,
+          isTikTok: () async => true,
+          isPageReady: () => true,
+          now: tester.binding.clock.now,
+          onStatus: (_) {},
+          getOtp: () async => '012345',
+        );
+        final error = await _finish(tester, runner.run());
+        final loginTaps = screen.taps.where((a) => a == 'open-login');
+        if (dropped < 3) {
+          expect(error, isNull);
+          expect(screen.state, 'authenticated');
+          expect(loginTaps, hasLength(dropped + 1));
+        } else {
+          expect(error, isA<StateError>());
+          expect(screen.state, 'home');
+          expect(loginTaps, hasLength(3));
+        }
+      },
+    );
+  }
+
+  for (final lag in [3, 100]) {
+    testWidgets('editor focus reported after $lag snapshots', (tester) async {
+      final screen = _Screen()
+        ..needsOtp = false
+        ..lateFocusSnapshots = lag;
+      final runner = LoginAccessibilityRunner(
+        accessibility: screen,
+        profile: LoginCoordinateProfile({}),
+        configuration: _configuration,
+        isActive: () => true,
+        isTikTok: () async => true,
+        isPageReady: () => true,
+        now: tester.binding.clock.now,
+        onStatus: (_) {},
+        getOtp: () async => '012345',
+      );
+      final error = await _finish(tester, runner.run());
+      if (lag == 3) {
+        expect(error, isNull);
+        expect(screen.state, 'authenticated');
+      } else {
+        expect(
+          error,
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('chưa nhận focus'),
+          ),
+        );
+        expect(screen.pasted, isEmpty);
+      }
     });
   }
 
@@ -288,6 +356,30 @@ void main() {
       }
     });
   }
+
+  testWidgets('accepts the cookie banner once before logging in', (
+    tester,
+  ) async {
+    final screen = _Screen()
+      ..needsOtp = false
+      ..cookieBanner = true;
+    final runner = LoginAccessibilityRunner(
+      profile: LoginCoordinateProfile({}),
+      accessibility: screen,
+      configuration: _configuration,
+      isActive: () => true,
+      isTikTok: () async => true,
+      isPageReady: () => true,
+      now: tester.binding.clock.now,
+      random: Random(4),
+      getOtp: () async => throw StateError('Must not fetch OTP'),
+      onStatus: (_) {},
+    );
+    expect(await _finish(tester, runner.run()), isNull);
+    expect(screen.state, 'authenticated');
+    expect(screen.taps.first, 'accept-cookies');
+    expect(screen.taps.where((t) => t == 'accept-cookies'), hasLength(1));
+  });
 
   testWidgets('short screen: closes the keyboard so the next field shows', (
     tester,
@@ -476,6 +568,12 @@ void main() {
     ) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      // The fake WebView has no CAPTCHA geometry; rotate_captcha_monitor_test
+      // covers the monitor. An empty key keeps it off for this handoff.
+      final captchaKey = RemoteConfigKey.sadcaptcha_license_key.name;
+      final previousCaptchaKey = RemoteConfig.configs[captchaKey];
+      RemoteConfig.configs[captchaKey] = '';
+      addTearDown(() => RemoteConfig.configs[captchaKey] = previousCaptchaKey);
       const channel = MethodChannel('x-slayer/accessibility_channel');
       final screen = _Screen()..resendAvailable = resends;
       final calls = <String>[];
@@ -640,6 +738,13 @@ class _Screen extends SignupAccessibility {
   bool keyboard = false, cancelledPaste = false, disableSubmit = false;
   bool disableSend = false;
   bool resendAvailable = false, acknowledgeResend = true;
+  bool cookieBanner = false;
+
+  /// TikTok ignores taps on Log in while the page is still hydrating.
+  int droppedLoginTaps = 0;
+
+  /// Snapshots that still miss a tapped editor's focus (large dense screens).
+  int lateFocusSnapshots = 0, focusLag = 0;
 
   /// 16:9 phone: an open keyboard covers the lower half of the WebView and
   /// Chromium drops the controls under it from the Accessibility tree.
@@ -682,7 +787,7 @@ class _Screen extends SignupAccessibility {
         'editable': editor,
         'password': password,
         'hint': hint,
-        'focused': focused == id,
+        'focused': focused == id && focusLag == 0,
         'length': values[id]?.length ?? 0,
       });
     }
@@ -734,6 +839,12 @@ class _Screen extends SignupAccessibility {
       case 'rate-limit':
         node('error', 'Maximum number of attempts reached', 100);
     }
+    if (cookieBanner) {
+      node('cookie-title', 'Allow cookies from TikTok?', 700, clickable: false);
+      // Android WebView reports the banner button as disabled.
+      node('accept-cookies', 'Allow all', 750, enabled: false);
+    }
+    if (focusLag > 0) focusLag--;
     if (shortScreen && keyboard) {
       nodes.removeWhere((n) => (n['bounds'] as List)[1] >= 250);
       targets.removeWhere((_, r) => r.top >= 250);
@@ -755,8 +866,13 @@ class _Screen extends SignupAccessibility {
         .key;
     final isEditor = ['email', 'password', 'otp'].contains(action);
     taps.add(isEditor ? 'focus-$action' : action);
+    if (action == 'open-login' && droppedLoginTaps > 0) {
+      droppedLoginTaps--;
+      return;
+    }
     if (isEditor) {
       focused = action;
+      focusLag = lateFocusSnapshots;
       keyboard = !suppressed;
     }
     state = switch (action) {
@@ -773,6 +889,7 @@ class _Screen extends SignupAccessibility {
       'submit-otp' => 'authenticated',
       _ => state,
     };
+    if (action == 'accept-cookies') cookieBanner = false;
     if (action == 'send-code' && acknowledgeSend) needsSend = false;
     if (action == 'resend' && acknowledgeResend) resendAvailable = false;
     afterTap?.call(isEditor ? 'focus-$action' : action);

@@ -32,7 +32,8 @@ Post được ghi geometry khi nút chưa bật; chạy thật chỉ chạm khi 
 Đã mở/đóng bình luận và chuyển video thật bằng Accessibility ở cả hai dạng.
 Đã xác minh trên TikTok thật rằng ô bình luận vẫn focus và đồng hồ phát vẫn đọc
 được khi IME được ẩn tạm; profile có 17 điểm cho các biến thể đã quan sát.
-Chưa kiểm chứng đăng bình luận công khai hoặc chạy đủ phiên 10 phút trên TikTok thật.
+Chưa kiểm chứng đăng bình luận công khai trên TikTok thật. Ngày 17/10/2026 đã chạy đủ
+phiên nuôi (khi đó 10 phút) trên emulator ở 1080×1920, 720×1600 và 1440×3200.
 
 ## Theo dõi và hủy
 
@@ -41,7 +42,8 @@ Không cộng thời gian đứng tải, ra nền hoặc nhảy seek. Mỗi bài
 50% xem hết, 50% lướt sớm sau 2–5 giây tiến độ quan sát được. Với clip cực ngắn,
 độ phân giải một giây có thể không quan sát đủ để chuyển trước cuối clip.
 Chỉ bài có kế hoạch xem hết mới bình luận; bài quá ngắn bỏ bình luận.
-Chọn mốc từ 5 giây đến trước 70%, chừa thời gian nhập và kiểm tra lại trước Post.
+Chọn mốc từ giây 3 đến nửa thời gian xem, muộn nhất giây 20; vẫn kiểm tra mốc 70%
+thời lượng video trước Post. Video dài hơn 1 phút chỉ xem 1 phút rồi chuyển.
 
 Nút chuyển video được ưu tiên khi nhận diện được đúng cặp điều hướng lên/xuống.
 Bố cục không có cặp nút này dùng gesture vuốt trong khung video, lưu cả hai đầu
@@ -57,7 +59,7 @@ bình luận trong cây Accessibility. Post chỉ gửi một lần; kết quả
 Nội dung chứa email/mã sáu số có thể bị bộ che dữ liệu làm mất khả năng xác nhận;
 trường hợp này cũng dừng và không gửi lại.
 
-Giới hạn phiên vẫn là 10 phút, giữ hạn qua nền/tải lại, kết thúc về Home và giữ
+Mỗi phiên kéo dài ngẫu nhiên 2–3 phút, giữ hạn qua nền/tải lại, kết thúc về Home và giữ
 cookie. Không nhận diện được một video duy nhất hoặc không có đồng hồ phát
 (bài ảnh, quảng cáo/bố cục khác chưa hỗ trợ) thì dừng sau 20 giây để kiểm tra.
 

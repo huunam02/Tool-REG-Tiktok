@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 
 import 'app_configuration.dart';
+import 'cookie_consent_accessibility.dart';
 import 'signup_accessibility.dart';
 import 'signup_birthday_menu.dart';
 
@@ -187,6 +188,12 @@ class SignupCoordinateRunner {
         continue;
       }
       if (_authenticated(snapshot)) return snapshot;
+      if (await _acceptCookiesIfShown(snapshot)) {
+        // The banner closing can shift layout; re-check target stability.
+        targetStableSince = null;
+        previousTarget = null;
+        continue;
+      }
       final timestamp = now();
       pageReadySince ??= timestamp;
       final action = _entryAction(snapshot);
@@ -248,6 +255,23 @@ class SignupCoordinateRunner {
     return pool.length == 1 ? pool.single : null;
   }
 
+  /// TikTok's cookie banner (EU IPs) can appear at any step and covers the
+  /// bottom of the page. Accept it once like a regular visitor; its absence
+  /// never blocks signup. Returns whether a tap was made.
+  Future<bool> _acceptCookiesIfShown(SignupSnapshot snapshot) async {
+    if (_actions.contains('accept-cookies')) return false;
+    final node = CookieConsentAccessibility.button(snapshot);
+    if (node == null) return false;
+    onStatus('Đang bấm Allow all cho cookie TikTok…');
+    _actions.add('accept-cookies'); // One attempt even if the banner stays.
+    await accessibility.tapScreen(
+      snapshot.viewport.bounds,
+      node.bounds.intersect(snapshot.viewport.bounds).center,
+    );
+    await _pauseAfterAction();
+    return true;
+  }
+
   Offset? _recorded(String name) =>
       (profile.data['points'] as Map)[name] == null
       ? null
@@ -263,7 +287,8 @@ class SignupCoordinateRunner {
     if (_actions.contains(name)) {
       throw StateError('Bước $name đã thực hiện, không bấm lại.');
     }
-    final snapshot = await _snapshot();
+    var snapshot = await _snapshot();
+    if (await _acceptCookiesIfShown(snapshot)) snapshot = await _snapshot();
     final node = _target(
       snapshot,
       name,

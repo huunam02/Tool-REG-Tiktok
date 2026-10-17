@@ -565,6 +565,113 @@ void main() {
     expect(accessibility.actions, ['open-login']);
     expect(accessibility.pastes, isEmpty);
   });
+
+  Future<(Object?, _RecordedAccessibility, int)> runSignup(
+    WidgetTester tester, {
+    double shiftY = 0,
+    required List<Object> otpResults,
+  }) async {
+    final accessibility = _RecordedAccessibility(profile, recording)
+      ..shiftY = shiftY;
+    var otpRequests = 0;
+    final runner = SignupCoordinateRunner(
+      profile: profile,
+      accessibility: accessibility,
+      configuration: AppConfiguration(
+        userAgent: 'test',
+        comments: [],
+        signupEmail: 'test@example.org',
+        signupPassword: 'Example12!a',
+        loginUsername: '',
+        loginPassword: '',
+        birthday: DateTime(2001, 2, 3),
+      ),
+      isActive: () => true,
+      isTikTok: () async => true,
+      getOtp: () async {
+        final result = otpResults[otpRequests++];
+        if (result is SignupOtpTimeout) {
+          accessibility.resendReady = true; // TikTok's countdown has ended.
+          throw result;
+        }
+        return result as String;
+      },
+      onStatus: (_) {},
+      readBirthdayMenu: accessibility.readBirthdayMenu,
+      now: tester.binding.clock.now,
+    );
+    Object? failure;
+    var finished = false;
+    final run = runner.run().then(
+      (_) {
+        finished = true;
+      },
+      onError: (Object error) {
+        failure = error;
+        finished = true;
+      },
+    );
+    for (var i = 0; i < 900 && !finished; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    expect(finished, isTrue, reason: 'actions=${accessibility.actions}');
+    await run;
+    return (failure, accessibility, otpRequests);
+  }
+
+  testWidgets('another device shifts every control off its recorded point', (
+    tester,
+  ) async {
+    // 45 physical px ≈ 17 design units: more than the header Log in button.
+    final (failure, accessibility, _) = await runSignup(
+      tester,
+      shiftY: 45,
+      otpResults: ['123456'],
+    );
+    expect(failure, isNull, reason: '${accessibility.actions}');
+    expect(accessibility.state, 'authenticated-home');
+    expect(accessibility.liveNodeTaps, greaterThan(0));
+    expect(accessibility.pastes, ['email', 'otp', 'password']);
+    expect(accessibility.actions.where((a) => a == 'send-code'), hasLength(1));
+  });
+
+  testWidgets('OTP API timeout resends the code once and fetches it again', (
+    tester,
+  ) async {
+    final (failure, accessibility, otpRequests) = await runSignup(
+      tester,
+      otpResults: [SignupOtpTimeout(), '123456'],
+    );
+    expect(failure, isNull);
+    expect(otpRequests, 2);
+    expect(
+      accessibility.actions.where((a) => a == 'resend-code'),
+      hasLength(1),
+    );
+    expect(
+      accessibility.actions.indexOf('resend-code'),
+      greaterThan(accessibility.actions.indexOf('send-code')),
+    );
+    expect(accessibility.state, 'authenticated-home');
+  });
+
+  testWidgets('a second OTP timeout stops without resending again', (
+    tester,
+  ) async {
+    final (failure, accessibility, otpRequests) = await runSignup(
+      tester,
+      otpResults: [SignupOtpTimeout(), SignupOtpTimeout()],
+    );
+    expect(failure, isA<StateError>());
+    expect('$failure', contains('Đã gửi lại mã 1 lần'));
+    expect(otpRequests, 2);
+    expect(
+      accessibility.actions.where((a) => a == 'resend-code'),
+      hasLength(1),
+    );
+    expect(accessibility.pastes, ['email']);
+    expect(accessibility.actions, isNot(contains('submit-password')));
+  });
 }
 
 class _BoundaryRandom implements Random {
@@ -624,13 +731,41 @@ class _RecordedAccessibility extends SignupAccessibility {
   void Function(String)? onAction;
   final actions = <String>[];
   final pastes = <String>[];
+
+  /// Another device's fonts/WebView: every control sits this many physical
+  /// pixels lower than on the calibration phone.
+  double shiftY = 0;
+
+  /// Taps that did not use a recorded point verbatim.
+  int liveNodeTaps = 0;
+  bool resendReady = false;
+  bool resent = false;
+
+  List<dynamic> _shifted(List<dynamic> nodes, List<dynamic> web) => [
+    for (final node in nodes)
+      if (shiftY == 0 || '${node['bounds']}' == '$web')
+        node
+      else
+        {
+          ...node as Map,
+          'bounds': [
+            for (var i = 0; i < 4; i++)
+              (node['bounds'][i] as num) + (i.isOdd ? shiftY : 0),
+          ],
+        },
+  ];
+
   @override
   Future<SignupSnapshot> snapshot() async {
     final data =
         jsonDecode(jsonEncode(recording[state])) as Map<String, dynamic>;
     if (state == 'home-ready') onHomeSnapshot?.call(data);
     onSnapshot?.call(data);
+    data['nodes'] = _shifted(data['nodes'] as List, data['webBounds'] as List);
     for (final node in data['nodes'] as List) {
+      if (node['text'] == 'Resend code') {
+        node['enabled'] = resendReady && !resent;
+      }
       if ('${node['className']}'.endsWith('Spinner')) {
         for (final field in selected.keys) {
           if ('${node['hint']}'.startsWith(field)) {
@@ -711,12 +846,10 @@ class _RecordedAccessibility extends SignupAccessibility {
       picker = null;
       return;
     }
-    final points = profile.data['points'] as Map;
-    final name = points.keys.cast<String>().firstWhere(
-      (name) => profile.point(name) == point,
-    );
+    final name = _actionAt(viewport, point);
     actions.add(name);
     onAction?.call(name);
+    if (name == 'resend-code') resent = true;
     if (name == 'skip-username' && rejectSkip) {
       throw StateError('Skip gesture failed');
     }
@@ -742,6 +875,39 @@ class _RecordedAccessibility extends SignupAccessibility {
       _ => state,
     };
     afterTap?.call(name);
+  }
+
+  /// The recorded step whose control was tapped. A tap away from the
+  /// recorded point is resolved through the control under it.
+  String _actionAt(SignupViewport viewport, Offset point) {
+    final names = (profile.data['points'] as Map).keys.cast<String>();
+    for (final name in names) {
+      if (profile.point(name) == point) return name;
+    }
+    liveNodeTaps++;
+    final at = viewport.toScreen(point) - Offset(0, shiftY);
+    final hits =
+        [
+              for (final raw in recording[state]['nodes'] as List)
+                SignupNode(Map<String, dynamic>.from(raw)),
+            ]
+            .where((n) => n.bounds.contains(at) && n.bounds != viewport.bounds)
+            .toList()
+          ..sort(
+            (a, b) => (a.bounds.width * a.bounds.height).compareTo(
+              b.bounds.width * b.bounds.height,
+            ),
+          );
+    for (final node in hits) {
+      if (node.label == 'Resend code') return 'resend-code';
+      // Dropdown options are handled above, not by recorded points.
+      for (final name in names.where((n) => !n.startsWith('select-'))) {
+        if (node.bounds.contains(viewport.toScreen(profile.point(name)))) {
+          return name;
+        }
+      }
+    }
+    throw StateError('Tap at $at hit no recorded control in $state.');
   }
 
   @override

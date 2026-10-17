@@ -91,7 +91,10 @@ class _TikTokView extends StatelessWidget {
   final TikTokController logic;
 
   Widget _signupViewport(Widget child) => logic.usesAccessibilityAccountFlow
-      ? StandardSignupViewport(child: child)
+      ? StandardSignupViewport(
+          onWidth: (width) => logic.signupViewportWidth = width,
+          child: child,
+        )
       : child;
 
   Widget _autoWatchButton() {

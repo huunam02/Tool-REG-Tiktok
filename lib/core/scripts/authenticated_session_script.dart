@@ -16,7 +16,7 @@ const String authenticatedSessionScript = r'''
   if (Array.from(dialogs).some(dialog => visible(dialog) &&
       Array.from(dialog.querySelectorAll(titles)).some(title => visible(title) &&
         accountTitle.test((title.innerText || title.textContent || '').replace(/\s+/g, ' ').trim())))) return false;
-  if (any('[data-e2e="top-login-button"], [data-e2e="nav-login-button"], [data-e2e="login-button"], [data-e2e="login-container"]')) return false;
+  if (any('[data-e2e="top-login-button"], [data-e2e="nav-login-button"], [data-e2e="login-button"], [data-e2e="login-container"], #top-right-action-bar-login-button')) return false;
   // In the current desktop layout profile-icon/inbox-icon stay mounted but
   // hidden. nav-messages becomes visible only in the signed-in navigation.
   return any('[data-e2e="profile-icon"], [data-e2e="top-avatar"], [data-e2e="header-avatar"], [data-e2e="nav-messages"]');

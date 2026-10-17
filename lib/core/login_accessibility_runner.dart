@@ -222,26 +222,56 @@ class LoginAccessibilityRunner {
         'Biểu mẫu đã có thông tin. Đã dừng để giữ nội dung của bạn.',
       );
     }
-    await _tap('focus-$field', snapshot, editor, fast: field == 'otp');
-    final focused = await _snapshot();
-    if (!focused.editors.any(
-      (node) =>
-          node.focused &&
-          node.password == (field == 'password') &&
-          (field != 'email' || _emailHint.hasMatch(node.hint)),
-    )) {
-      throw StateError('Ô $field chưa nhận focus qua Accessibility.');
+    // On short (16:9) screens an open keyboard covers the lower half of the
+    // WebView and Chromium drops the controls under it, including the field
+    // just focused. Paste needs no keyboard, so keep it hidden throughout.
+    await _setKeyboardSuppressed(true);
+    try {
+      await _tap('focus-$field', snapshot, editor, fast: field == 'otp');
+      final focused = await _snapshot();
+      if (!focused.editors.any(
+        (node) =>
+            node.focused &&
+            node.password == (field == 'password') &&
+            (field != 'email' || _emailHint.hasMatch(node.hint)),
+      )) {
+        throw StateError('Ô $field chưa nhận focus qua Accessibility.');
+      }
+      await _setKeyboardSuppressed(true); // Renew the native 10s lease.
+      await _guard();
+      final result = await accessibility.paste(value, field);
+      await _guard();
+      if (result['ok'] != true) {
+        throw StateError(
+          'Accessibility chưa dán được $field (${result['reason'] ?? 'unknown'}).',
+        );
+      }
+      _actions.add('filled-$field');
+      // Blur while suppressed so restoring the policy does not reopen it.
+      await accessibility.dismissKeyboard();
+    } finally {
+      await accessibility.setKeyboardSuppressed(false);
     }
-    await _guard();
-    final result = await accessibility.paste(value, field);
-    await _guard();
-    if (result['ok'] != true) {
-      throw StateError(
-        'Accessibility chưa dán được $field (${result['reason'] ?? 'unknown'}).',
-      );
-    }
-    _actions.add('filled-$field');
+    await _hideKeyboard();
     await _pause(field == 'otp' ? 250 : 2000 + _random.nextInt(5001));
+  }
+
+  Future<void> _setKeyboardSuppressed(bool suppressed) async {
+    await _guard();
+    await accessibility.setKeyboardSuppressed(suppressed);
+  }
+
+  /// Safety net if the keyboard still opened: controls under it vanish from
+  /// the Accessibility tree on short screens.
+  Future<void> _hideKeyboard() async {
+    final deadline = now().add(const Duration(seconds: 5));
+    while ((await _snapshot()).keyboardVisible) {
+      if (!now().isBefore(deadline)) {
+        throw StateError('Không đóng được bàn phím sau khi dán.');
+      }
+      await accessibility.dismissKeyboard();
+      await _pause(300);
+    }
   }
 
   Future<String> _readOtp() async {

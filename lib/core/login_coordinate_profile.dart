@@ -6,7 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'signup_accessibility.dart';
 
 /// Recorded design coordinates, reused across attempts and app restarts.
-/// Existing points are never silently moved when TikTok changes its layout.
+/// Existing points are never overwritten. When the live control no longer
+/// covers one (another device, font or TikTok layout), the control's own
+/// Accessibility bounds decide where to tap.
 class LoginCoordinateProfile {
   LoginCoordinateProfile(
     Map<String, Offset> points, {
@@ -63,18 +65,9 @@ class LoginCoordinateProfile {
     SignupNode node,
   ) async {
     final existing = _points[action];
-    if (existing != null) {
-      if (!node.bounds.contains(viewport.toScreen(existing))) {
-        throw StateError(
-          'Tọa độ $label bước $action không còn trúng control. Cần ghi mẫu lại.',
-        );
-      }
-      return existing;
-    }
-    final point = viewport.fromScreen(node.bounds.center);
-    viewport.toScreen(
-      point,
-    ); // Validate design range and viewport before saving.
+    if (existing != null) return viewport.tapPoint(node.bounds, existing);
+    // Validates the design range and viewport before saving.
+    final point = viewport.tapPoint(node.bounds);
     final rounded = Offset(
       double.parse(point.dx.toStringAsFixed(2)),
       double.parse(point.dy.toStringAsFixed(2)),

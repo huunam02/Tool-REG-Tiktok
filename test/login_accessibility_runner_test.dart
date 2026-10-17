@@ -289,6 +289,60 @@ void main() {
     });
   }
 
+  testWidgets('short screen: closes the keyboard so the next field shows', (
+    tester,
+  ) async {
+    final screen = _Screen()
+      ..needsOtp = false
+      ..shortScreen = true;
+    final runner = LoginAccessibilityRunner(
+      profile: LoginCoordinateProfile({}),
+      accessibility: screen,
+      configuration: _configuration,
+      isActive: () => true,
+      isTikTok: () async => true,
+      isPageReady: () => true,
+      now: tester.binding.clock.now,
+      random: Random(4),
+      getOtp: () async => '012345',
+      onStatus: (_) {},
+    );
+    expect(await _finish(tester, runner.run()), isNull);
+    expect(screen.state, 'authenticated');
+    expect(screen.pasted, ['email', 'password']);
+    expect(screen.taps, contains('focus-password'));
+    // Hidden during each fill and always restored afterwards.
+    expect(screen.suppressions.last, isFalse);
+    expect(screen.suppressed, isFalse);
+  });
+
+  testWidgets('short screen: keyboard opening anyway still stops safely', (
+    tester,
+  ) async {
+    final screen = _Screen()
+      ..needsOtp = false
+      ..shortScreen = true;
+    // A keyboard that ignores the suppression hides the focused field.
+    screen.afterTap = (_) => screen.keyboard = screen.focused.isNotEmpty;
+    final runner = LoginAccessibilityRunner(
+      profile: LoginCoordinateProfile({}),
+      accessibility: screen,
+      configuration: _configuration,
+      isActive: () => true,
+      isTikTok: () async => true,
+      isPageReady: () => true,
+      now: tester.binding.clock.now,
+      random: Random(4),
+      getOtp: () async => '012345',
+      onStatus: (_) {},
+    );
+    expect(await _finish(tester, runner.run()), isA<StateError>());
+    // Email sits above the keyboard; the covered password is never guessed.
+    expect(screen.pasted, ['email']);
+    expect(screen.taps, isNot(contains('submit-password')));
+    expect(screen.suppressed, isFalse);
+  });
+
   for (final scenario in [
     'no-delivery',
     'disabled-send-code',
@@ -586,6 +640,19 @@ class _Screen extends SignupAccessibility {
   bool keyboard = false, cancelledPaste = false, disableSubmit = false;
   bool disableSend = false;
   bool resendAvailable = false, acknowledgeResend = true;
+
+  /// 16:9 phone: an open keyboard covers the lower half of the WebView and
+  /// Chromium drops the controls under it from the Accessibility tree.
+  bool shortScreen = false;
+  bool suppressed = false;
+  final suppressions = <bool>[];
+
+  @override
+  Future<void> setKeyboardSuppressed(bool value) async {
+    suppressions.add(value);
+    suppressed = value;
+  }
+
   final values = <String, String>{};
   final taps = <String>[], pasted = <String>[];
   final targets = <String, Rect>{};
@@ -667,6 +734,10 @@ class _Screen extends SignupAccessibility {
       case 'rate-limit':
         node('error', 'Maximum number of attempts reached', 100);
     }
+    if (shortScreen && keyboard) {
+      nodes.removeWhere((n) => (n['bounds'] as List)[1] >= 250);
+      targets.removeWhere((_, r) => r.top >= 250);
+    }
     return {
       'ready': true,
       'webBounds': [0, 0, 400, 800],
@@ -686,7 +757,7 @@ class _Screen extends SignupAccessibility {
     taps.add(isEditor ? 'focus-$action' : action);
     if (isEditor) {
       focused = action;
-      keyboard = true;
+      keyboard = !suppressed;
     }
     state = switch (action) {
       'open-login' => 'methods',
@@ -719,6 +790,7 @@ class _Screen extends SignupAccessibility {
   @override
   Future<void> dismissKeyboard() async {
     keyboard = false;
+    focused = ''; // Native dismiss clears input focus.
   }
 
   @override
@@ -841,6 +913,14 @@ class _LiveRecording extends SignupAccessibility {
     values[field] = text;
     actions.add('paste-$field');
     return {'ok': true};
+  }
+
+  @override
+  Future<void> setKeyboardSuppressed(bool suppressed) async {}
+
+  @override
+  Future<void> dismissKeyboard() async {
+    focused = ''; // Native dismiss clears input focus.
   }
 
   @override

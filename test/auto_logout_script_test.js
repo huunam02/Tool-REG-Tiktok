@@ -65,6 +65,27 @@ for (const vietnamese of [false, true]) {
   });
 }
 
+test('current top bar: id-only Log in button confirms logout, not the hidden legacy one', () => {
+  const env = setup();
+  env.signOut();
+  env.add('[data-e2e="top-login-button"]', 'Log in').hidden = true;
+  const menu = env.add('[data-e2e="nav-more-menu"]', 'More');
+  env.add('#top-right-action-bar-login-button', 'Log in');
+  assert.equal(env.run(), 'logged-out');
+  assert.equal(menu.clicks, 0); // Never reopens the menu after logging out.
+});
+
+test('a visible "Log in" button counts, but not one inside the login dialog', () => {
+  const env = setup();
+  env.signOut();
+  const inDialog = env.add('button', 'Log in');
+  inDialog.closest = () => ({});
+  env.add('[data-e2e="nav-more"]', 'More');
+  assert.equal(env.run(), 'opening-menu');
+  env.add('button', 'Đăng nhập');
+  assert.equal(env.run(), 'logged-out');
+});
+
 test('requires positive logged-out UI and ignores hidden controls', () => {
   const env = setup();
   env.signOut();

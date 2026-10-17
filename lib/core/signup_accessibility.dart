@@ -31,6 +31,57 @@ class SignupViewport {
     (point.dx - bounds.left) * 400 / bounds.width,
     (point.dy - bounds.top) * 800 / bounds.height,
   );
+
+  /// Design point that lands on [control] (physical pixels) on this device.
+  /// The recorded point is kept while it is still on the visible control;
+  /// otherwise the live node decides, because another phone's fonts, WebView
+  /// or screen size can shift a control away from its recorded position.
+  Offset tapPoint(Rect control, [Offset? recorded]) {
+    final visible = control.intersect(bounds);
+    if (!valid || visible.width < 1 || visible.height < 1) {
+      throw StateError('Control nằm ngoài khung WebView.');
+    }
+    if (recorded != null) {
+      try {
+        if (visible.contains(toScreen(recorded))) return recorded;
+      } on StateError {
+        // Out of the design range: fall back to the live node below.
+      }
+    }
+    final center = fromScreen(visible.center);
+    toScreen(center); // Validate the design range before any gesture.
+    return center;
+  }
+
+  /// The candidate under [recorded], else the nearest one within
+  /// [maxDistance] design units. Distances are measured in the 400x800 design
+  /// space, so the same limit holds on every screen size.
+  SignupNode? nearest(
+    Iterable<SignupNode> candidates,
+    Offset recorded, {
+    double maxDistance = 120,
+  }) {
+    final visible = [
+      for (final node in candidates)
+        if (!node.bounds.intersect(bounds).isEmpty) node,
+    ];
+    final at = toScreen(recorded);
+    final hits = visible.where((n) => n.bounds.intersect(bounds).contains(at));
+    if (hits.isNotEmpty) return hits.last;
+    SignupNode? best;
+    var bestDistance = maxDistance;
+    for (final node in visible) {
+      final distance =
+          (fromScreen(node.bounds.intersect(bounds).center) - recorded)
+              .distance;
+      if (distance <= bestDistance) {
+        best = node;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
   static Rect fit(Size available) {
     final scale = math.min(available.width / 400, available.height / 800);
     final size = signupDesignSize * scale;

@@ -18,7 +18,14 @@ const String autoLogoutStepScript = r'''
   const text = el => (el.innerText || el.textContent || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
   const enabled = el => !el.disabled && el.getAttribute('aria-disabled') !== 'true';
   if (all('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]').length) return 'verification-required';
-  const login = all('[data-e2e="top-login-button"], [data-e2e="nav-login-button"], [data-e2e="login-button"]');
+  // TikTok renamed its top Log in button (id, no data-e2e) and keeps the old
+  // one hidden; a visible "Log in" control outside a dialog also counts.
+  const login = [
+    ...all('[data-e2e="top-login-button"], [data-e2e="nav-login-button"], [data-e2e="login-button"], #top-right-action-bar-login-button'),
+    ...all('button, a, [role="button"]').filter(el =>
+      /^(log\s*in|đăng nhập)$/i.test(text(el)) &&
+      !el.closest?.('[role="dialog"], [aria-modal="true"]')),
+  ];
   if (!authenticated() && login.length) return 'logged-out';
   let state = window.__flutterAutoLogout;
   if (!state || state.attempt !== attempt) {

@@ -126,7 +126,8 @@ class MainActivity: FlutterActivity() {
                     }
                     if (call.method == "configureEngine") {
                         result.success(DesktopChromeIdentity.configure(webView, emulateHardware = false,
-                            fixedSignupViewport = call.argument<Boolean>("fixedSignupViewport") == true))
+                            fixedSignupViewport = call.argument<Boolean>("fixedSignupViewport") == true,
+                            viewportWidthDp = call.argument<Number>("viewportWidth")?.toDouble()))
                         return@setMethodCallHandler
                     }
                     val userAgent = call.argument<String>("userAgent")
@@ -134,7 +135,8 @@ class MainActivity: FlutterActivity() {
                     val fullVersion = call.argument<String>("chromeFullVersion")
                         ?: error("Thiếu phiên bản Chrome cho Client Hints.")
                     result.success(DesktopChromeIdentity.configure(webView, userAgent, fullVersion,
-                        fixedSignupViewport = call.argument<Boolean>("fixedSignupViewport") == true))
+                        fixedSignupViewport = call.argument<Boolean>("fixedSignupViewport") == true,
+                        viewportWidthDp = call.argument<Number>("viewportWidth")?.toDouble()))
                 } catch (error: Exception) {
                     result.error("identity_unsupported", error.message, null)
                 }

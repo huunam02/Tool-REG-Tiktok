@@ -46,7 +46,24 @@ void main() {
     },
   );
 
-  test('moved control stops without changing saved coordinates', () async {
+  test(
+    'moved control is tapped at its live bounds; saved point kept',
+    () async {
+      final profile = LoginCoordinateProfile({
+        'submit-password': const Offset(150, 220),
+      });
+      const moved = Rect.fromLTWH(210, 800, 200, 80);
+      final point = await profile.target(
+        'submit-password',
+        viewport,
+        node(moved),
+      );
+      expect(viewport.toScreen(point), moved.center);
+      expect(profile.points['submit-password'], [150, 220]);
+    },
+  );
+
+  test('control outside the WebView frame is never tapped', () async {
     final profile = LoginCoordinateProfile({
       'submit-password': const Offset(150, 220),
     });
@@ -54,11 +71,10 @@ void main() {
       profile.target(
         'submit-password',
         viewport,
-        node(const Rect.fromLTWH(210, 800, 200, 80)),
+        node(const Rect.fromLTWH(10, 1700, 200, 80)),
       ),
       throwsStateError,
     );
-    expect(profile.points['submit-password'], [150, 220]);
   });
 
   test('failed persistence prevents recording an action', () async {

@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get/get.dart';
 import 'package:test_tiktok/core/services/remote_config_service.dart';
@@ -17,6 +18,9 @@ import 'screen/widgets/accessibility_permission_prompt.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Portrait only: the 1:2 WebView frame and its Accessibility gestures
+  // assume an upright phone.
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await RemoteConfig.init();
 

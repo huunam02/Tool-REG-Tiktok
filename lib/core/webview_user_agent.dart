@@ -26,12 +26,14 @@ Future<String> configureAndroidDesktopIdentity(
   required String userAgent,
   bool useInstalledEngine = true,
   bool fixedSignupViewport = false,
+  double? viewportWidth,
 }) async {
   if (!needsAndroidDesktopIdentity) return userAgent;
   if (useInstalledEngine) {
     return configureAndroidEngineDesktopIdentity(
       controller,
       fixedSignupViewport: fixedSignupViewport,
+      viewportWidth: viewportWidth,
     );
   }
   return await const MethodChannel(
@@ -41,6 +43,8 @@ Future<String> configureAndroidDesktopIdentity(
         'userAgent': userAgent,
         'chromeFullVersion': chromeFullVersionForUserAgent(userAgent),
         if (fixedSignupViewport) 'fixedSignupViewport': true,
+        if (fixedSignupViewport && viewportWidth != null)
+          'viewportWidth': viewportWidth,
       }) ??
       userAgent;
 }
@@ -49,11 +53,15 @@ Future<String> configureAndroidDesktopIdentity(
 Future<String> configureAndroidEngineDesktopIdentity(
   InAppWebViewController controller, {
   bool fixedSignupViewport = false,
+  double? viewportWidth,
 }) async {
   final agent = await const MethodChannel('test_tiktok/webview_identity')
       .invokeMethod<String>('configureEngine', {
         'id': controller.platform.params.id,
         if (fixedSignupViewport) 'fixedSignupViewport': true,
+        // Frame width in dp; the frame can be narrower than the screen.
+        if (fixedSignupViewport && viewportWidth != null)
+          'viewportWidth': viewportWidth,
       });
   if (agent == null || agent.isEmpty) {
     throw StateError('Không đọc được nhận diện WebView.');

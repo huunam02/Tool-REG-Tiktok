@@ -73,7 +73,8 @@ object DesktopChromeIdentity {
     fun configure(webView: WebView, requestedAgent: String? = null,
                   requestedFullVersion: String? = null,
                   emulateHardware: Boolean = true,
-                  fixedSignupViewport: Boolean = false): String {
+                  fixedSignupViewport: Boolean = false,
+                  viewportWidthDp: Double? = null): String {
         check(WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             "WebView cần hỗ trợ cấu hình viewport trước khi tải trang. Hãy cập nhật Android System WebView."
         }
@@ -137,8 +138,11 @@ object DesktopChromeIdentity {
         settings.textZoom = 100
         webView.setInitialScale(0)
         val metrics = webView.resources.displayMetrics
-        val physicalWidth = if (webView.width > 0) webView.width else metrics.widthPixels
-        val scale = physicalWidth.toDouble() / metrics.density / 980.0
+        // Flutter reports the 1:2 frame width before the WebView is laid out;
+        // the screen width is only right when the frame spans the screen.
+        val widthDp = viewportWidthDp?.takeIf { it > 0 }
+            ?: (if (webView.width > 0) webView.width else metrics.widthPixels).toDouble() / metrics.density
+        val scale = widthDp / 980.0
         val viewportContent = if (fixedSignupViewport)
             "width=980, initial-scale=$scale, minimum-scale=$scale, maximum-scale=$scale, user-scalable=no"
             else "width=980"

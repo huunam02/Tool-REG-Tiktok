@@ -536,7 +536,7 @@ void main() {
   );
 
   test(
-    'saved orientation points survive restart and reject a shifted button',
+    'saved orientation points survive restart and follow a shifted button',
     () async {
       final profile = await NurtureCoordinateProfile.load();
       final s = SignupSnapshot(_frame(landscape: true));
@@ -545,14 +545,14 @@ void main() {
       final point = await profile.target(key, s.viewport, v.comments!);
       final restored = await NurtureCoordinateProfile.load();
       expect(restored.point(key), point);
-      await expectLater(
-        restored.target(
-          key,
-          s.viewport,
-          SignupNode(_node('moved', const Rect.fromLTWH(350, 500, 30, 30))),
-        ),
-        throwsStateError,
+      const moved = Rect.fromLTWH(350, 500, 30, 30);
+      final tap = await restored.target(
+        key,
+        s.viewport,
+        SignupNode(_node('moved', moved)),
       );
+      // Another device's layout: the live button decides, the save is kept.
+      expect(moved.contains(s.viewport.toScreen(tap)), isTrue);
       expect(restored.point(key), point);
     },
   );

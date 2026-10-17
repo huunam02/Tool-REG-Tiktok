@@ -284,6 +284,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       _usesKeyboardInput && _usesAccessibility && !useNativeWebView;
   bool get usesAccessibilityAccountFlow =>
       usesCoordinateSignup || usesAccessibilityLogin;
+
+  /// Width of the 1:2 frame in dp; fixes the page scale to the frame, which
+  /// is narrower than the screen on 16:9 phones, tablets and foldables.
+  double? signupViewportWidth;
   final signupAccessibility = SignupAccessibility();
   SignupCoordinateRunner? _signupCoordinateRunner;
   LoginAccessibilityRunner? _loginAccessibilityRunner;
@@ -1796,6 +1800,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         getOtp: () async {
           final configuredOtp = configuration.signupOtp.trim();
           if (configuredOtp.isNotEmpty) return configuredOtp;
+          // After Resend code, a fresh API request reads the new mail.
+          coordinateOtpRequest?.cancel();
           final request = requestOtp(signup: true);
           coordinateOtpRequest = request;
           signupOtpRequest = request;
@@ -1803,7 +1809,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             await Future<void>.delayed(const Duration(milliseconds: 250));
           }
           if (!isActive()) throw const SignupCancelled();
-          if (request.error != null) throw StateError(request.error!);
+          if (request.error != null) {
+            if (request.timedOut) throw SignupOtpTimeout(request.error!);
+            throw StateError(request.error!);
+          }
           return request.code!;
         },
         onStatus: (status) {
@@ -2565,6 +2574,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           userAgent: configuration.userAgent,
           useInstalledEngine: usesEngineIdentity,
           fixedSignupViewport: usesAccessibilityAccountFlow,
+          viewportWidth: usesAccessibilityAccountFlow
+              ? signupViewportWidth
+              : null,
         );
         if (usesAccessibilityAccountFlow) {
           await const MethodChannel(

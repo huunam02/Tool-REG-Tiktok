@@ -190,12 +190,7 @@ class SignupCoordinateRunner {
       final timestamp = now();
       pageReadySince ??= timestamp;
       final action = _entryAction(snapshot);
-      final label = _entryLabel(action);
-      final point = snapshot.viewport.toScreen(profile.point(action));
-      final targets = snapshot.nodes.where(
-        (n) => n.enabled && label.hasMatch(n.label) && n.bounds.contains(point),
-      );
-      final target = targets.isEmpty ? null : targets.last;
+      final target = _target(snapshot, action, expected: _entryLabel(action));
       if (target == null) {
         targetStableSince = null;
         previousTarget = null;
@@ -222,32 +217,64 @@ class SignupCoordinateRunner {
     );
   }
 
+  /// The live control for step [name]. The recorded point only picks among
+  /// matching nodes; the tap itself follows the node's Accessibility bounds,
+  /// so it lands on any screen size, font or WebView version.
+  SignupNode? _target(
+    SignupSnapshot snapshot,
+    String name, {
+    RegExp? expected,
+    bool editable = false,
+    bool Function(SignupNode)? where,
+  }) {
+    final candidates = snapshot.nodes.where(
+      (n) =>
+          n.enabled &&
+          (!editable || n.editable) &&
+          (expected == null || expected.hasMatch(n.label)) &&
+          (where?.call(n) ?? true),
+    );
+    final recorded = _recorded(name);
+    if (recorded != null) {
+      return snapshot.viewport.nearest(candidates, recorded);
+    }
+    final visible = candidates
+        .where((n) => !n.bounds.intersect(snapshot.viewport.bounds).isEmpty)
+        .toList();
+    // Without a recorded point the control must be unambiguous. A label is
+    // often exposed twice (clickable View and its TextView); act on the View.
+    final actionable = visible.where((n) => n.clickable || n.editable).toList();
+    final pool = actionable.isEmpty ? visible : actionable;
+    return pool.length == 1 ? pool.single : null;
+  }
+
+  Offset? _recorded(String name) =>
+      (profile.data['points'] as Map)[name] == null
+      ? null
+      : profile.point(name);
+
   Future<void> _tap(
     String name, {
     RegExp? expected,
     bool editable = false,
+    bool Function(SignupNode)? where,
     Future<void> Function()? onTapped,
   }) async {
     if (_actions.contains(name)) {
       throw StateError('Bước $name đã thực hiện, không bấm lại.');
     }
     final snapshot = await _snapshot();
-    final point = profile.point(name);
-    {
-      final physical = snapshot.viewport.toScreen(point);
-      final match = snapshot.nodes.any(
-        (n) =>
-            n.enabled &&
-            (!editable || n.editable) &&
-            (expected == null || expected.hasMatch(n.label)) &&
-            n.bounds.contains(physical),
-      );
-      if (!match) {
-        throw StateError(
-          'Tọa độ bước $name không trúng control đã ghi. Cần đo lại.',
-        );
-      }
+    final node = _target(
+      snapshot,
+      name,
+      expected: expected,
+      editable: editable,
+      where: where,
+    );
+    if (node == null) {
+      throw StateError('Không thấy control của bước $name trên màn hình.');
     }
+    final point = snapshot.viewport.tapPoint(node.bounds, _recorded(name));
     _actions.add(name); // A gesture is never repeated on timeout/navigation.
     await accessibility.tap(snapshot.viewport, point);
     await onTapped?.call();
@@ -265,6 +292,43 @@ class SignupCoordinateRunner {
       );
     }
     await _pauseAfterAction(afterOtp: field == 'otp');
+  }
+
+  static final _resend = exact('Resend code');
+
+  /// An API timeout taps Resend code once, then asks the API for the new code.
+  Future<String> _readOtp() async {
+    try {
+      return await getOtp();
+    } on SignupOtpTimeout {
+      await _resendOtpOnce();
+    }
+    onStatus('Đã gửi lại mã 1 lần. Đang lấy OTP mới…');
+    try {
+      return await getOtp();
+    } on SignupOtpTimeout catch (error) {
+      throw StateError(
+        '${error.message} Đã gửi lại mã 1 lần; đã dừng, không gửi lại thêm.',
+      );
+    }
+  }
+
+  Future<void> _resendOtpOnce() async {
+    // Resend stays disabled while TikTok's countdown runs.
+    await _wait(
+      (s) => _target(s, 'resend-code', expected: _resend) != null,
+      'Hết thời gian chờ OTP. Đang chờ Resend code được bật…',
+      seconds: 75,
+    );
+    onStatus('Đang bấm Resend code một lần bằng Accessibility…');
+    await _tap('resend-code', expected: _resend);
+    await _wait(
+      (s) =>
+          s.nodes.any((n) => !n.enabled && _resend.hasMatch(n.label)) ||
+          s.contains(RegExp(r'^\d+\s*s$')),
+      'Đang chờ TikTok xác nhận gửi lại mã…',
+      seconds: 15,
+    );
   }
 
   Future<void> _hideKeyboard() async {
@@ -476,7 +540,7 @@ class SignupCoordinateRunner {
     );
     await selectBirthday();
     onStatus('Đang dán email bằng Accessibility…');
-    await _tap('focus-email', editable: true);
+    await _tap('focus-email', editable: true, where: (n) => !n.password);
     await _paste('email', configuration.signupEmail.trim());
     await _hideKeyboard();
     await _wait(
@@ -496,13 +560,13 @@ class SignupCoordinateRunner {
       seconds: 20,
     );
     onStatus('Đang lấy OTP…');
-    final otp = await getOtp();
+    final otp = await _readOtp();
     await _guard();
     if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
       throw StateError('OTP không đủ 6 số.');
     }
     await _wait((s) => s.editors.any((n) => !n.password), 'Đang chờ ô OTP…');
-    await _tap('focus-otp', editable: true);
+    await _tap('focus-otp', editable: true, where: (n) => !n.password);
     await _paste('otp', otp);
     final afterOtp = await _snapshot();
     if (!afterOtp.editors.any((n) => n.password) &&
@@ -522,7 +586,7 @@ class SignupCoordinateRunner {
       seconds: 15,
     );
     onStatus('Đang dán mật khẩu bằng Accessibility…');
-    await _tap('focus-password', editable: true);
+    await _tap('focus-password', editable: true, where: (n) => n.password);
     await _paste('password', configuration.signupPassword);
     await _hideKeyboard();
     await _wait(
@@ -572,4 +636,9 @@ class SignupCoordinateRunner {
 
 class SignupCancelled implements Exception {
   const SignupCancelled();
+}
+
+/// The OTP API found no code in time; signup may resend it once.
+class SignupOtpTimeout extends StateError {
+  SignupOtpTimeout([super.message = 'Hết thời gian chờ OTP đăng ký.']);
 }

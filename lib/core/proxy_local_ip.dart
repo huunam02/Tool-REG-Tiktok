@@ -10,20 +10,31 @@ const defaultSimulatedLocalIp = '192.168.1.10';
 const _profilesKey = 'webview_proxy_local_ips_v1';
 Future<void>? _queue;
 
+/// Private LAN ranges: 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16.
+/// Host .0 and .255 are excluded, and the address must be canonical.
 bool isSimulatedLocalIp(String value) {
   final parts = value.split('.');
-  if (parts.length != 4 || parts[0] != '192' || parts[1] != '168') {
+  if (parts.length != 4) return false;
+  final octets = parts.map(int.tryParse).toList();
+  if (octets.any((octet) => octet == null || octet < 0 || octet > 255) ||
+      octets.join('.') != value) {
     return false;
   }
-  final subnet = int.tryParse(parts[2]);
-  final host = int.tryParse(parts[3]);
-  return subnet != null &&
-      host != null &&
-      subnet >= 0 &&
-      subnet <= 255 &&
-      host >= 1 &&
-      host <= 254 &&
-      value == '192.168.$subnet.$host';
+  final [a, b, _, host] = octets.cast<int>();
+  final private =
+      a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168);
+  return private && host >= 1 && host <= 254;
+}
+
+/// Pick one private range evenly, then a random address inside it.
+String _randomSimulatedLocalIp(Random random) {
+  final host = random.nextInt(254) + 1;
+  final subnet = random.nextInt(256);
+  return switch (random.nextInt(3)) {
+    0 => '10.${random.nextInt(256)}.$subnet.$host',
+    1 => '172.${16 + random.nextInt(16)}.$subnet.$host',
+    _ => '192.168.$subnet.$host',
+  };
 }
 
 /// Persist one random private address per scheme/host/port. Credentials and
@@ -59,11 +70,10 @@ Future<String> loadProxyLocalIp(WebViewProxy? proxy) async {
     final stored = profiles[key];
     if (stored != null) return stored;
     final used = {...profiles.values, defaultSimulatedLocalIp};
-    const count = 256 * 254;
-    final start = Random.secure().nextInt(count);
-    for (var offset = 0; offset < count; offset++) {
-      final index = (start + offset) % count;
-      final address = '192.168.${index ~/ 254}.${index % 254 + 1}';
+    final random = Random.secure();
+    // Millions of addresses remain, so a fresh one is found almost at once.
+    for (var attempt = 0; attempt < 1000; attempt++) {
+      final address = _randomSimulatedLocalIp(random);
       if (used.contains(address)) continue;
       profiles[key] = address;
       if (!await preferences.setString(_profilesKey, jsonEncode(profiles))) {

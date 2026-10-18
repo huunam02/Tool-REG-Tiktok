@@ -67,6 +67,7 @@ Map<String, dynamic> _frame({
   int length = 0,
   bool posted = false,
   String card = '0.1',
+  String? likes,
 }) {
   const vp = Rect.fromLTWH(0, 0, 400, 800);
   final media = landscape
@@ -99,6 +100,16 @@ Map<String, dynamic> _frame({
         description: 'Read or add comments 5 comments',
         clickable: true,
       ),
+      if (likes != null)
+        {
+          ..._node(
+            '$card.1.1.0',
+            const Rect.fromLTWH(350, 400, 30, 30),
+            text: 'Like video $likes likes',
+            clickable: true,
+          ),
+          'className': 'android.widget.ToggleButton',
+        },
       if (panel) ...[
         _node(
           'panel.editor',
@@ -176,6 +187,14 @@ class _Service extends SignupAccessibility {
   bool focusWorks = true;
   int missingClockAfterOpen = 0, missingClockFrames = 0, panelDelaySeconds = 0;
   int closes = 0;
+
+  /// The like toggle's count label; null exposes no toggle.
+  String? likes;
+
+  /// TikTok shows each like, then rolls back a rejected one after 3s.
+  bool likeWorks = true, likeAccepted = true;
+  int likeTaps = 0;
+  DateTime? _rollbackAt;
   DateTime? postedAt;
   String? publicComment;
   final keyboardPolicies = <bool>[];
@@ -214,9 +233,14 @@ class _Service extends SignupAccessibility {
         length: length,
         posted: posted,
         card: moved ? '0.2' : '0.1',
+        likes: likes,
       ),
       'keyboardVisible': keyboard,
     };
+    if (_rollbackAt != null && !clock.isBefore(_rollbackAt!)) {
+      _rollbackAt = null;
+      likes = '${int.parse(likes!) - 1}';
+    }
     final nodes = data['nodes'] as List;
     if (dialogUntil != null && clock.isBefore(dialogUntil!)) {
       nodes.add({
@@ -257,6 +281,15 @@ class _Service extends SignupAccessibility {
       if (const Rect.fromLTWH(380, 425, 16, 16).contains(p)) {
         liveSkips++;
         live = false;
+      }
+      return;
+    }
+    if (likes != null && const Rect.fromLTWH(350, 400, 30, 30).contains(p)) {
+      likeTaps++;
+      final count = int.tryParse(likes!);
+      if (likeWorks && count != null) {
+        likes = '${count + 1}';
+        if (!likeAccepted) _rollbackAt = clock.add(const Duration(seconds: 3));
       }
       return;
     }
@@ -477,6 +510,8 @@ void main() {
     expect(a.orientation, NurtureVideoOrientation.portrait);
     expect(b.orientation, NurtureVideoOrientation.portrait);
     expect(a.key, b.key);
+    expect(a.like?.text, startsWith('Like video'));
+    expect(a.likeCount, isNull); // "7.5M" is rounded.
   });
 
   test(
@@ -601,6 +636,87 @@ void main() {
     expect(totals!.fullVideos, 0);
     expect(totals!.watchMilliseconds, greaterThanOrEqualTo(2000));
     expect(service.posts, 0);
+  });
+
+  group('like', () {
+    Future<(NurtureTotals, List<String>)> run(
+      _Service service, {
+      double likeRate = NurtureAccessibilityRunner.defaultLikeRate,
+    }) async {
+      var active = true;
+      NurtureTotals? totals;
+      final skipped = <String>[];
+      await NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: [],
+        isActive: () => active,
+        isTikTok: () async => true,
+        onProgress: (t, _) async {
+          totals = t;
+          if (t.videos > 0) active = false;
+        },
+        onLikeSkipped: skipped.add,
+        likeRate: likeRate,
+        // nextDouble 0 draws a like; nextBool false would skip the post.
+        random: _Random(false),
+        now: () => service.clock,
+        delay: service.delay,
+      ).start();
+      return (totals!, skipped);
+    }
+
+    test('an accepted like is confirmed by its exact count', () async {
+      final service = _Service()..likes = '35';
+      final (totals, skipped) = await run(service);
+      expect(service.likeTaps, 1);
+      expect(service.likes, '36');
+      expect(totals.likes, 1);
+      expect(totals.fullVideos, 1);
+      expect(totals.watchMilliseconds, greaterThanOrEqualTo(29000));
+      expect(skipped, isEmpty);
+    });
+
+    test(
+      'a like TikTok rolls back is reported, not counted or retried',
+      () async {
+        final service = _Service()
+          ..likes = '35'
+          ..likeAccepted = false;
+        final (totals, skipped) = await run(service);
+        expect(service.likeTaps, 1);
+        expect(service.likes, '35');
+        expect(totals.likes, 0);
+        expect(totals.fullVideos, 1);
+        expect(skipped.single, contains('hoàn lại'));
+      },
+    );
+
+    test('a like with no visible effect is not retried', () async {
+      final service = _Service()
+        ..likes = '35'
+        ..likeWorks = false;
+      final (totals, skipped) = await run(service);
+      expect(service.likeTaps, 1);
+      expect(totals.likes, 0);
+      expect(totals.fullVideos, 1);
+      expect(skipped.single, contains('Chưa xác nhận được thả tim'));
+    });
+
+    test('a rounded count counts the single tap', () async {
+      final service = _Service()..likes = '1.2K';
+      final (totals, skipped) = await run(service);
+      expect(service.likeTaps, 1);
+      expect(totals.likes, 1);
+      expect(skipped, isEmpty);
+    });
+
+    test('a zero like rate never likes', () async {
+      final service = _Service()..likes = '35';
+      final (totals, _) = await run(service, likeRate: 0);
+      expect(service.likeTaps, 0);
+      expect(totals.likes, 0);
+    });
   });
 
   test('a long video is watched for one minute then swiped', () async {
@@ -1090,6 +1206,26 @@ void main() {
     expect(video.comments, isNull);
     expect(video.next, isNotNull);
     expect(video.orientation, NurtureVideoOrientation.detail);
+  });
+
+  test('the search-result player exposes its "N Likes" toggle', () async {
+    final service = _SearchService()..state = 'player';
+    for (final (label, count) in [('35 Likes', 35), ('97.8K Likes', null)]) {
+      final snapshot = await service.snapshot();
+      snapshot.nodes.add(
+        SignupNode({
+          'id': '9.1.2.0',
+          'className': 'android.widget.ToggleButton',
+          'text': label,
+          'clickable': true,
+          'enabled': true,
+          'bounds': [265, 240, 300, 260],
+        }),
+      );
+      final video = NurtureVideo.read(snapshot)!;
+      expect(video.like?.text, label);
+      expect(video.likeCount, count);
+    }
   });
 
   test(

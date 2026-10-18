@@ -19,6 +19,7 @@ class NurtureVideo {
     required this.duration,
     required this.bounds,
     required this.comments,
+    this.like,
     this.next,
     this.root = '',
     this.detail = false,
@@ -30,6 +31,9 @@ class NurtureVideo {
   /// The feed's "Read or add comments" button; null in the detail player,
   /// whose comment box is always open.
   final SignupNode? comments;
+
+  /// The post's "Like video" toggle; null when it is not exposed.
+  final SignupNode? like;
   final SignupNode? next;
 
   /// Accessibility id of the post's container; its text is content, never a
@@ -47,6 +51,45 @@ class NurtureVideo {
     final b = viewport.fromScreen(bounds.bottomRight);
     // A 4:5 portrait and a 9:16 portrait can also have different button rows.
     return '${orientation.name}/${a.dx.round()}-${a.dy.round()}-${b.dx.round()}-${b.dy.round()}';
+  }
+
+  /// The exact like count, or null when TikTok rounds it (1.2K, 3.4M).
+  /// Android WebView exposes no pressed state for the like toggle, so an
+  /// exact count is the only sign that a like was accepted.
+  int? get likeCount {
+    final match = _likeCount.firstMatch(like?.label.trim() ?? '');
+    return match == null ? null : int.parse(match[1]!.replaceAll(',', ''));
+  }
+
+  /// "Like video 35 likes" in the feed, "35 Likes" in the search player.
+  static final _likeLabel = RegExp(
+    r'^(Like video\b|[\d.,]+[KMB]? likes?$)',
+    caseSensitive: false,
+  );
+  static final _likeCount = RegExp(
+    r'^(?:Like video )?([\d,]+) likes?$',
+    caseSensitive: false,
+  );
+
+  /// The single like toggle among [nodes]; ambiguous rows expose none.
+  static SignupNode? _likeIn(Iterable<SignupNode> nodes) {
+    final likes = nodes
+        .where(
+          (n) =>
+              n.clickable &&
+              n.enabled &&
+              n.className.endsWith('ToggleButton') &&
+              (_likeLabel.hasMatch(n.text.trim()) ||
+                  _likeLabel.hasMatch(n.description.trim())),
+        )
+        .toList();
+    return likes.length == 1 ? likes.single : null;
+  }
+
+  String likeKey(SignupViewport viewport) {
+    final a = viewport.fromScreen(like!.bounds.topLeft);
+    final b = viewport.fromScreen(like!.bounds.bottomRight);
+    return '${layout(viewport)}/like/${a.dx.round()}-${a.dy.round()}-${b.dx.round()}-${b.dy.round()}';
   }
 
   /// The action column shifts with optional rows (music disc, CapCut label)
@@ -120,6 +163,9 @@ class NurtureVideo {
           duration: duration,
           bounds: media,
           comments: button,
+          like: _likeIn(
+            snapshot.nodes.where((n) => n.id.startsWith('$actionRoot.')),
+          ),
           next: down,
           root: card,
         ),
@@ -179,6 +225,7 @@ class NurtureVideo {
         duration: duration,
         bounds: media,
         comments: null,
+        like: _likeIn(inside),
         next: next,
         root: dialog.id,
         detail: true,
@@ -263,15 +310,23 @@ class _CommentNotReady implements Exception {
   final String message;
 }
 
+class _LikeSkipped implements Exception {
+  const _LikeSkipped(this.message);
+  final String message;
+}
+
 class _WatchPlan {
-  _WatchPlan(this.full, this.skipAt, this.commentAt, this.cap);
+  _WatchPlan(this.full, this.skipAt, this.commentAt, this.cap, this.likeAt);
   final bool full;
   final int skipAt, commentAt;
+
+  /// Playback second at which the post is liked; -1 never likes it.
+  final int likeAt;
 
   /// Seconds a full watch lasts on a long video; null watches to the end.
   final int? cap;
   int watched = 0;
-  bool completed = false, commentAttempted = false;
+  bool completed = false, commentAttempted = false, likeAttempted = false;
 }
 
 /// No DOM, JS, keyboard channel or ADB input. All UI uses Accessibility.
@@ -285,6 +340,9 @@ class NurtureAccessibilityRunner {
     required this.onProgress,
     this.onComment,
     this.onCommentSkipped,
+    this.onLike,
+    this.onLikeSkipped,
+    this.likeRate = defaultLikeRate,
     this.searchKeyword,
     Random? random,
     DateTime Function()? now,
@@ -301,6 +359,12 @@ class NurtureAccessibilityRunner {
   final Future<void> Function(NurtureTotals, int) onProgress;
   final void Function()? onComment;
   final void Function(String)? onCommentSkipped;
+  final void Function()? onLike;
+  final void Function(String)? onLikeSkipped;
+
+  /// Share of posts that are liked (0–1). A liked post is watched in full.
+  final double likeRate;
+  static const defaultLikeRate = .3;
 
   /// Search-mode nurture: the keyword is entered and submitted through
   /// Accessibility, then a result from the Videos tab is watched. Null or
@@ -313,6 +377,7 @@ class NurtureAccessibilityRunner {
   Completer<void>? _sleepCompleter;
   final _plans = <String, _WatchPlan>{};
   int _sequence = 0, _watchMs = 0, _full = 0, _skipped = 0, _comments = 0;
+  int _likes = 0;
   int _lastComment = -1;
   bool _cancelled = false, _running = false;
   NurtureVideo? _previous;
@@ -324,6 +389,7 @@ class NurtureAccessibilityRunner {
     fullVideos: _full,
     skippedVideos: _skipped,
     comments: _comments,
+    likes: _likes,
   );
 
   /// Seconds a full watch lasts on a long video.
@@ -331,6 +397,12 @@ class NurtureAccessibilityRunner {
 
   /// Latest playback second at which a comment starts.
   static const _latestCommentSeconds = 20;
+
+  /// How long a CAPTCHA may stay open while the monitor solves it.
+  static const _captchaWait = Duration(seconds: 60);
+
+  /// Latest playback second at which a like is given.
+  static const _latestLikeSeconds = 10;
 
   static bool authenticated(SignupSnapshot s) =>
       s.ready &&
@@ -395,9 +467,15 @@ class NurtureAccessibilityRunner {
   }
 
   _WatchPlan _plan(NurtureVideo video) => _plans.putIfAbsent(video.key, () {
-    final full = _random.nextBool();
     // Videos longer than a minute are watched for one minute only.
     final cap = video.duration > _maxWatchSeconds ? _maxWatchSeconds : null;
+    final watch = min(video.duration, cap ?? video.duration);
+    final like =
+        video.like != null && watch >= 4 && _random.nextDouble() < likeRate;
+    // A liked post is watched in full.
+    final full = like || _random.nextBool();
+    final likeLatest = min(watch ~/ 2, _latestLikeSeconds);
+    final likeAt = like ? 2 + _random.nextInt(likeLatest - 1) : -1;
     // Comment early in the (short) watch: from 3s to half of it, at most 20s.
     final latest = min(
       (min(video.duration, cap ?? video.duration) * .5).floor(),
@@ -411,6 +489,7 @@ class NurtureAccessibilityRunner {
       min(2 + _random.nextInt(4), max(1, video.duration ~/ 2)),
       commentAt,
       cap,
+      likeAt,
     );
   });
 
@@ -438,6 +517,7 @@ class NurtureAccessibilityRunner {
     // themselves. Nothing is tapped while one is open; only a dialog that
     // persists stops nurture.
     final dialogUntil = _now().add(const Duration(seconds: 10));
+    final captchaUntil = _now().add(_captchaWait);
     while (true) {
       final prompts = _prompts(s);
       bool hasPrompt(RegExp pattern) => prompts.any(
@@ -450,7 +530,18 @@ class NurtureAccessibilityRunner {
           caseSensitive: false,
         ),
       )) {
-        throw StateError('TikTok yêu cầu xác minh; đã dừng nuôi để bạn xử lý.');
+        // The CAPTCHA monitor solves it through the API meanwhile; nothing
+        // is tapped until it closes.
+        if (!_now().isBefore(captchaUntil)) {
+          throw StateError(
+            'TikTok yêu cầu xác minh; đã dừng nuôi để bạn xử lý.',
+          );
+        }
+        await _sleep(1000);
+        final next = await accessibility.snapshot();
+        _check();
+        if (next.ready && next.viewport.valid) s = next;
+        continue;
       }
       if (hasPrompt(RegExp(r'^Log in to TikTok$', caseSensitive: false))) {
         throw StateError('TikTok yêu cầu đăng nhập lại; đã dừng nuôi.');
@@ -643,6 +734,11 @@ class NurtureAccessibilityRunner {
             (!plan.full && plan.watched >= plan.skipAt) ||
             (plan.full && plan.cap != null && plan.watched >= plan.cap!)) {
           await _advance(s, video, plan);
+        } else if (!plan.likeAttempted &&
+            plan.likeAt >= 0 &&
+            video.position >= plan.likeAt) {
+          plan.likeAttempted = true; // One tap per post; never retried.
+          await _likeSafely(s, video);
         } else if (plan.full &&
             !plan.commentAttempted &&
             plan.commentAt >= 0 &&
@@ -886,6 +982,60 @@ class NurtureAccessibilityRunner {
       }
     }
     throw StateError('Chưa chuyển được video; đã dừng để kiểm tra tọa độ.');
+  }
+
+  /// One tap on the like toggle; never repeated, since a second tap unlikes.
+  /// TikTok shows a like at once and rolls a rejected one back within a few
+  /// seconds, so an exact count is watched until the rollback window passes.
+  Future<void> _like(SignupSnapshot s, NurtureVideo video) async {
+    final like = video.like;
+    if (like == null) return;
+    final before = video.likeCount;
+    await _tap(
+      video.likeKey(s.viewport),
+      s,
+      like,
+      beforeDispatch: (point) async {
+        final fresh = await _snapshot();
+        final current = NurtureVideo.read(fresh);
+        if (current?.key != video.key ||
+            current!.like == null ||
+            !current.like!.bounds.contains(fresh.viewport.toScreen(point))) {
+          throw const _LikeSkipped('Nút thả tim đã thay đổi.');
+        }
+      },
+    );
+    if (before != null) {
+      var raised = false;
+      final until = _now().add(const Duration(seconds: 8));
+      do {
+        await _sleep();
+        final current = NurtureVideo.read(await _snapshot());
+        if (current == null) continue;
+        if (current.key != video.key) break;
+        final count = current.likeCount;
+        if (count == before + 1) {
+          raised = true;
+        } else if (raised && count == before) {
+          throw const _LikeSkipped(
+            'TikTok đã hoàn lại lượt thả tim (tài khoản có thể bị hạn chế).',
+          );
+        }
+      } while (_now().isBefore(until));
+      if (!raised) throw const _LikeSkipped('Chưa xác nhận được thả tim.');
+    }
+    // A rounded count cannot confirm the like; the tap itself is counted.
+    _likes++;
+    await _emit();
+    onLike?.call();
+  }
+
+  Future<void> _likeSafely(SignupSnapshot s, NurtureVideo video) async {
+    try {
+      await _like(s, video);
+    } on _LikeSkipped catch (error) {
+      onLikeSkipped?.call('${error.message} Không bấm lại; tiếp tục nuôi.');
+    }
   }
 
   Future<SignupSnapshot> _sameVideo(String key) async {

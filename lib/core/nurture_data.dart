@@ -40,12 +40,14 @@ class NurtureTotals {
     this.fullVideos = 0,
     this.skippedVideos = 0,
     this.comments = 0,
+    this.likes = 0,
   });
   final int watchMilliseconds;
   final int videos;
   final int fullVideos;
   final int skippedVideos;
   final int comments;
+  final int likes;
 
   double get minutes => watchMilliseconds / 60000;
 
@@ -55,6 +57,7 @@ class NurtureTotals {
     fullVideos: fullVideos + other.fullVideos,
     skippedVideos: skippedVideos + other.skippedVideos,
     comments: comments + other.comments,
+    likes: likes + other.likes,
   );
 
   static NurtureTotals fromMap(Map<String, Object?> row) => NurtureTotals(
@@ -63,6 +66,7 @@ class NurtureTotals {
     fullVideos: (row['full_videos'] as num?)?.toInt() ?? 0,
     skippedVideos: (row['skipped_videos'] as num?)?.toInt() ?? 0,
     comments: (row['comments'] as num?)?.toInt() ?? 0,
+    likes: (row['likes'] as num?)?.toInt() ?? 0,
   );
 
   Map<String, Object?> toMap() => {
@@ -71,6 +75,7 @@ class NurtureTotals {
     'full_videos': fullVideos,
     'skipped_videos': skippedVideos,
     'comments': comments,
+    'likes': likes,
   };
 }
 
@@ -100,7 +105,8 @@ class NurtureSnapshot {
       'skipped_videos',
       'comments',
     ];
-    for (final name in names) {
+    // The page's viewing script reports no likes; only the runner does.
+    for (final name in [...names, if (value.containsKey('likes')) 'likes']) {
       final number = value[name];
       if (number is! num ||
           !number.isFinite ||
@@ -111,11 +117,13 @@ class NurtureSnapshot {
     }
     final totals = NurtureTotals.fromMap({
       for (final name in names) name: value[name],
+      'likes': value['likes'],
     });
     if (totals.videos != totals.fullVideos + totals.skippedVideos ||
         totals.watchMilliseconds > const Duration(hours: 24).inMilliseconds ||
         totals.videos > 100000 ||
-        totals.comments > 100000) {
+        totals.comments > 100000 ||
+        totals.likes > 100000) {
       return null;
     }
     return NurtureSnapshot(

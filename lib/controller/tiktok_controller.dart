@@ -63,6 +63,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     this.rotateCaptchaSolverFactory,
     this.onReturnToConfiguration,
     this.onFlowFinished,
+    this.logoutAfterNurture = false,
+    this.autoAdvance = false,
     Random? workflowRandom,
     ProxyStore? proxyStore,
     CaptchaSettingsStore? captchaSettingsStore,
@@ -92,18 +94,155 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   bool _finishingWatch = false;
   int _workflowGeneration = 0;
 
-  void _scheduleLogoutAfterSignup() {
-    // A route owns the handoff to Home and the subsequent login schedule.
-    if (onFlowFinished == null ||
-        _signupHandoffStarted ||
-        !active ||
-        (configuration.configurationId != null && !_registrationSaved)) {
+  /// Log out after nurturing instead of keeping the session (auto runs).
+  final bool logoutAfterNurture;
+
+  /// Part of an automatic run over several configurations: a failed or stuck
+  /// flow returns [TikTokFlowResult.failed] so Home can continue.
+  final bool autoAdvance;
+  static const autoFailureDelay = Duration(seconds: 15);
+  static const autoFlowTimeout = Duration(minutes: 15);
+  Timer? _autoFailTimer;
+  Timer? _autoFlowWatchdog;
+  bool _stoppedByUser = false;
+  TikTokFlowResult _logoutResult = TikTokFlowResult.signupLoggedOut;
+
+  bool get logoutFollowsNurture =>
+      _logoutResult == TikTokFlowResult.nurtureLoggedOut;
+
+  /// Automatic runs and nurture right after signup end with a logout.
+  bool get _logsOutAfterNurture =>
+      onFlowFinished != null && (logoutAfterNurture || _signupHandoffStarted);
+
+  /// Before logging out, the screen is held for a random 1–2 minutes.
+  Duration _logoutHold() => Duration(seconds: 60 + _workflowRandom.nextInt(61));
+
+  void _afterSignupSucceeded() {
+    // A route owns the handoff to Home and the next configuration.
+    if (onFlowFinished == null || _signupHandoffStarted || !active) return;
+    if (configuration.configurationId != null && !_registrationSaved) {
+      _failAutoFlow();
       return;
     }
     _signupHandoffStarted = true;
-    final hold = Duration(seconds: 120 + _workflowRandom.nextInt(121));
+    if (configuration.nurtureAfterSignup) {
+      unawaited(_nurtureAfterSignup());
+    } else {
+      _scheduleLogout(TikTokFlowResult.signupLoggedOut);
+    }
+  }
+
+  /// Warm up the new account for 2–3 minutes in the session that created it.
+  Future<void> _nurtureAfterSignup() async {
+    mutate(() => loginConfirmed = true);
+    await _persistCurrentAccountLoginState(true);
+    if (!active || pageFailure != null || accountFailure != null) return;
+    notify(
+      'Đăng ký xong. Đang nuôi tài khoản mới 2–3 phút.',
+      duration: const Duration(seconds: 3),
+    );
+    await _startTimedAutoWatch();
+  }
+
+  void _scheduleLogout(TikTokFlowResult result) {
+    if (onFlowFinished == null ||
+        _flowFinished ||
+        waitingToLogout ||
+        logoutBusy ||
+        !active) {
+      return;
+    }
+    _logoutResult = result;
+    final hold = _logoutHold();
     mutate(() => signupLogoutAt = _now().add(hold));
     _signupLogoutTimer = Timer(hold, _continueSignupLogout);
+  }
+
+  /// Leave this configuration after a short notice so the run can continue.
+  void _failAutoFlow({String? reason}) {
+    if (!autoAdvance ||
+        _stoppedByUser ||
+        _flowFinished ||
+        !active ||
+        _autoFailTimer != null) {
+      return;
+    }
+    if (launchAction == TikTokLaunchAction.signup && !_registrationSaved) {
+      unawaited(_recordSignupFailure(reason ?? _lastNotice));
+    }
+    _autoFailTimer = Timer(autoFailureDelay, () {
+      if (!active || _flowFinished || _stoppedByUser) return;
+      _flowFinished = true;
+      _autoFlowWatchdog?.cancel();
+      onFlowFinished?.call(TikTokFlowResult.failed);
+    });
+    mutate(() => autoRunFailing = true);
+  }
+
+  /// Shown while a failed automatic flow waits to move on.
+  bool autoRunFailing = false;
+
+  /// The latest message shown on this screen: usually why a flow stopped.
+  String? _lastNotice;
+
+  @override
+  void notify(
+    String message, {
+    Duration duration = const Duration(seconds: 4),
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    _lastNotice = message;
+    super.notify(
+      message,
+      duration: duration,
+      actionLabel: actionLabel,
+      onAction: onAction,
+    );
+  }
+
+  /// Keep the reason in the configuration's signup log (Cấu hình lỗi tab).
+  Future<void> _recordSignupFailure(String? reason) async {
+    final id = configuration.configurationId;
+    if (id == null) return;
+    try {
+      await proxyStore.recordSignupFailure(
+        id,
+        configuration.signupEmail,
+        message: reason ?? 'Không rõ nguyên nhân.',
+        step: signupStatus,
+      );
+    } catch (_) {
+      debugPrint('Could not record the signup failure.');
+    }
+  }
+
+  bool get _flowContinues =>
+      _flowFinished ||
+      _signupHandoffStarted ||
+      waitingToLogout ||
+      logoutBusy ||
+      autoWatchEnabled ||
+      _watchCompletionPending ||
+      autoSignupBusy ||
+      autoLoginBusy;
+
+  /// The person takes over this screen; an automatic run stops advancing.
+  void stopByUser() {
+    _userTookOver();
+    cancelAutoActions();
+  }
+
+  void _userTookOver() {
+    _stoppedByUser = true;
+    _autoFlowWatchdog?.cancel();
+    _cancelAutoFailure();
+  }
+
+  void _cancelAutoFailure() {
+    _autoFailTimer?.cancel();
+    _autoFailTimer = null;
+    if (autoRunFailing) mutate(() => autoRunFailing = false);
   }
 
   void cancelSignupHandoff() {
@@ -179,7 +318,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           if (!active || generation != _workflowGeneration) return;
           if (!_flowFinished) {
             _flowFinished = true;
-            onFlowFinished?.call(TikTokFlowResult.signupLoggedOut);
+            _autoFlowWatchdog?.cancel();
+            onFlowFinished?.call(_logoutResult);
           }
           return;
         }
@@ -194,6 +334,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         notify(
           'Chưa xác nhận được đăng xuất TikTok. Đã dừng lịch đăng nhập lại; hãy kiểm tra màn hiện tại.',
         );
+        _failAutoFlow();
       }
     } finally {
       if (current()) mutate(() => logoutBusy = false);
@@ -553,6 +694,13 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         },
         isPresent: isPresent,
         accessibility: SignupAccessibility(), // No recursive hooks.
+        // A wrong answer is retried on a new puzzle before giving up.
+        refresh: () => refreshRotateCaptcha(
+          accessibility: SignupAccessibility(),
+          readGeometry: () =>
+              controller.evaluateJavascript(source: rotateCaptchaRefreshScript),
+          guard: guard,
+        ),
         onStatus: (status) {
           if (current()) {
             mutate(() {
@@ -721,11 +869,20 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         ),
       );
     }
+    if (autoAdvance && onFlowFinished != null) {
+      _autoFlowWatchdog = Timer(autoFlowTimeout, () {
+        if (!active || _flowFinished || _stoppedByUser) return;
+        notify('Quá 15 phút chưa xong cấu hình này.');
+        _failAutoFlow();
+      });
+    }
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void onClose() {
+    _autoFlowWatchdog?.cancel();
+    _autoFailTimer?.cancel();
     _captchaSettingsSubscribed = false;
     captchaSettingsStore.removeListener(_captchaSettingsChanged);
     _stopRotateCaptchaMonitor();
@@ -853,7 +1010,13 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             ),
             onCommentSkipped: (message) =>
                 notify(message, duration: const Duration(seconds: 2)),
-            searchKeyword: _nurturePlan.mode == NurtureMode.search
+            onLike: () =>
+                notify('Đã thả tim.', duration: const Duration(seconds: 2)),
+            onLikeSkipped: (message) =>
+                notify(message, duration: const Duration(seconds: 2)),
+            // A restart after an error falls back to the For You feed.
+            searchKeyword:
+                _nurturePlan.mode == NurtureMode.search && _nurtureRestarts == 0
                 ? _nurturePlan.keyword
                 : null,
             now: _now,
@@ -865,14 +1028,27 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             if (!active || !autoWatchEnabled || navigation != navigationId) {
               return;
             }
+            final message = error is StateError
+                ? error.message.toString()
+                : 'Không thể tiếp tục nuôi qua Accessibility.';
+            debugPrint('Accessibility nurture stopped: $message');
+            notify(message);
+            if (_logsOutAfterNurture) {
+              final stopsAt = _autoWatchStopsAt;
+              if (_nurtureRestarts < maxNurtureRestarts &&
+                  stopsAt != null &&
+                  stopsAt.difference(_now()) > const Duration(seconds: 30)) {
+                _nurtureRestarts++;
+                unawaited(_restartNurture());
+                return;
+              }
+              // The account is already signed in: end the session cleanly.
+              _finishTimedAutoWatch();
+              return;
+            }
             _cancelAutoWatchTimers();
             mutate(() => autoWatchEnabled = false);
             unawaited(stopAutoWatch());
-            notify(
-              error is StateError
-                  ? error.message.toString()
-                  : 'Không thể tiếp tục nuôi qua Accessibility.',
-            );
           }),
         );
         return;
@@ -891,6 +1067,28 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       mutate(() => autoWatchEnabled = false);
       await _stopAutoWatch();
       notify('Không thể bật tự động xem. Hãy thử tải lại TikTok.');
+    }
+  }
+
+  /// Automatic sessions reopen the feed after a nurture error this many times.
+  static const maxNurtureRestarts = 2;
+  int _nurtureRestarts = 0;
+
+  /// Reload TikTok Home; the page load starts a fresh nurture runner within
+  /// the same deadline.
+  Future<void> _restartNurture() async {
+    await stopAutoWatch();
+    if (!active || !autoWatchEnabled) return;
+    _accessibilityNurtureNavigation = null;
+    try {
+      await webViewController?.loadUrl(
+        urlRequest: URLRequest(
+          url: WebUri(tiktokHomeUrl),
+          headers: navigationHeaders,
+        ),
+      );
+    } catch (_) {
+      if (active && autoWatchEnabled) _finishTimedAutoWatch();
     }
   }
 
@@ -920,6 +1118,14 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       _autoViewingSession = null;
       if (!active || !appActive) return;
       _watchCompletionPending = false;
+      if (_logsOutAfterNurture) {
+        notify(
+          'Đã nuôi xong. Giữ màn hình 1–2 phút rồi đăng xuất.',
+          duration: const Duration(seconds: 3),
+        );
+        _scheduleLogout(TikTokFlowResult.nurtureLoggedOut);
+        return;
+      }
       if (onFlowFinished != null && !_flowFinished) {
         _flowFinished = true;
         onFlowFinished!(TikTokFlowResult.nurtureCompleted);
@@ -1160,20 +1366,34 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             accountFailure != null) {
           return;
         }
-        if (authenticated == null && usesAccessibilityLogin) {
+        // A CAPTCHA modal hides the signed-in sidebar. It is not a sign-out:
+        // keep the stored login state and let Auto nuôi solve it via the API.
+        final captchaShown =
+            authenticated != true &&
+            usesAccessibilityLogin &&
+            _captchaKey.isNotEmpty &&
+            await webViewController?.evaluateJavascript(
+                  source: rotateCaptchaPresentScript,
+                ) ==
+                true;
+        if (!active || !appActive || navigation != navigationId) return;
+        if (authenticated == null && usesAccessibilityLogin && !captchaShown) {
           // Unreadable is not signed out; keep the stored login state.
           notify('Chưa đọc được trang TikTok qua Accessibility; hãy thử lại.');
           return;
         }
-        if (authenticated != true) {
+        if (captchaShown) {
+          notify('TikTok đang hiện CAPTCHA; Auto nuôi sẽ giải bằng API.');
+        } else if (authenticated != true) {
           await _persistCurrentAccountLoginState(false);
           notify(
             'Hãy đăng nhập TikTok trên trang hiện tại trước khi bật Auto nuôi.',
           );
           return;
+        } else {
+          await _persistCurrentAccountLoginState(true);
         }
         mutate(() => loginConfirmed = true);
-        await _persistCurrentAccountLoginState(true);
         if (!active || !appActive || navigation != navigationId) return;
       }
       if (usesAccessibilityLogin && !autoWatchEnabled) {
@@ -1579,6 +1799,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         } else ...{
           if (video.comments case final comments?)
             video.commentsKey(snapshot.viewport): comments,
+          if (video.like case final like?)
+            video.likeKey(snapshot.viewport): like,
           if (video.next case final next?) '$kind/feed/next-video': next,
         },
       };
@@ -2056,7 +2278,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         if (message != null) {
           notify(message);
         }
-        if (signupSucceeded) _scheduleLogoutAfterSignup();
+        if (signupSucceeded) _afterSignupSucceeded();
       }
     }
   }
@@ -2096,6 +2318,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         active && appActive && autoSignupBusy && autoSignupAttempt == attempt;
     OtpCodeRequest? coordinateOtpRequest;
     SignupCoordinateRunner? coordinateRunner;
+    var succeeded = false;
     try {
       await stopAutoWatch();
       final profile = await SignupCoordinateProfile.load();
@@ -2144,7 +2367,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
               ? 'Tài khoản TikTok đã đăng nhập.'
               : 'Đăng ký TikTok thành công.',
         );
-        _scheduleLogoutAfterSignup();
+        succeeded = isActive();
       }
     } on SignupCancelled {
       // Cancellation keeps the current form without issuing another action.
@@ -2165,7 +2388,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       if (identical(_signupCoordinateRunner, coordinateRunner)) {
         _signupCoordinateRunner = null;
       }
-      if (isActive()) mutate(() => autoSignupBusy = false);
+      if (isActive()) {
+        mutate(() => autoSignupBusy = false);
+        if (succeeded) _afterSignupSucceeded();
+      }
     }
   }
 
@@ -2565,6 +2791,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       _ =>
         'Chưa xác nhận được bình luận đã gửi. Đã dừng, không gửi lại để tránh trùng.',
     };
+    if (_logsOutAfterNurture && message != 'login-required') {
+      // The account is still signed in: end the session with the usual logout.
+      notify(text);
+      _finishTimedAutoWatch();
+      return;
+    }
     _cancelAutoWatchTimers();
     mutate(() {
       autoWatchEnabled = false;
@@ -2575,6 +2807,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       unawaited(_persistCurrentAccountLoginState(false));
     }
     notify(text);
+    if (message == 'login-required') _failAutoFlow();
   }
 
   Future<void> _startNurtureWithRetainedSession() async {
@@ -2649,6 +2882,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       case TikTokLaunchAction.signup:
         await autoSignup();
     }
+    if (active && !_flowContinues) _failAutoFlow();
   }
 
   void cancelAutoActions({bool cancelHandoff = true}) {
@@ -2739,6 +2973,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       checkingIp = false;
       detectedIp = null;
     });
+    _failAutoFlow(reason: '${failure.title}\n${failure.message}');
   }
 
   void receiveProxyIp(List<dynamic> args) {
@@ -3118,6 +3353,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       onAction: onReturnToConfiguration,
     );
     debugPrint('[TikTok account] ${failure.title}: ${failure.message}');
+    _failAutoFlow();
   }
 
   void onReceivedError(
@@ -3172,6 +3408,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   void goHome() {
+    _userTookOver();
     cancelAutoActions();
     unawaited(
       webViewController?.loadUrl(
@@ -3186,6 +3423,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   Future<void> openBrowserCheck() async {
     final controller = webViewController;
     if (!active || controller == null || !browserIdentityReady) return;
+    _userTookOver();
     _cancelAutoWatchTimers();
     cancelAutoActions();
     _ipChecker?.cancel();
@@ -3214,6 +3452,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   void retryPage() {
     final controller = webViewController;
     if (controller == null) return;
+    _cancelAutoFailure();
     unawaited(
       browserIdentityReady ? controller.reload() : onWebViewCreated(controller),
     );

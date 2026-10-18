@@ -104,6 +104,18 @@ void main() {
           password: 'old-password',
           mailboxPassword: 'mail',
         ),
+        statusAccount: AccountStatus.registered,
+      );
+      // Unregistered accounts stay out of the nurture tab.
+      await store.save(
+        name: 'Account 02',
+        proxy: null,
+        userAgent: 'agent',
+        account: const AccountCredentials(
+          email: 'new@example.com',
+          password: 'password',
+          mailboxPassword: 'mail',
+        ),
       );
       await store.useSaved(id);
       await store.nurture.beginSession(
@@ -133,6 +145,9 @@ void main() {
       await tester.tap(find.byKey(const Key('nurtureTab')));
       await tester.pumpAndSettle();
       expect(find.text('1.5 phút'), findsOneWidget);
+      expect(find.text('Tài khoản số lượng: 1'), findsOneWidget);
+      expect(find.text('person@example.com'), findsWidgets);
+      expect(find.text('new@example.com'), findsNothing);
       expect(find.text('Video đã xem'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
       expect(find.text('2'), findsOneWidget);
@@ -168,7 +183,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('nurtureTab')));
       await tester.pumpAndSettle();
-      expect(find.text('Chưa có tài khoản'), findsOneWidget);
+      expect(find.text('Chưa có tài khoản đã đăng ký'), findsOneWidget);
       await tester.ensureVisible(find.text('Đi đến Cấu hình'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Đi đến Cấu hình'));

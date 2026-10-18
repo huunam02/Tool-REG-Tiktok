@@ -22,6 +22,7 @@ class AppConfiguration {
     this.webViewTimeZone,
     this.webViewLocalIp = '192.168.1.10',
     this.configurationId,
+    this.nurtureAfterSignup = false,
     List<String> searchKeywords = const [],
   }) : comments = List.unmodifiable(comments),
        searchKeywords = List.unmodifiable(searchKeywords);
@@ -55,6 +56,9 @@ class AppConfiguration {
   final String? webViewTimeZone;
   final String webViewLocalIp;
   final int? configurationId;
+
+  /// Nurture the new account in the signup session before logging out.
+  final bool nurtureAfterSignup;
 
   static List<String> parseComments(String value) => value
       .split('\n')

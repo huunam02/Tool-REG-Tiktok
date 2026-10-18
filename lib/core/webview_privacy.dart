@@ -71,7 +71,7 @@ const disableWebRtcScript = r'''
 String webRtcLocalIpScript(String localIp) {
   if (!isSimulatedLocalIp(localIp)) {
     throw const FormatException(
-      'Local IP mô phỏng phải thuộc dải 192.168.x.1–254.',
+      'Local IP mô phỏng phải thuộc dải 10.x, 172.16–31.x hoặc 192.168.x (host 1–254).',
     );
   }
   // Retain compatibility with saved profiles without injecting their address.

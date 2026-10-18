@@ -180,7 +180,9 @@ class ProxyFormController extends AppController {
       configurations = [
         first,
         for (final data in records.skip(1))
-          ConfigurationFormFields()..applyImport(data),
+          ConfigurationFormFields()
+            ..applyImport(data)
+            ..nurtureAfterSignup = first.nurtureAfterSignup,
       ];
       importError = null;
       importData.clear();
@@ -247,6 +249,23 @@ class ProxyFormController extends AppController {
   }
 
   void clearImportError(String _) => mutate(() => importError = null);
+
+  /// True/false when every configuration agrees, otherwise null (mixed).
+  bool? get nurtureAfterSignupForAll {
+    final values = configurations.map((fields) => fields.nurtureAfterSignup);
+    if (values.every((value) => value)) return true;
+    if (values.every((value) => !value)) return false;
+    return null;
+  }
+
+  void setNurtureAfterSignup(ConfigurationFormFields fields, bool value) =>
+      mutate(() => fields.nurtureAfterSignup = value);
+
+  void setNurtureAfterSignupForAll(bool value) => mutate(() {
+    for (final fields in configurations) {
+      fields.nurtureAfterSignup = value;
+    }
+  });
 
   Future<void> detectTimeZoneFor(ConfigurationFormFields fields) async {
     if (!active ||
@@ -337,7 +356,8 @@ class ConfigurationFormFields {
       mailboxPassword = TextEditingController(
         text: entry?.account?.mailboxPassword,
       ),
-      statusAccount = entry?.statusAccount ?? AccountStatus.unregistered {
+      statusAccount = entry?.statusAccount ?? AccountStatus.unregistered,
+      nurtureAfterSignup = entry?.nurtureAfterSignup ?? false {
     for (final field in [url, username, password]) {
       field.addListener(() {
         revision++;
@@ -360,6 +380,7 @@ class ConfigurationFormFields {
   final TextEditingController accountPassword;
   final TextEditingController mailboxPassword;
   AccountStatus statusAccount;
+  bool nurtureAfterSignup;
   bool generating = false;
   bool generationFailed = false;
   bool disposed = false;
@@ -393,6 +414,7 @@ class ConfigurationFormFields {
     ),
     statusAccount: statusAccount,
     timeZoneId: normalizeProxyTimeZone(timeZoneId.text),
+    nurtureAfterSignup: nurtureAfterSignup,
   );
 
   void dispose() {

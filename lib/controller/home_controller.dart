@@ -10,15 +10,32 @@ import '../core/services/remote_config_service.dart';
 import '../core/app_session.dart';
 import '../core/nurture_data.dart';
 import '../core/proxy_geolocation.dart';
+import '../core/proxy_local_ip.dart';
 import '../core/configuration_data.dart';
 import '../core/desktop_user_agents.dart';
 import '../core/otp_api.dart';
 import '../core/otp_settings_store.dart';
 import '../core/proxy_store.dart';
+import '../core/signup_failure.dart';
 import '../core/webview_proxy.dart';
 import '../core/webview_user_agent.dart';
+import '../core/tiktok_flow_result.dart';
 import '../core/tiktok_launch_action.dart';
 import 'app_controller.dart';
+
+/// What an automatic run does with each eligible configuration.
+enum AutoRunMode {
+  /// Sign up every unregistered configuration that has not failed.
+  signup,
+
+  /// Log in to and nurture every registered configuration.
+  nurture,
+
+  /// Sign up again every configuration listed in Cấu hình lỗi.
+  retryFailed;
+
+  bool get signsUp => this != nurture;
+}
 
 class HomeController extends AppController
     with GetSingleTickerProviderStateMixin, WidgetsBindingObserver {
@@ -30,7 +47,9 @@ class HomeController extends AppController
     DateTime Function()? now,
     Random? workflowRandom,
     Future<bool> Function()? readLoginSession,
+    Future<void> Function()? clearSession,
   }) : store = store ?? ProxyStore.instance,
+       _clearSession = clearSession ?? clearAppSession,
        _now = now ?? DateTime.now,
        _workflowRandom = workflowRandom ?? Random(),
        _readLoginSession = readLoginSession ?? hasTikTokLoginSession,
@@ -43,104 +62,307 @@ class HomeController extends AppController
   final DateTime Function() _now;
   final Random _workflowRandom;
   final Future<bool> Function() _readLoginSession;
+  final Future<void> Function() _clearSession;
   int _profileLoadGeneration = 0;
   bool hasCurrentAccountSession = false;
-  Timer? _scheduledLoginTimer;
-  DateTime? autoLoginStartsAt;
-  AppConfiguration? _scheduledConfiguration;
-  Future<void> Function()? _scheduledLogin;
   bool _appActive = true;
-  bool _checkingScheduledLogin = false;
-  int _scheduleGeneration = 0;
-  bool get waitingForAutoLogin => autoLoginStartsAt != null;
 
-  void scheduleLoginAfterSignup(
-    AppConfiguration configuration,
-    Future<void> Function() login,
-  ) {
-    if (!active) return;
-    cancelScheduledLogin();
-    if (configuration.configurationId == null) {
-      notify('Không tìm thấy cấu hình vừa đăng ký để tự đăng nhập lại.');
-      return;
-    }
-    final hold = Duration(seconds: 120 + _workflowRandom.nextInt(61));
-    _scheduledConfiguration = configuration;
-    _scheduledLogin = login;
-    mutate(() => autoLoginStartsAt = _now().add(hold));
-    _scheduledLoginTimer = Timer(hold, () => unawaited(_runScheduledLogin()));
-  }
+  /// The automatic run over configurations, or null when idle.
+  AutoRunMode? autoRun;
+  int autoRunTotal = 0;
+  int autoRunSucceeded = 0;
+  int autoRunFailed = 0;
+  String autoRunEmail = '';
 
-  void cancelScheduledLogin() {
-    _scheduleGeneration++;
-    _scheduledLoginTimer?.cancel();
-    _scheduledLoginTimer = null;
-    _scheduledConfiguration = null;
-    _scheduledLogin = null;
-    autoLoginStartsAt = null;
-    mutate(() {});
-  }
+  /// When the run opens its next configuration; null while one is open.
+  DateTime? autoRunNextAt;
+  int _autoRunGeneration = 0;
+  bool get autoRunning => autoRun != null;
+  int get autoRunFinished => autoRunSucceeded + autoRunFailed;
 
-  Future<void> _runScheduledLogin() async {
-    final expected = _scheduledConfiguration;
-    final login = _scheduledLogin;
-    if (!active ||
-        !_appActive ||
-        _checkingScheduledLogin ||
-        expected == null ||
-        login == null ||
-        autoLoginStartsAt == null ||
-        _now().isBefore(autoLoginStartsAt!)) {
-      return;
-    }
-    final generation = _scheduleGeneration;
-    _checkingScheduledLogin = true;
+  /// Pause between two configurations of an automatic run.
+  static const minAutoRunPause = Duration(seconds: 5);
+  static const maxAutoRunPause = Duration(seconds: 15);
+
+  bool _autoRunCurrent(int generation) =>
+      active && autoRunning && generation == _autoRunGeneration;
+
+  /// Run every eligible configuration in turn: signup runs the unregistered
+  /// ones, nurture logs in to each registered one. Each screen returns a
+  /// [TikTokFlowResult]; closing a screen (no result) stops the run.
+  Future<void> startAutoRun(
+    AutoRunMode mode,
+    Future<TikTokFlowResult?> Function(
+      AppConfiguration configuration,
+      TikTokLaunchAction action,
+    )
+    navigate,
+  ) async {
+    if (busy || proxyLoadFailed) return;
+    final generation = ++_autoRunGeneration;
+    final visited = <int>{};
+    final preferredId = currentProxy?.configurationId;
+    mutate(() {
+      autoRun = mode;
+      autoRunTotal = 0;
+      autoRunSucceeded = 0;
+      autoRunFailed = 0;
+      autoRunEmail = '';
+      autoRunNextAt = null;
+    });
+    var stoppedByScreen = false;
     try {
-      final selected = await store.getCurrentProfile();
-      if (!active || generation != _scheduleGeneration || !_appActive) return;
-      if (selected?.configurationId != expected.configurationId ||
-          selected?.account?.email != expected.signupEmail ||
-          selected?.account?.password != expected.signupPassword ||
-          selected?.account?.mailboxPassword !=
-              expected.signupMailboxPassword ||
-          !sameProxy(selected?.proxy, expected.proxy) ||
-          selected?.statusAccount != AccountStatus.registered) {
-        cancelScheduledLogin();
-        notify('Cấu hình đã thay đổi. Đã hủy lịch đăng nhập tự động.');
-        return;
-      }
-      await restoreProxy();
-      if (!active || generation != _scheduleGeneration || !_appActive) return;
-      if (proxyLoadFailed ||
-          currentProxy?.configurationId != expected.configurationId ||
-          currentProxy?.account?.email != expected.signupEmail) {
-        cancelScheduledLogin();
-        notify(
-          'Không thể mở lại đúng cấu hình vừa đăng ký. Đã hủy lịch đăng nhập.',
+      final eligible = await _autoRunCandidates(mode, visited);
+      if (!_autoRunCurrent(generation)) return;
+      mutate(() => autoRunTotal = eligible.length);
+      var first = true;
+      while (_autoRunCurrent(generation)) {
+        final candidates = await _autoRunCandidates(mode, visited);
+        if (!_autoRunCurrent(generation)) return;
+        if (candidates.isEmpty) break;
+        final next = first
+            ? candidates.firstWhere(
+                (entry) => entry.id == preferredId,
+                orElse: () => candidates.first,
+              )
+            : candidates.first;
+        if (!first && !await _pauseBeforeNextConfiguration(generation)) {
+          return;
+        }
+        first = false;
+        visited.add(next.id);
+        mutate(() {
+          autoRunEmail = next.account?.email ?? '';
+          if (autoRunTotal < autoRunFinished + 1) {
+            autoRunTotal = autoRunFinished + 1;
+          }
+        });
+        if (!await _selectAutoRunConfiguration(next, generation)) {
+          if (!_autoRunCurrent(generation)) return;
+          mutate(() => autoRunFailed++);
+          if (mode.signsUp) await _recordOpenFailure(next);
+          continue;
+        }
+        var opened = false;
+        TikTokFlowResult? result;
+        _lastNotice = null;
+        await openTikTok(
+          mode.signsUp ? TikTokLaunchAction.signup : TikTokLaunchAction.login,
+          (configuration, action) async {
+            opened = true;
+            result = await navigate(configuration, action);
+          },
+          automatic: true,
         );
-        return;
+        if (!_autoRunCurrent(generation)) return;
+        if (opened && result == null) {
+          stoppedByScreen = true;
+          break;
+        }
+        mutate(() {
+          if (!opened || result == TikTokFlowResult.failed) {
+            autoRunFailed++;
+          } else {
+            autoRunSucceeded++;
+          }
+        });
+        if (!opened && mode.signsUp) await _recordOpenFailure(next);
+        // Show the finished account's new status during the pause.
+        await restoreProxy();
+        if (_autoRunCurrent(generation)) await loadNurtureAccounts();
+        if (_autoRunCurrent(generation)) await loadFailedConfigurations();
       }
-      cancelScheduledLogin();
-      await login();
     } catch (_) {
-      if (active && generation == _scheduleGeneration) {
-        cancelScheduledLogin();
-        notify('Không thể mở lại cấu hình để đăng nhập tự động. Hãy thử lại.');
+      if (_autoRunCurrent(generation)) {
+        notify('Tự chạy gặp lỗi khi đọc cấu hình. Đã dừng.');
       }
     } finally {
-      _checkingScheduledLogin = false;
+      if (active && generation == _autoRunGeneration) {
+        final finished = autoRunFinished;
+        final succeeded = autoRunSucceeded;
+        final failed = autoRunFailed;
+        mutate(() {
+          autoRun = null;
+          autoRunNextAt = null;
+          autoRunEmail = '';
+        });
+        final what = switch (mode) {
+          AutoRunMode.signup => 'đăng ký',
+          AutoRunMode.nurture => 'nuôi',
+          AutoRunMode.retryFailed => 'đăng ký lại',
+        };
+        notify(
+          stoppedByScreen
+              ? 'Đã dừng tự $what sau $finished cấu hình ($succeeded xong, $failed lỗi).'
+              : finished == 0
+              ? switch (mode) {
+                  AutoRunMode.signup =>
+                    'Không còn cấu hình chưa đăng ký có tài khoản.',
+                  AutoRunMode.nurture =>
+                    'Chưa có tài khoản đã đăng ký để nuôi.',
+                  AutoRunMode.retryFailed =>
+                    'Không có cấu hình lỗi để chạy lại.',
+                }
+              : 'Đã tự $what $finished cấu hình: $succeeded xong, $failed lỗi.',
+          duration: const Duration(seconds: 6),
+        );
+        await restoreProxy();
+        if (active) await loadNurtureAccounts();
+        if (active) await loadFailedConfigurations();
+      }
     }
+  }
+
+  void stopAutoRun() {
+    if (!autoRunning) return;
+    _autoRunGeneration++;
+    final finished = autoRunFinished;
+    mutate(() {
+      autoRun = null;
+      autoRunNextAt = null;
+      autoRunEmail = '';
+    });
+    notify('Đã dừng tự chạy sau $finished cấu hình.');
+    unawaited(restoreProxy());
+  }
+
+  Future<List<SavedProxy>> _autoRunCandidates(
+    AutoRunMode mode,
+    Set<int> visited,
+  ) async {
+    final wanted = mode.signsUp
+        ? AccountStatus.unregistered
+        : AccountStatus.registered;
+    // Same order as the Quản lý cấu hình list (newest first). Failed
+    // configurations wait for Cấu hình lỗi > Đăng ký lại.
+    return (await store.list())
+        .where(
+          (entry) =>
+              entry.account != null &&
+              entry.statusAccount == wanted &&
+              (!mode.signsUp ||
+                  entry.signupFailed == (mode == AutoRunMode.retryFailed)) &&
+              !visited.contains(entry.id),
+        )
+        .toList()
+      ..sort((first, second) => second.id.compareTo(first.id));
+  }
+
+  Future<bool> _pauseBeforeNextConfiguration(int generation) async {
+    final range = (maxAutoRunPause - minAutoRunPause).inMilliseconds;
+    final pause =
+        minAutoRunPause +
+        Duration(milliseconds: _workflowRandom.nextInt(range + 1));
+    mutate(() => autoRunNextAt = _now().add(pause));
+    // Accessibility automation needs the app in the foreground.
+    while (_autoRunCurrent(generation) &&
+        (!_appActive || _now().isBefore(autoRunNextAt!))) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    if (!_autoRunCurrent(generation)) return false;
+    mutate(() => autoRunNextAt = null);
+    return true;
+  }
+
+  /// Each account starts from an empty WebView session on its own proxy.
+  Future<bool> _selectAutoRunConfiguration(
+    SavedProxy next,
+    int generation,
+  ) async {
+    final email = next.account?.email ?? '';
+    try {
+      await _clearSession();
+      if (!_autoRunCurrent(generation)) return false;
+      await store.useSaved(next.id);
+      await store.setCurrentAccountLoggedIn(next.id, email, false);
+      if (!_autoRunCurrent(generation)) return false;
+      await restoreProxy();
+      if (!_autoRunCurrent(generation)) return false;
+      if (proxyLoadFailed ||
+          currentProxy?.configurationId != next.id ||
+          currentProxy?.account?.email != email) {
+        throw StateError('Configuration changed');
+      }
+      return true;
+    } catch (_) {
+      if (_autoRunCurrent(generation)) {
+        notify('Không thể chuyển sang cấu hình $email. Bỏ qua cấu hình này.');
+      }
+      return false;
+    }
+  }
+
+  /// The latest message shown on Home: why a configuration could not open.
+  String? _lastNotice;
+
+  @override
+  void notify(
+    String message, {
+    Duration duration = const Duration(seconds: 4),
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    _lastNotice = message;
+    super.notify(
+      message,
+      duration: duration,
+      actionLabel: actionLabel,
+      onAction: onAction,
+    );
+  }
+
+  Future<void> _recordOpenFailure(SavedProxy entry) async {
+    final email = entry.account?.email ?? '';
+    try {
+      await store.recordSignupFailure(
+        entry.id,
+        email,
+        message: _lastNotice ?? 'Không mở được TikTok cho cấu hình này.',
+        step: 'Mở cấu hình',
+      );
+    } catch (_) {
+      // The run continues; the summary still counts this configuration.
+    }
+  }
+
+  List<FailedConfiguration> failedConfigurations = [];
+  bool loadingFailures = false;
+  bool failuresLoadFailed = false;
+
+  Future<void> loadFailedConfigurations() async {
+    if (loadingFailures) return;
+    mutate(() => loadingFailures = true);
+    try {
+      final failed = await store.listFailedConfigurations();
+      if (active) {
+        mutate(() {
+          failedConfigurations = failed;
+          failuresLoadFailed = false;
+        });
+      }
+    } catch (_) {
+      if (active) mutate(() => failuresLoadFailed = true);
+    } finally {
+      if (active) mutate(() => loadingFailures = false);
+    }
+  }
+
+  /// Take a configuration out of Cấu hình lỗi; its log is kept.
+  Future<void> dismissFailure(int configurationId) async {
+    if (busy) return;
+    try {
+      await store.clearSignupFailure(configurationId);
+    } catch (_) {
+      if (active) notify('Không thể cập nhật cấu hình lỗi. Hãy thử lại.');
+    }
+    if (active) await loadFailedConfigurations();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appActive = state == AppLifecycleState.resumed;
-    if (_appActive) {
-      if (waitingForAutoLogin) {
-        unawaited(_runScheduledLogin());
-      } else if (!opening && !managingProxies) {
-        unawaited(refreshCurrentAccountSession());
-      }
+    if (_appActive && !opening && !managingProxies && !autoRunning) {
+      unawaited(refreshCurrentAccountSession());
     }
   }
 
@@ -151,6 +373,7 @@ class HomeController extends AppController
   late final TabController tabs;
   int tabIndex = 0;
   List<NurtureAccount> nurtureAccounts = [];
+  int registeredAccountCount = 0;
   bool loadingAccounts = false;
   bool accountsLoadFailed = false;
   bool opening = false;
@@ -159,8 +382,8 @@ class HomeController extends AppController
   bool managingProxies = false;
   ProxyGeolocationLookup? _timeZoneLookup;
   late final ProxyStore proxyStore;
-  bool get busy =>
-      opening || loadingProxy || managingProxies || waitingForAutoLogin;
+  bool get _actionBusy => opening || loadingProxy || managingProxies;
+  bool get busy => _actionBusy || autoRunning;
   TikTokLaunchAction get accountAction => hasCurrentAccountSession
       ? TikTokLaunchAction.browse
       : currentProxy?.statusAccount == AccountStatus.registered
@@ -170,7 +393,7 @@ class HomeController extends AppController
       ? 'Nuôi tiếp Account'
       : accountAction == TikTokLaunchAction.login
       ? 'Đăng nhập và nuôi Account'
-      : 'Đăng ký tài khoản';
+      : 'Đăng ký tự động';
 
   @override
   void onInit() {
@@ -179,15 +402,17 @@ class HomeController extends AppController
     userAgent = initialUserAgent;
     directUserAgent = initialUserAgent;
     otpSettings = initialOtpSettings;
-    tabs = TabController(length: 2, vsync: this);
+    tabs = TabController(length: 3, vsync: this);
     tabs.addListener(() {
       if (tabIndex == tabs.index) return;
       mutate(() => tabIndex = tabs.index);
       if (tabIndex == 1) unawaited(loadNurtureAccounts());
+      if (tabIndex == 2) unawaited(loadFailedConfigurations());
     });
     proxyStore = store;
     unawaited(restoreProxy());
     unawaited(loadNurtureAccounts());
+    unawaited(loadFailedConfigurations());
   }
 
   Future<void> loadNurtureAccounts() async {
@@ -195,9 +420,23 @@ class HomeController extends AppController
     mutate(() => loadingAccounts = true);
     try {
       final accounts = await store.nurture.listAccounts();
+      final registered = (await store.list())
+          .where(
+            (entry) =>
+                entry.account != null &&
+                entry.statusAccount == AccountStatus.registered,
+          )
+          .toList();
+      // Only registered accounts can be nurtured; others stay in Cấu hình.
+      final registeredKeys = {
+        for (final entry in registered) nurtureAccountKey(entry.account!.email),
+      };
       if (active) {
         mutate(() {
-          nurtureAccounts = accounts;
+          nurtureAccounts = accounts
+              .where((account) => registeredKeys.contains(account.key))
+              .toList();
+          registeredAccountCount = registered.length;
           accountsLoadFailed = false;
         });
       }
@@ -299,6 +538,7 @@ class HomeController extends AppController
       await navigate();
       if (active) await restoreProxy();
       if (active) await loadNurtureAccounts();
+      if (active) await loadFailedConfigurations();
     } finally {
       if (active) mutate(() => managingProxies = false);
     }
@@ -306,7 +546,7 @@ class HomeController extends AppController
 
   @override
   void onClose() {
-    cancelScheduledLogin();
+    _autoRunGeneration++;
     WidgetsBinding.instance.removeObserver(this);
     _timeZoneLookup?.cancel();
     tabs.dispose();
@@ -319,9 +559,10 @@ class HomeController extends AppController
       AppConfiguration configuration,
       TikTokLaunchAction action,
     )
-    navigate,
-  ) async {
-    if (busy || proxyLoadFailed) return;
+    navigate, {
+    bool automatic = false,
+  }) async {
+    if ((automatic ? _actionBusy : busy) || proxyLoadFailed) return;
     final account = currentProxy?.account;
     if (action != TikTokLaunchAction.browse) {
       if (account == null) {
@@ -381,10 +622,14 @@ class HomeController extends AppController
           mutate(() => currentProxy = profile.copyWith(timeZoneId: timeZone));
         }
       }
+      // Stable per proxy endpoint; WebRTC stays disabled, so it never reaches pages.
+      final localIp = await loadProxyLocalIp(proxy);
+      if (!active) return;
       final configuration = AppConfiguration(
         configurationId: currentProxy?.configurationId,
         userAgent: browserUserAgent,
         proxy: proxy,
+        webViewLocalIp: localIp,
         webViewTimeZone:
             needsAndroidDesktopIdentity && proxy != null && timeZone.isNotEmpty
             ? timeZone
@@ -398,11 +643,13 @@ class HomeController extends AppController
         signupMailboxPassword: account?.mailboxPassword ?? '',
         loginMailboxPassword: account?.mailboxPassword ?? '',
         otpApi: otpApi,
+        nurtureAfterSignup: currentProxy?.nurtureAfterSignup ?? false,
         birthday: action == TikTokLaunchAction.signup
             ? AppConfiguration.randomSignupBirthday()
             : null,
       );
       await navigate(configuration, action);
+      if (automatic) return;
       if (active && action == TikTokLaunchAction.signup) {
         await restoreProxy();
       } else if (active) {

@@ -76,7 +76,8 @@ class ManualViewingSession {
             snapshot.totals.videos < old.totals.videos ||
             snapshot.totals.fullVideos < old.totals.fullVideos ||
             snapshot.totals.skippedVideos < old.totals.skippedVideos ||
-            snapshot.totals.comments < old.totals.comments)) {
+            snapshot.totals.comments < old.totals.comments ||
+            snapshot.totals.likes < old.totals.likes)) {
       return _writes;
     }
     _segments[snapshot.segmentId] = snapshot;

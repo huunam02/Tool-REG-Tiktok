@@ -103,6 +103,7 @@ class ProxyManagementController extends AppController {
         timeZoneId: draft.timeZoneId,
         account: draft.account,
         statusAccount: draft.statusAccount,
+        nurtureAfterSignup: draft.nurtureAfterSignup,
       );
       selectedId = savedId;
       filter = ProxyUsageFilter.all;

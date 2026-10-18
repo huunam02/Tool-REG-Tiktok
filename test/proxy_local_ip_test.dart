@@ -60,12 +60,17 @@ void main() {
         WebViewProxy.parse('proxy.example:8080'),
       );
       expect(webRtcLocalIpScript(ip), disableWebRtcScript);
-      expect(
-        webRtcLocalIpScript(ip),
-        isNot(contains(ip)),
-      );
+      expect(webRtcLocalIpScript(ip), isNot(contains(ip)));
+      for (final valid in ['10.0.0.1', '172.16.5.9', '172.31.255.254']) {
+        expect(isSimulatedLocalIp(valid), isTrue, reason: valid);
+      }
       for (final invalid in [
         '8.8.8.8',
+        '172.15.0.1',
+        '172.32.0.1',
+        '100.64.0.1',
+        '10.0.0.0',
+        '10.01.0.1',
         '192.168.1.0',
         '192.168.1.255',
         '192.168.256.1',

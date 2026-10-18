@@ -4,6 +4,7 @@ import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
 import 'package:test_tiktok/core/nurture_store.dart';
+import 'package:test_tiktok/core/signup_failure.dart';
 import 'memory_nurture_store.dart';
 
 class MemoryProxyStore extends ProxyStore {
@@ -50,6 +51,9 @@ class MemoryProxyStore extends ProxyStore {
               statusAccount: currentStatus,
               configurationId: currentId,
               hasBeenUsed: true,
+              nurtureAfterSignup: entries.any(
+                (entry) => entry.id == currentId && entry.nurtureAfterSignup,
+              ),
             ),
     );
   }
@@ -135,6 +139,7 @@ class MemoryProxyStore extends ProxyStore {
     AccountCredentials? account,
     AccountStatus? statusAccount,
     String? timeZoneId,
+    bool? nurtureAfterSignup,
   }) async {
     if (failWrites) throw StateError('Storage unavailable');
     account?.validate();
@@ -166,6 +171,9 @@ class MemoryProxyStore extends ProxyStore {
         statusAccount:
             statusAccount ?? old?.statusAccount ?? AccountStatus.unregistered,
         hasBeenUsed: old?.hasBeenUsed ?? false,
+        nurtureAfterSignup:
+            nurtureAfterSignup ?? old?.nurtureAfterSignup ?? false,
+        signupFailed: _signupFailedOverride ?? old?.signupFailed ?? false,
       ),
     );
     final saved = entries.last;
@@ -187,6 +195,7 @@ class MemoryProxyStore extends ProxyStore {
           timeZoneId: draft.timeZoneId,
           account: draft.account,
           statusAccount: draft.statusAccount,
+          nurtureAfterSignup: draft.nurtureAfterSignup,
         ),
     ];
   }
@@ -216,6 +225,8 @@ class MemoryProxyStore extends ProxyStore {
         account: entry.account,
         statusAccount: entry.statusAccount,
         hasBeenUsed: entry.hasBeenUsed,
+        nurtureAfterSignup: entry.nurtureAfterSignup,
+        signupFailed: entry.signupFailed,
       );
     }
     return true;
@@ -235,12 +246,17 @@ class MemoryProxyStore extends ProxyStore {
     );
     if (email.trim().isEmpty || matches.isEmpty) return false;
     final entry = matches.single;
-    await save(
-      id: id,
-      name: entry.name,
-      proxy: entry.proxy,
-      statusAccount: AccountStatus.registered,
-    );
+    _signupFailedOverride = false;
+    try {
+      await save(
+        id: id,
+        name: entry.name,
+        proxy: entry.proxy,
+        statusAccount: AccountStatus.registered,
+      );
+    } finally {
+      _signupFailedOverride = null;
+    }
     return true;
   }
 
@@ -258,6 +274,79 @@ class MemoryProxyStore extends ProxyStore {
       account: entry.account,
       statusAccount: entry.statusAccount,
       hasBeenUsed: used,
+      nurtureAfterSignup: entry.nurtureAfterSignup,
+      signupFailed: entry.signupFailed,
     );
+  }
+
+  final signupFailures = <SignupFailure>[];
+  bool? _signupFailedOverride;
+  int _nextFailureId = 1;
+
+  Future<void> _setSignupFailed(SavedProxy entry, bool failed) async {
+    _signupFailedOverride = failed;
+    try {
+      await save(id: entry.id, name: entry.name, proxy: entry.proxy);
+    } finally {
+      _signupFailedOverride = null;
+    }
+  }
+
+  @override
+  Future<bool> recordSignupFailure(
+    int id,
+    String email, {
+    required String message,
+    String step = '',
+    DateTime? at,
+  }) async {
+    if (failWrites) throw StateError('Storage unavailable');
+    final matches = entries.where(
+      (entry) =>
+          entry.id == id &&
+          entry.account?.email == email.trim() &&
+          entry.statusAccount == AccountStatus.unregistered,
+    );
+    if (email.trim().isEmpty || matches.isEmpty) return false;
+    signupFailures.add(
+      SignupFailure(
+        id: _nextFailureId++,
+        configurationId: id,
+        email: email.trim(),
+        message: message,
+        step: step,
+        createdAt: at ?? DateTime.now(),
+      ),
+    );
+    await _setSignupFailed(matches.single, true);
+    return true;
+  }
+
+  @override
+  Future<List<FailedConfiguration>> listFailedConfigurations({
+    int logLimit = 20,
+  }) async {
+    final failed = [
+      for (final entry in entries.reversed)
+        if (entry.signupFailed &&
+            entry.statusAccount == AccountStatus.unregistered)
+          FailedConfiguration(
+            configuration: entry,
+            failureCount: signupFailures
+                .where((failure) => failure.configurationId == entry.id)
+                .length,
+            failures: signupFailures.reversed
+                .where((failure) => failure.configurationId == entry.id)
+                .take(logLimit)
+                .toList(),
+          ),
+    ];
+    return failed;
+  }
+
+  @override
+  Future<void> clearSignupFailure(int id) async {
+    final entry = entries.singleWhere((entry) => entry.id == id);
+    await _setSignupFailed(entry, false);
   }
 }

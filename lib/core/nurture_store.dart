@@ -39,7 +39,8 @@ class SqliteNurtureRepository implements NurtureRepository {
       videos INTEGER NOT NULL DEFAULT 0 CHECK(videos >= 0),
       full_videos INTEGER NOT NULL DEFAULT 0 CHECK(full_videos >= 0),
       skipped_videos INTEGER NOT NULL DEFAULT 0 CHECK(skipped_videos >= 0),
-      comments INTEGER NOT NULL DEFAULT 0 CHECK(comments >= 0))''');
+      comments INTEGER NOT NULL DEFAULT 0 CHECK(comments >= 0),
+      likes INTEGER NOT NULL DEFAULT 0 CHECK(likes >= 0))''');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS nurture_sessions_account ON nurture_sessions(account_key, updated_at)',
     );
@@ -81,7 +82,7 @@ class SqliteNurtureRepository implements NurtureRepository {
         '''SELECT a.account_key,a.email,
         COALESCE(SUM(s.watch_ms),0) AS watch_ms, COALESCE(SUM(s.videos),0) AS videos,
         COALESCE(SUM(s.full_videos),0) AS full_videos, COALESCE(SUM(s.skipped_videos),0) AS skipped_videos,
-        COALESCE(SUM(s.comments),0) AS comments, MAX(s.updated_at) AS last_updated
+        COALESCE(SUM(s.comments),0) AS comments, COALESCE(SUM(s.likes),0) AS likes, MAX(s.updated_at) AS last_updated
         FROM nurture_accounts a LEFT JOIN nurture_sessions s ON s.account_key = a.account_key
         GROUP BY a.account_key ORDER BY last_updated DESC, a.email COLLATE NOCASE''',
       );
@@ -196,7 +197,8 @@ class SqliteNurtureRepository implements NurtureRepository {
     await (await _database()).rawUpdate(
       '''UPDATE nurture_sessions SET
       watch_ms = MAX(watch_ms,?), videos = MAX(videos,?), full_videos = MAX(full_videos,?),
-      skipped_videos = MAX(skipped_videos,?), comments = MAX(comments,?), revision = ?, updated_at = ?
+      skipped_videos = MAX(skipped_videos,?), comments = MAX(comments,?),
+      likes = MAX(likes,?), revision = ?, updated_at = ?
       WHERE id = ? AND revision < ?''',
       [
         totals.watchMilliseconds,
@@ -204,6 +206,7 @@ class SqliteNurtureRepository implements NurtureRepository {
         totals.fullVideos,
         totals.skippedVideos,
         totals.comments,
+        totals.likes,
         revision,
         DateTime.now().millisecondsSinceEpoch,
         id,

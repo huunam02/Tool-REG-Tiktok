@@ -437,6 +437,15 @@ class _ProxyFormView extends StatelessWidget {
                 : AccountStatus.unregistered,
           ),
         ),
+        CheckboxListTile(
+          key: _configurationKey('savedNurtureAfterSignup', index),
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          title: const Text('Nuôi sau khi đăng ký', style: _fieldLabelStyle),
+          value: fields.nurtureAfterSignup,
+          onChanged: (value) =>
+              logic.setNurtureAfterSignup(fields, value ?? false),
+        ),
         const SizedBox(height: 16),
         _fieldLabel('Email đăng ký'),
         TextFormField(
@@ -583,7 +592,7 @@ class _ProxyFormView extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                   ],
-                  if (logic.hasMultipleImports)
+                  if (logic.hasMultipleImports) ...[
                     _fieldLabel(
                       '${logic.configurations.length} cấu hình',
                       action: TextButton(
@@ -593,6 +602,22 @@ class _ProxyFormView extends StatelessWidget {
                         child: const Text('Bỏ danh sách'),
                       ),
                     ),
+                    CheckboxListTile(
+                      key: const Key('nurtureAfterSignupForAll'),
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      tristate: true,
+                      title: const Text(
+                        'Nuôi sau khi đăng ký (tất cả cấu hình)',
+                        style: _fieldLabelStyle,
+                      ),
+                      value: logic.nurtureAfterSignupForAll,
+                      onChanged: (_) => logic.setNurtureAfterSignupForAll(
+                        logic.nurtureAfterSignupForAll != true,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   for (
                     var index = 0;
                     index < logic.configurations.length;

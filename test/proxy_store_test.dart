@@ -34,6 +34,241 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  test('persists Nuôi sau khi đăng ký per configuration', () async {
+    const account = AccountCredentials(
+      email: 'nurture@example.com',
+      password: 'password',
+      mailboxPassword: 'mail',
+    );
+    final ids = await store.saveDrafts([
+      const ProxyDraft(
+        'Nurture',
+        null,
+        'agent',
+        account: account,
+        nurtureAfterSignup: true,
+      ),
+      const ProxyDraft(
+        'Plain',
+        null,
+        'agent',
+        account: AccountCredentials(
+          email: 'plain@example.com',
+          password: 'password',
+          mailboxPassword: 'mail',
+        ),
+      ),
+    ]);
+    final saved = {for (final entry in await store.list()) entry.id: entry};
+    expect(saved[ids.first]!.nurtureAfterSignup, isTrue);
+    expect(saved[ids.last]!.nurtureAfterSignup, isFalse);
+    await store.useSaved(ids.first);
+    expect((await store.getCurrentProfile())!.nurtureAfterSignup, isTrue);
+    // Saving without the flag (e.g. marking registered) keeps it.
+    await store.markRegistered(ids.first, account.email);
+    expect((await store.getCurrentProfile())!.nurtureAfterSignup, isTrue);
+    await store.save(
+      id: ids.first,
+      name: 'Nurture',
+      proxy: null,
+      nurtureAfterSignup: false,
+    );
+    expect((await store.getCurrentProfile())!.nurtureAfterSignup, isFalse);
+  });
+
+  test(
+    'signup failures are logged per configuration until registered',
+    () async {
+      const account = AccountCredentials(
+        email: 'failed@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      final failed = await store.save(
+        name: 'Failed',
+        proxy: null,
+        account: account,
+      );
+      final other = await store.save(
+        name: 'Other',
+        proxy: null,
+        account: const AccountCredentials(
+          email: 'other@example.com',
+          password: 'password',
+          mailboxPassword: 'mail',
+        ),
+      );
+      expect(await store.listFailedConfigurations(), isEmpty);
+      // A changed email cannot log against the configuration.
+      expect(
+        await store.recordSignupFailure(
+          failed,
+          'someone@example.com',
+          message: 'x',
+        ),
+        isFalse,
+      );
+      final first = DateTime(2026, 10, 18, 1, 34);
+      expect(
+        await store.recordSignupFailure(
+          failed,
+          account.email,
+          message: 'TikTok báo lỗi tài khoản (mã 1023).',
+          step: 'Đang mở danh sách Year…',
+          at: first,
+        ),
+        isTrue,
+      );
+      await store.recordSignupFailure(
+        failed,
+        account.email,
+        message: '  ',
+        at: first.add(const Duration(minutes: 40)),
+      );
+      var list = await store.listFailedConfigurations();
+      expect(list.single.configuration.id, failed);
+      expect(list.single.configuration.signupFailed, isTrue);
+      expect(list.single.failureCount, 2);
+      expect(list.single.failures.map((failure) => failure.message), [
+        'Không rõ nguyên nhân.',
+        'TikTok báo lỗi tài khoản (mã 1023).',
+      ]);
+      expect(list.single.failures.last.step, 'Đang mở danh sách Year…');
+      expect(list.single.failures.last.createdAt, first);
+      expect(
+        (await store.list())
+            .singleWhere((entry) => entry.id == other)
+            .signupFailed,
+        isFalse,
+      );
+      expect(
+        (await store.listFailedConfigurations(logLimit: 1)).single.failures,
+        hasLength(1),
+      );
+
+      // The log survives reopening; dismissing keeps it for a later failure.
+      await store.close();
+      store = openStore();
+      await store.clearSignupFailure(failed);
+      expect(await store.listFailedConfigurations(), isEmpty);
+      await store.recordSignupFailure(failed, account.email, message: 'again');
+      list = await store.listFailedConfigurations();
+      expect(list.single.failureCount, 3);
+
+      // Registering clears the failed state.
+      expect(await store.markRegistered(failed, account.email), isTrue);
+      expect(await store.listFailedConfigurations(), isEmpty);
+      expect(
+        (await store.list())
+            .singleWhere((entry) => entry.id == failed)
+            .signupFailed,
+        isFalse,
+      );
+      expect(
+        await store.recordSignupFailure(failed, account.email, message: 'late'),
+        isFalse,
+      );
+    },
+  );
+
+  test('a new account email or deletion removes the failed state', () async {
+    const account = AccountCredentials(
+      email: 'failed@example.com',
+      password: 'password',
+      mailboxPassword: 'mail',
+    );
+    final id = await store.save(name: 'Failed', proxy: null, account: account);
+    await store.recordSignupFailure(id, account.email, message: 'error');
+    await store.save(
+      id: id,
+      name: 'Failed',
+      proxy: null,
+      account: const AccountCredentials(
+        email: 'replacement@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      ),
+    );
+    expect(await store.listFailedConfigurations(), isEmpty);
+    await store.recordSignupFailure(
+      id,
+      'replacement@example.com',
+      message: 'error',
+    );
+    expect(await store.listFailedConfigurations(), hasLength(1));
+    await store.delete(id);
+    expect(await store.listFailedConfigurations(), isEmpty);
+    await store.close();
+    final db = await databaseFactoryFfi.openDatabase(filename);
+    expect(await db.query('signup_failures'), isEmpty);
+    await db.close();
+    store = openStore();
+  });
+
+  test('version 11 databases gain the signup failure log', () async {
+    await store.save(
+      name: 'Old',
+      proxy: null,
+      account: const AccountCredentials(
+        email: 'old@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      ),
+    );
+    await store.close();
+    final db = await databaseFactoryFfi.openDatabase(filename);
+    await db.execute('DROP TABLE signup_failures');
+    await db.execute('ALTER TABLE configurations DROP COLUMN signup_failed');
+    await db.setVersion(11);
+    await db.close();
+    store = openStore();
+    final entry = (await store.list()).single;
+    expect(entry.signupFailed, isFalse);
+    expect(
+      await store.recordSignupFailure(
+        entry.id,
+        'old@example.com',
+        message: 'error',
+      ),
+      isTrue,
+    );
+    expect(await store.listFailedConfigurations(), hasLength(1));
+  });
+
+  test('version 10 databases gain the nurture column switched off', () async {
+    await store.save(
+      name: 'Old',
+      proxy: null,
+      account: const AccountCredentials(
+        email: 'old@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      ),
+    );
+    await store.close();
+    final db = await databaseFactoryFfi.openDatabase(filename);
+    await db.execute(
+      'ALTER TABLE configurations DROP COLUMN nurture_after_signup',
+    );
+    await db.setVersion(10);
+    await db.close();
+    store = openStore();
+    final entries = await store.list();
+    expect(entries.single.nurtureAfterSignup, isFalse);
+    final id = await store.save(
+      id: entries.single.id,
+      name: 'Old',
+      proxy: null,
+      nurtureAfterSignup: true,
+    );
+    expect(
+      (await store.list())
+          .singleWhere((entry) => entry.id == id)
+          .nurtureAfterSignup,
+      isTrue,
+    );
+  });
+
   test(
     'changing configuration resets persisted login and rejects stale confirmation',
     () async {
@@ -234,7 +469,7 @@ void main() {
       expect(selected.timeZoneId, isEmpty);
       await store.close();
       final migrated = await databaseFactoryFfi.openDatabase(filename);
-      expect(await migrated.getVersion(), 10);
+      expect(await migrated.getVersion(), 13);
       expect(
         (await migrated.rawQuery(
           'PRAGMA table_info(configurations)',
@@ -464,6 +699,7 @@ void main() {
           'nurture_accounts',
           'nurture_sessions',
           'app_settings',
+          'signup_failures',
         ]),
       );
       final columns = await db.rawQuery('PRAGMA table_info(configurations)');

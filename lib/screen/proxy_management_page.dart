@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controller/proxy_management_controller.dart';
 import '../core/proxy_store.dart';
 import '../core/app_configuration.dart';
+import '../core/configuration_data.dart';
 import 'create_proxy_page.dart';
 import 'edit_proxy_page.dart';
 import 'widgets/controller_scope.dart';
@@ -201,6 +202,13 @@ class _ProxyManagementView extends StatelessWidget {
                                 label: entry.statusAccount.label,
                                 color: ProxyColors.cyan,
                               ),
+                              if (entry.signupFailed &&
+                                  entry.statusAccount ==
+                                      AccountStatus.unregistered)
+                                const ProxyBadge(
+                                  label: 'Lỗi đăng ký',
+                                  color: ProxyColors.red,
+                                ),
                               if (active)
                                 const ProxyBadge(
                                   label: 'Đang dùng',

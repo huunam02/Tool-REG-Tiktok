@@ -9,6 +9,7 @@ class ProxyDraft {
     this.account,
     this.timeZoneId = '',
     this.statusAccount = AccountStatus.unregistered,
+    this.nurtureAfterSignup = false,
   });
 
   final String name;
@@ -17,4 +18,5 @@ class ProxyDraft {
   final String timeZoneId;
   final AccountCredentials? account;
   final AccountStatus statusAccount;
+  final bool nurtureAfterSignup;
 }

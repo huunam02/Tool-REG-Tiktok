@@ -121,7 +121,18 @@ class SignupCoordinateRunner {
     }
     if (value.contains(
       RegExp(
-        r'expired or incorrect|incorrect verification code|already signed up|email is already registered',
+        r'already signed up|email is already registered',
+        caseSensitive: false,
+      ),
+    )) {
+      throw StateError(
+        'Email này đã có tài khoản TikTok. Hãy bật Đã đăng ký cho cấu hình '
+        'rồi dùng Đăng nhập hoặc Nuôi toàn bộ.',
+      );
+    }
+    if (value.contains(
+      RegExp(
+        r'expired or incorrect|incorrect verification code',
         caseSensitive: false,
       ),
     )) {

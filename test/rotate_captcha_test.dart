@@ -303,6 +303,106 @@ void main() {
     expect(await solver.angle(c, 'key'), 360);
   });
 
+  test(
+    'a wrong answer is retried once on a refreshed puzzle',
+    () async {
+      const next = RotateCaptchaChallenge(
+        outer: 'data:image/png;base64,BwgJ',
+        inner: 'data:image/png;base64,CgsM',
+        viewportWidth: 1000,
+        viewportHeight: 2000,
+        x: 200,
+        y: 500,
+        travel: 600,
+      );
+      var refreshed = false, requests = 0;
+      final statuses = <String>[];
+      final solver = RotateCaptchaSolver(
+        client: MockClient((_) async {
+          requests++;
+          return http.Response('{"angle":90}', 200);
+        }),
+      );
+      final solved = await solver.solve(
+        licenseKey: 'key',
+        read: () async => refreshed ? next : challenge,
+        accessibility: SignupAccessibility(),
+        guard: () async {},
+        onStatus: statuses.add,
+        // The first puzzle stays until refreshed; the second drag solves it.
+        isPresent: () async => gestures.length < 2,
+        refresh: () async => refreshed = true,
+      );
+      expect(solved, isTrue);
+      expect(refreshed, isTrue);
+      expect(requests, 2);
+      expect(gestures, hasLength(2));
+      expect(statuses, contains(startsWith('CAPTCHA chưa đúng')));
+    },
+    timeout: const Timeout(Duration(seconds: 40)),
+  );
+
+  group('refresh', () {
+    void snapshot(List<Map<String, Object>> nodes) =>
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) async {
+              if (call.method == 'signupSnapshot') {
+                return {
+                  'ready': true,
+                  'webBounds': [0, 0, 500, 1000],
+                  'nodes': nodes,
+                };
+              }
+              if (call.method == 'dispatchGesture') gestures.add(call);
+              return true;
+            });
+    Map<String, double> tapped() => Map.from(
+      ((gestures.single.arguments as Map)['strokes'] as List).single['path'][0]
+          as Map,
+    );
+
+    test('taps the control Accessibility names', () async {
+      snapshot([
+        {
+          'id': '0.4',
+          'description': 'Refresh',
+          'clickable': true,
+          'enabled': true,
+          'bounds': [300, 600, 340, 640],
+        },
+      ]);
+      await refreshRotateCaptcha(
+        accessibility: SignupAccessibility(),
+        readGeometry: () async => throw StateError('unexpected JS'),
+        guard: () async {},
+      );
+      expect(tapped(), {'x': 320.0, 'y': 620.0});
+    });
+
+    test('falls back to CSS geometry scaled into the WebView', () async {
+      snapshot([]);
+      await refreshRotateCaptcha(
+        accessibility: SignupAccessibility(),
+        readGeometry: () async => '{"viewportWidth":1000,"x":600,"y":1200}',
+        guard: () async {},
+      );
+      expect(tapped(), {'x': 300.0, 'y': 600.0});
+    });
+
+    test('never taps without a located control', () async {
+      snapshot([]);
+      await expectLater(
+        refreshRotateCaptcha(
+          accessibility: SignupAccessibility(),
+          readGeometry: () async => null,
+          guard: () async {},
+        ),
+        throwsStateError,
+      );
+      expect(gestures, isEmpty);
+    });
+  });
+
   test('skips absent CAPTCHA without using API or Accessibility', () async {
     final solver = RotateCaptchaSolver(
       client: MockClient((_) async => throw StateError('unexpected API')),

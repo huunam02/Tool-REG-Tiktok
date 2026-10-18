@@ -67,3 +67,30 @@ const rotateCaptchaPresentScript = r'''
     });
 })()
 ''';
+
+/// Geometry of the puzzle's refresh control (CSS pixels); Android
+/// Accessibility performs the tap.
+const rotateCaptchaRefreshScript = r'''
+(() => {
+  if (location.origin !== 'https://www.tiktok.com' || document.hidden) return null;
+  const visible = el => {
+    const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.display !== 'none' &&
+      s.visibility !== 'hidden' && Number(s.opacity) !== 0;
+  };
+  const root = [...document.querySelectorAll('#captcha-verify-container, ' +
+    '.captcha-verify-container, .captcha_verify_container, #captcha_container')]
+    .find(visible);
+  if (!root) return null;
+  const el = [...root.querySelectorAll('.secsdk_captcha_refresh, ' +
+    '#captcha_refresh_button, [aria-label*="refresh" i], [title*="refresh" i], ' +
+    '[aria-label*="reload" i], [title*="reload" i]')].find(visible);
+  if (!el) return null;
+  const r = el.getBoundingClientRect(), v = window.visualViewport;
+  return JSON.stringify({
+    viewportWidth: v?.width || innerWidth,
+    x: r.left + r.width / 2 - (v?.offsetLeft || 0),
+    y: r.top + r.height / 2 - (v?.offsetTop || 0)
+  });
+})()
+''';

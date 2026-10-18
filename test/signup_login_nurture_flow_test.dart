@@ -123,9 +123,19 @@ class _WebViewWidget extends PlatformInAppWebViewWidget {
 }
 
 class _Session {
-  _Session(this.tester, {bool maximum = false})
-    : random = _BoundaryRandom(maximum);
+  _Session(
+    this.tester, {
+    bool maximum = false,
+    this.nurtureAfterSignup = false,
+    this.logoutAfterNurture = false,
+    this.autoAdvance = false,
+    this.launchAction = TikTokLaunchAction.browse,
+  }) : random = _BoundaryRandom(maximum);
   final WidgetTester tester;
+  final bool nurtureAfterSignup;
+  final bool logoutAfterNurture;
+  final bool autoAdvance;
+  final TikTokLaunchAction launchAction;
   final Random random;
   final store = MemoryProxyStore();
   final view = _View();
@@ -153,6 +163,7 @@ class _Session {
       loginPassword: account.password,
       loginMailboxPassword: account.mailboxPassword,
       comments: ['Test comment'],
+      nurtureAfterSignup: nurtureAfterSignup,
     );
     logic = TikTokController(
       configuration: configuration,
@@ -161,6 +172,9 @@ class _Session {
       now: tester.binding.clock.now,
       workflowRandom: random,
       onFlowFinished: results.add,
+      logoutAfterNurture: logoutAfterNurture,
+      autoAdvance: autoAdvance,
+      launchAction: launchAction,
     )..onInit();
     logic.webViewController = InAppWebViewController.fromPlatform(
       platform: view,
@@ -244,26 +258,266 @@ void main() {
     });
   }
 
-  testWidgets(
-    'routes through Home between signup and login, then reports nurture completion',
-    (tester) async {
-      final previous = InAppWebViewPlatform.instance;
-      final platform = _Platform();
-      InAppWebViewPlatform.instance = platform;
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      final messenger = tester.binding.defaultBinaryMessenger;
+  Future<void> Function() fakeWebView(WidgetTester tester) {
+    final previous = InAppWebViewPlatform.instance;
+    final platform = _Platform();
+    InAppWebViewPlatform.instance = platform;
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      const MethodChannel('test_tiktok/webview_proxy'),
+      (_) async => null,
+    );
+    return () async {
+      if (previous != null) InAppWebViewPlatform.instance = previous;
+      debugDefaultTargetPlatformOverride = null;
       messenger.setMockMethodCallHandler(
         const MethodChannel('test_tiktok/webview_proxy'),
-        (_) async => null,
+        null,
       );
-      addTearDown(() {
-        if (previous != null) InAppWebViewPlatform.instance = previous;
-        debugDefaultTargetPlatformOverride = null;
-        messenger.setMockMethodCallHandler(
-          const MethodChannel('test_tiktok/webview_proxy'),
-          null,
-        );
-      });
+    };
+  }
+
+  TikTokController currentLogic(WidgetTester tester) => tester
+      .state<GetBuilderState<TikTokController>>(
+        find.byType(GetBuilder<TikTokController>),
+      )
+      .controller!;
+
+  HomeController currentHome(WidgetTester tester) => tester
+      .state<GetBuilderState<HomeController>>(
+        find.byType(GetBuilder<HomeController>),
+      )
+      .controller!;
+
+  /// Real-clock deadlines cannot elapse under fake timers: move them to the past.
+  Future<void> finishLogout(WidgetTester tester, TikTokController logic) async {
+    expect(logic.waitingToLogout, isTrue);
+    logic.signupLogoutAt = DateTime.now().subtract(const Duration(seconds: 1));
+    logic.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> skipAutoRunPause(WidgetTester tester) async {
+    final home = currentHome(tester);
+    for (var i = 0; i < 20 && home.autoRunNextAt == null; i++) {
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+    expect(home.autoRunNextAt, isNotNull);
+    home.autoRunNextAt = DateTime.now().subtract(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'signup continues through every unregistered configuration, nurturing when enabled',
+    (tester) async {
+      final restore = fakeWebView(tester);
+      addTearDown(restore);
+      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final store = MemoryProxyStore();
+      AccountCredentials account(String name) => AccountCredentials(
+        email: '$name@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      final first = await store.save(
+        name: 'A',
+        proxy: null,
+        account: account('a'),
+      );
+      await store.save(
+        name: 'Registered',
+        proxy: null,
+        account: account('r'),
+        statusAccount: AccountStatus.registered,
+      );
+      final second = await store.save(
+        name: 'B',
+        proxy: null,
+        account: account('b'),
+        nurtureAfterSignup: true,
+      );
+      await store.useSaved(first);
+      var clears = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            userAgent: 'agent',
+            proxyStore: store,
+            clearSession: () async => clears++,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('runAccountAction')));
+      await tester.pumpAndSettle();
+      expect(clears, 1);
+      expect(find.byKey(const Key('autoRunBanner')), findsNothing);
+      var page = tester.widget<TikTokPage>(find.byType(TikTokPage));
+      expect(page.configuration.configurationId, first);
+      expect(page.configuration.nurtureAfterSignup, isFalse);
+      expect(page.autoAdvance, isTrue);
+      expect(page.launchAction, TikTokLaunchAction.signup);
+
+      final signupA = currentLogic(tester);
+      final viewA = _View();
+      signupA.webViewController = InAppWebViewController.fromPlatform(
+        platform: viewA,
+      );
+      final registrationA = signupA.autoSignup();
+      await tester.pump();
+      for (var i = 0; i < 11 && signupA.autoSignupBusy; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await registrationA;
+      await tester.pump();
+      expect(find.textContaining('Tự đăng xuất sau'), findsOneWidget);
+      expect(signupA.autoWatchEnabled, isFalse);
+      await finishLogout(tester, signupA);
+      expect(viewA.logoutCalls, 3);
+      expect(find.byType(TikTokPage), findsNothing);
+      expect(find.byKey(const Key('autoRunBanner')), findsOneWidget);
+
+      await skipAutoRunPause(tester);
+      expect(clears, 2);
+      page = tester.widget<TikTokPage>(find.byType(TikTokPage));
+      expect(page.configuration.configurationId, second);
+      expect(page.configuration.nurtureAfterSignup, isTrue);
+      final signupB = currentLogic(tester);
+      final viewB = _View();
+      signupB.webViewController = InAppWebViewController.fromPlatform(
+        platform: viewB,
+      );
+      final registrationB = signupB.autoSignup();
+      await tester.pump();
+      for (var i = 0; i < 11 && signupB.autoSignupBusy; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await registrationB;
+      await tester.pump();
+      expect(signupB.autoWatchEnabled, isTrue);
+      expect(signupB.waitingToLogout, isFalse);
+      expect(viewB.watchStarts, 1);
+      await tester.pump(const Duration(minutes: 3));
+      await tester.pump();
+      expect(signupB.autoWatchEnabled, isFalse);
+      expect(
+        find.textContaining('Đã nuôi xong. Tự đăng xuất sau'),
+        findsOneWidget,
+      );
+      await finishLogout(tester, signupB);
+      expect(viewB.logoutCalls, 3);
+      expect(find.byType(TikTokPage), findsNothing);
+      expect(find.byKey(const Key('autoRunBanner')), findsNothing);
+      expect(
+        find.text('Đã tự đăng ký 2 cấu hình: 2 xong, 0 lỗi.'),
+        findsOneWidget,
+      );
+      expect(
+        store.entries.map((entry) => entry.statusAccount),
+        everyElement(AccountStatus.registered),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await restore();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Nuôi toàn bộ logs in to each registered account and logs out after nurture',
+    (tester) async {
+      final restore = fakeWebView(tester);
+      addTearDown(restore);
+      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final store = MemoryProxyStore();
+      AccountCredentials account(String name) => AccountCredentials(
+        email: '$name@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      final first = await store.save(
+        name: 'A',
+        proxy: null,
+        account: account('a'),
+        statusAccount: AccountStatus.registered,
+      );
+      await store.save(name: 'New', proxy: null, account: account('n'));
+      final second = await store.save(
+        name: 'B',
+        proxy: null,
+        account: account('b'),
+        statusAccount: AccountStatus.registered,
+      );
+      await store.useSaved(second);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            userAgent: 'agent',
+            proxyStore: store,
+            clearSession: () async {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nurtureTab')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Nuôi toàn bộ (2 tài khoản'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('nurtureAll')));
+      await tester.pumpAndSettle();
+      var page = tester.widget<TikTokPage>(find.byType(TikTokPage));
+      // The selected account goes first, then the others in list order.
+      expect(page.configuration.configurationId, second);
+      expect(page.launchAction, TikTokLaunchAction.login);
+      expect(page.logoutAfterNurture, isTrue);
+      final loginB = currentLogic(tester);
+      final viewB = _View();
+      loginB.webViewController = InAppWebViewController.fromPlatform(
+        platform: viewB,
+      );
+      final authentication = loginB.autoLogin();
+      await tester.pump();
+      for (var i = 0; i < 11 && loginB.autoLoginBusy; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await authentication;
+      expect(loginB.autoWatchEnabled, isTrue);
+      await tester.pump(const Duration(minutes: 3));
+      await tester.pump();
+      await finishLogout(tester, loginB);
+      expect(viewB.logoutCalls, 3);
+      expect(find.byType(TikTokPage), findsNothing);
+      await skipAutoRunPause(tester);
+      page = tester.widget<TikTokPage>(find.byType(TikTokPage));
+      expect(page.configuration.configurationId, first);
+      // Closing the screen stops the run.
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TikTokPage), findsNothing);
+      expect(find.byKey(const Key('autoRunBanner')), findsNothing);
+      expect(
+        find.text('Đã dừng tự nuôi sau 1 cấu hình (1 xong, 0 lỗi).'),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await restore();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'manual login from Home nurtures and keeps the account signed in',
+    (tester) async {
+      final restore = fakeWebView(tester);
+      addTearDown(restore);
+      final platform = InAppWebViewPlatform.instance! as _Platform;
       await tester.binding.setSurfaceSize(const Size(900, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final store = MemoryProxyStore();
@@ -275,6 +529,7 @@ void main() {
           password: 'password',
           mailboxPassword: 'mail',
         ),
+        statusAccount: AccountStatus.registered,
       );
       await store.useSaved(id);
       await tester.pumpWidget(
@@ -283,56 +538,14 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.text('Đăng nhập và nuôi Account'), findsOneWidget);
       await tester.tap(find.byKey(const Key('runAccountAction')));
-      await tester.pumpAndSettle();
-      TikTokController currentLogic() => tester
-          .state<GetBuilderState<TikTokController>>(
-            find.byType(GetBuilder<TikTokController>),
-          )
-          .controller!;
-      final signup = currentLogic();
-      final signupView = _View();
-      signup.webViewController = InAppWebViewController.fromPlatform(
-        platform: signupView,
-      );
-      final registration = signup.autoSignup();
-      await tester.pump();
-      for (var i = 0; i < 11 && signup.autoSignupBusy; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
-      await registration;
-      expect(signup.waitingToLogout, isTrue);
-      await tester.pump();
-      expect(find.textContaining('Tự đăng xuất sau'), findsOneWidget);
-      // Timer durations are covered below with an injected clock. Exercise the
-      // production route callbacks through the overdue/resume path here.
-      await tester.pump(const Duration(minutes: 4));
-      signup.signupLogoutAt = DateTime.now().subtract(
-        const Duration(seconds: 1),
-      );
-      signup.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 700));
-      await tester.pump(const Duration(milliseconds: 700));
-      await tester.pumpAndSettle();
-      expect(find.byType(TikTokPage), findsNothing);
-      expect(find.byKey(const Key('waitingForAutoLogin')), findsOneWidget);
-      final home = tester
-          .state<GetBuilderState<HomeController>>(
-            find.byType(GetBuilder<HomeController>),
-          )
-          .controller!;
-      // Trigger the same deadline/resume path, retaining the production route callback.
-      await tester.pump(const Duration(minutes: 3));
-      home.autoLoginStartsAt = DateTime.now().subtract(
-        const Duration(seconds: 1),
-      );
-      home.didChangeAppLifecycleState(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
       final loginPage = tester.widget<TikTokPage>(find.byType(TikTokPage));
       expect(loginPage.launchAction, TikTokLaunchAction.login);
+      expect(loginPage.autoAdvance, isFalse);
       expect(loginPage.configuration.configurationId, id);
-      final login = currentLogic();
+      final login = currentLogic(tester);
       final loginView = _View();
       login.webViewController = InAppWebViewController.fromPlatform(
         platform: loginView,
@@ -353,7 +566,6 @@ void main() {
         findsOneWidget,
       );
       expect(loginView.logoutCalls, 0);
-      expect(home.waitingForAutoLogin, isFalse);
       expect(find.text('Nuôi tiếp Account'), findsOneWidget);
       await tester.tap(find.byKey(const Key('runAccountAction')));
       await tester.pumpAndSettle();
@@ -362,7 +574,7 @@ void main() {
       expect(continuedPage.startWithNurture, isTrue);
       expect(continuedPage.configuration.configurationId, id);
       expect(continuedPage.configuration.otpApi, isNull);
-      final continued = currentLogic();
+      final continued = currentLogic(tester);
       final continuedView = _View();
       continued.webViewController = InAppWebViewController.fromPlatform(
         platform: continuedView,
@@ -392,14 +604,14 @@ void main() {
       expect(find.text('Đăng nhập và nuôi Account'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
-      debugDefaultTargetPlatformOverride = null;
+      await restore();
       expect(tester.takeException(), isNull);
     },
   );
 
   for (final maximum in [false, true]) {
     testWidgets(
-      'signup waits ${maximum ? 4 : 2} minutes and confirms logout before returning',
+      'signup waits ${maximum ? 2 : 1} minutes and confirms logout before returning',
       (tester) async {
         final session = _Session(tester, maximum: maximum);
         await session.init();
@@ -411,10 +623,10 @@ void main() {
         expect(
           wait,
           greaterThanOrEqualTo(
-            Duration(minutes: maximum ? 4 : 2) - const Duration(seconds: 1),
+            Duration(minutes: maximum ? 2 : 1) - const Duration(seconds: 1),
           ),
         );
-        expect(wait, lessThanOrEqualTo(Duration(minutes: maximum ? 4 : 2)));
+        expect(wait, lessThanOrEqualTo(Duration(minutes: maximum ? 2 : 1)));
         expect(session.view.watchStarts, 0);
         await tester.pump(wait - const Duration(milliseconds: 1));
         expect(session.view.logoutCalls, 0);
@@ -514,66 +726,306 @@ void main() {
     },
   );
 
-  for (final maximum in [false, true]) {
+  testWidgets(
+    'signup with nurture warms up 2–3 minutes, holds, then logs out',
+    (tester) async {
+      final session = _Session(tester, nurtureAfterSignup: true);
+      await session.init();
+      await session.signup();
+      await tester.pump();
+      expect(session.store.currentStatus, AccountStatus.registered);
+      expect(session.logic.loginConfirmed, isTrue);
+      expect(session.logic.autoWatchEnabled, isTrue);
+      expect(session.logic.waitingToLogout, isFalse);
+      expect(session.view.watchStarts, 1);
+      // _BoundaryRandom(false) draws the shortest, 2-minute session.
+      await tester.pump(const Duration(minutes: 2));
+      await tester.pump();
+      expect(session.logic.autoWatchEnabled, isFalse);
+      expect(session.logic.waitingToLogout, isTrue);
+      expect(session.logic.logoutFollowsNurture, isTrue);
+      expect(
+        session.logic.signupLogoutAt!.difference(tester.binding.clock.now()),
+        lessThanOrEqualTo(const Duration(minutes: 1)),
+      );
+      expect(session.results, isEmpty);
+      await session.reachLogout();
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(session.results, [TikTokFlowResult.nurtureLoggedOut]);
+      expect(session.view.logoutCalls, 3);
+    },
+  );
+
+  testWidgets('automatic nurture holds 1–2 minutes then logs out', (
+    tester,
+  ) async {
+    final session = _Session(tester, maximum: true, logoutAfterNurture: true);
+    await session.init();
+    await session.login();
+    expect(session.logic.autoWatchEnabled, isTrue);
+    await tester.pump(const Duration(minutes: 3));
+    await tester.pump();
+    expect(session.results, isEmpty);
+    expect(session.logic.waitingToLogout, isTrue);
+    final wait = session.logic.signupLogoutAt!.difference(
+      tester.binding.clock.now(),
+    );
+    expect(wait, lessThanOrEqualTo(const Duration(minutes: 2)));
+    expect(wait, greaterThanOrEqualTo(const Duration(minutes: 2, seconds: -2)));
+    await session.reachLogout();
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(session.results, [TikTokFlowResult.nurtureLoggedOut]);
+  });
+
+  testWidgets('automatic nurture failure still logs the account out', (
+    tester,
+  ) async {
+    final session = _Session(tester, logoutAfterNurture: true);
+    await session.init();
+    await session.login();
+    session.logic.handleAutoWatchMessage('comments-unavailable');
+    await tester.pump();
+    expect(session.logic.autoWatchEnabled, isFalse);
+    expect(session.logic.waitingToLogout, isTrue);
+    await session.reachLogout();
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(session.results, [TikTokFlowResult.nurtureLoggedOut]);
+  });
+
+  for (final stopped in [false, true]) {
     testWidgets(
-      'Home waits ${maximum ? 3 : 2} minutes then starts the matching login once',
+      'automatic run ${stopped ? 'stays after Dừng' : 'moves on 15 seconds after'} a failed signup',
       (tester) async {
-        final session = _Session(tester, maximum: maximum);
+        final session = _Session(
+          tester,
+          autoAdvance: true,
+          launchAction: TikTokLaunchAction.signup,
+        );
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
         await session.init();
-        await session.store.markRegistered(
-          session.configuration.configurationId!,
-          session.configuration.signupEmail,
-        );
-        var logins = 0;
-        session.home.scheduleLoginAfterSignup(session.configuration, () async {
-          logins++;
-        });
-        final wait = session.home.autoLoginStartsAt!.difference(
-          tester.binding.clock.now(),
-        );
-        expect(wait, Duration(minutes: maximum ? 3 : 2));
-        expect(session.home.busy, isTrue);
-        await tester.pump(wait - const Duration(milliseconds: 1));
-        expect(logins, 0);
-        await tester.pump(const Duration(milliseconds: 1));
+        session.view.signupResult = 'signup-error';
+        session.logic.initialPageLoaded = true;
+        final run = session.logic.runInitialAction();
         await tester.pump();
-        expect(logins, 1);
-        expect(session.home.waitingForAutoLogin, isFalse);
-        await tester.pump(const Duration(minutes: 5));
-        expect(logins, 1);
+        for (var i = 0; i < 11 && session.logic.autoSignupBusy; i++) {
+          await tester.pump(const Duration(seconds: 1));
+        }
+        await run;
+        expect(session.logic.autoRunFailing, isTrue);
+        await tester.pump();
+        final logged = session.store.signupFailures.single;
+        expect(logged.configurationId, session.configuration.configurationId);
+        expect(logged.email, 'person@example.com');
+        expect(logged.message, contains('TikTok báo lỗi đăng ký'));
+        expect(
+          (await session.store.listFailedConfigurations()).single.failureCount,
+          1,
+        );
+        if (stopped) session.logic.stopByUser();
+        await tester.pump(const Duration(seconds: 14));
+        expect(session.results, isEmpty);
+        await tester.pump(const Duration(seconds: 1));
+        expect(session.results, stopped ? isEmpty : [TikTokFlowResult.failed]);
+        await tester.pump(const Duration(minutes: 20));
+        expect(session.results, stopped ? isEmpty : hasLength(1));
+        debugDefaultTargetPlatformOverride = null;
       },
     );
   }
 
-  for (final reason in ['cancel', 'close', 'changed-account', 'background']) {
-    testWidgets('Home login schedule handles $reason', (tester) async {
-      final session = _Session(tester);
-      await session.init();
-      await session.store.markRegistered(
-        session.configuration.configurationId!,
-        session.configuration.signupEmail,
+  testWidgets('a stuck automatic signup logs the timeout as its reason', (
+    tester,
+  ) async {
+    final session = _Session(
+      tester,
+      autoAdvance: true,
+      launchAction: TikTokLaunchAction.signup,
+    );
+    await session.init();
+    await tester.pump(TikTokController.autoFlowTimeout);
+    await tester.pump();
+    expect(
+      session.store.signupFailures.single.message,
+      'Quá 15 phút chưa xong cấu hình này.',
+    );
+    await tester.pump(TikTokController.autoFailureDelay);
+    expect(session.results, [TikTokFlowResult.failed]);
+  });
+
+  testWidgets('a successful automatic signup leaves no failure log', (
+    tester,
+  ) async {
+    final session = _Session(
+      tester,
+      autoAdvance: true,
+      launchAction: TikTokLaunchAction.signup,
+    );
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    await session.init();
+    await session.store.recordSignupFailure(
+      session.configuration.configurationId!,
+      session.configuration.signupEmail,
+      message: 'earlier failure',
+    );
+    session.logic.initialPageLoaded = true;
+    final run = session.logic.runInitialAction();
+    await tester.pump();
+    for (var i = 0; i < 11 && session.logic.autoSignupBusy; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    await run;
+    expect(session.store.signupFailures, hasLength(1));
+    expect(await session.store.listFailedConfigurations(), isEmpty);
+    await session.reachLogout();
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(session.results, [TikTokFlowResult.signupLoggedOut]);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets(
+    'Cấu hình lỗi lists failed signups and Đăng ký lại runs only them',
+    (tester) async {
+      final restore = fakeWebView(tester);
+      addTearDown(restore);
+      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final store = MemoryProxyStore();
+      AccountCredentials account(String name) => AccountCredentials(
+        email: '$name@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
       );
-      var logins = 0;
-      session.home.scheduleLoginAfterSignup(session.configuration, () async {
-        logins++;
-      });
-      if (reason == 'cancel') session.home.cancelScheduledLogin();
-      if (reason == 'close') session.home.onDelete();
-      if (reason == 'changed-account') session.store.currentId = 999;
-      if (reason == 'background') {
-        session.home.didChangeAppLifecycleState(AppLifecycleState.paused);
-      }
-      await tester.pump(const Duration(minutes: 4));
-      expect(logins, 0);
-      if (reason == 'background') {
-        session.home.didChangeAppLifecycleState(AppLifecycleState.resumed);
-        await tester.pump();
-        expect(logins, 1);
-      } else {
-        expect(session.home.waitingForAutoLogin, isFalse);
-      }
-    });
-  }
+      final failed = await store.save(
+        name: 'Failed',
+        proxy: null,
+        account: account('failed'),
+      );
+      final fresh = await store.save(
+        name: 'Fresh',
+        proxy: null,
+        account: account('fresh'),
+      );
+      await store.recordSignupFailure(
+        failed,
+        'failed@example.com',
+        message: 'TikTok báo lỗi tài khoản (mã 1023).',
+        step: 'Đang mở danh sách Year…',
+        at: DateTime(2026, 10, 18, 1, 34),
+      );
+      await store.recordSignupFailure(
+        failed,
+        'failed@example.com',
+        message: 'TikTok đang giới hạn số lần thử',
+        at: DateTime(2026, 10, 18, 2, 16),
+      );
+      await store.useSaved(failed);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            userAgent: 'agent',
+            proxyStore: store,
+            clearSession: () async {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The normal signup run leaves failed configurations to this tab.
+      await tester.tap(find.byKey(const Key('runAccountAction')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TikTokPage>(find.byType(TikTokPage))
+            .configuration
+            .configurationId,
+        fresh,
+      );
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('failedTab')));
+      await tester.pumpAndSettle();
+      expect(find.text('Cấu hình lỗi: 1'), findsOneWidget);
+      expect(find.byKey(Key('failedConfiguration-$failed')), findsOneWidget);
+      expect(find.text('Lỗi 2 lần'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(Key('latestFailure-$failed')),
+          matching: find.text('TikTok đang giới hạn số lần thử'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('TikTok báo lỗi tài khoản (mã 1023).'), findsNothing);
+      await tester.tap(find.byKey(Key('failureLog-$failed')));
+      await tester.pumpAndSettle();
+      expect(find.text('TikTok báo lỗi tài khoản (mã 1023).'), findsOneWidget);
+      expect(find.text('Bước: Đang mở danh sách Year…'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('retryFailedSignups')));
+      await tester.pumpAndSettle();
+      final page = tester.widget<TikTokPage>(find.byType(TikTokPage));
+      expect(page.configuration.configurationId, failed);
+      expect(page.launchAction, TikTokLaunchAction.signup);
+      expect(page.autoAdvance, isTrue);
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Đã dừng tự đăng ký lại sau 0 cấu hình (0 xong, 0 lỗi).'),
+        findsOneWidget,
+      );
+
+      await tester.ensureVisible(find.byKey(Key('dismissFailure-$failed')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Key('dismissFailure-$failed')));
+      await tester.pumpAndSettle();
+      expect(find.text('Không có cấu hình lỗi'), findsOneWidget);
+      expect(store.signupFailures, hasLength(2));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await restore();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('automatic run gives up on a stuck configuration', (
+    tester,
+  ) async {
+    final session = _Session(tester, autoAdvance: true);
+    await session.init();
+    await tester.pump(TikTokController.autoFlowTimeout);
+    expect(session.results, isEmpty);
+    await tester.pump(TikTokController.autoFailureDelay);
+    expect(session.results, [TikTokFlowResult.failed]);
+  });
+
+  testWidgets('a successful automatic signup does not report failure', (
+    tester,
+  ) async {
+    final session = _Session(
+      tester,
+      autoAdvance: true,
+      launchAction: TikTokLaunchAction.signup,
+    );
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    await session.init();
+    session.logic.initialPageLoaded = true;
+    final run = session.logic.runInitialAction();
+    await tester.pump();
+    for (var i = 0; i < 11 && session.logic.autoSignupBusy; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    await run;
+    expect(session.logic.autoRunFailing, isFalse);
+    await session.reachLogout();
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(session.results, [TikTokFlowResult.signupLoggedOut]);
+    debugDefaultTargetPlatformOverride = null;
+  });
 
   testWidgets(
     'automatic login nurtures for two minutes then returns without logout',

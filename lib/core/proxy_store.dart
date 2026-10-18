@@ -8,6 +8,7 @@ import 'desktop_user_agents.dart';
 import 'chrome_user_agent.dart';
 import 'proxy_time_zone.dart';
 import 'nurture_store.dart';
+import 'signup_failure.dart';
 
 class ProxyProfile {
   const ProxyProfile({
@@ -19,6 +20,8 @@ class ProxyProfile {
     this.statusAccount = AccountStatus.unregistered,
     this.configurationId,
     this.timeZoneId = '',
+    this.nurtureAfterSignup = false,
+    this.signupFailed = false,
   });
 
   final WebViewProxy? proxy;
@@ -29,6 +32,10 @@ class ProxyProfile {
   final AccountStatus statusAccount;
   final int? configurationId;
   final String timeZoneId;
+  final bool nurtureAfterSignup;
+
+  /// The last automatic signup of this configuration failed.
+  final bool signupFailed;
 
   ProxyProfile copyWith({String? userAgent, String? timeZoneId}) =>
       ProxyProfile(
@@ -40,6 +47,8 @@ class ProxyProfile {
         account: account,
         statusAccount: statusAccount,
         configurationId: configurationId,
+        nurtureAfterSignup: nurtureAfterSignup,
+        signupFailed: signupFailed,
       );
 }
 
@@ -53,6 +62,8 @@ class SavedProxy extends ProxyProfile {
     super.account,
     super.statusAccount,
     super.timeZoneId,
+    super.nurtureAfterSignup,
+    super.signupFailed,
   }) : super(configurationId: id);
   final int id;
 }
@@ -118,13 +129,34 @@ class ProxyStore {
       has_been_used INTEGER NOT NULL DEFAULT 0 CHECK (has_been_used IN (0, 1)),
       listed INTEGER NOT NULL DEFAULT 1 CHECK (listed IN (0, 1)),
       is_current INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1)),
-      time_zone_id TEXT NOT NULL DEFAULT ''
+      time_zone_id TEXT NOT NULL DEFAULT '',
+      nurture_after_signup INTEGER NOT NULL DEFAULT 0
+        CHECK (nurture_after_signup IN (0, 1)),
+      signup_failed INTEGER NOT NULL DEFAULT 0
+        CHECK (signup_failed IN (0, 1))
     )''');
     await db.execute(
       'CREATE UNIQUE INDEX one_current_configuration '
       'ON configurations(is_current) WHERE is_current = 1',
     );
     await SqliteNurtureRepository.createSchema(db);
+    await _createSignupFailureSchema(db);
+  }
+
+  static Future<void> _createSignupFailureSchema(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS signup_failures (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      configuration_id INTEGER NOT NULL
+        REFERENCES configurations(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      message TEXT NOT NULL,
+      step TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    )''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS signup_failures_configuration '
+      'ON signup_failures(configuration_id, created_at)',
+    );
   }
 
   Future<Database> _open() async {
@@ -137,7 +169,7 @@ class ProxyStore {
       db = await factory.openDatabase(
         filename,
         options: OpenDatabaseOptions(
-          version: 10,
+          version: 13,
           onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
           onOpen: (db) async {
             await db.update('nurture_sessions', {
@@ -173,6 +205,21 @@ class ProxyStore {
                 "ALTER TABLE configurations ADD COLUMN time_zone_id TEXT NOT NULL DEFAULT ''",
               );
             }
+            if (!columns.any(
+              (column) => column['name'] == 'nurture_after_signup',
+            )) {
+              await db.execute(
+                'ALTER TABLE configurations ADD COLUMN nurture_after_signup '
+                'INTEGER NOT NULL DEFAULT 0 CHECK (nurture_after_signup IN (0, 1))',
+              );
+            }
+            if (!columns.any((column) => column['name'] == 'signup_failed')) {
+              await db.execute(
+                'ALTER TABLE configurations ADD COLUMN signup_failed '
+                'INTEGER NOT NULL DEFAULT 0 CHECK (signup_failed IN (0, 1))',
+              );
+            }
+            await _createSignupFailureSchema(db);
             final rows = await db.query(
               'configurations',
               columns: ['id', 'user_agent'],
@@ -190,6 +237,15 @@ class ProxyStore {
               }
             }
             if (oldVersion < 10) await SqliteNurtureRepository.createSchema(db);
+            final sessions = await db.rawQuery(
+              'PRAGMA table_info(nurture_sessions)',
+            );
+            if (!sessions.any((column) => column['name'] == 'likes')) {
+              await db.execute(
+                'ALTER TABLE nurture_sessions ADD COLUMN likes '
+                'INTEGER NOT NULL DEFAULT 0 CHECK (likes >= 0)',
+              );
+            }
           },
         ),
       );
@@ -303,6 +359,8 @@ class ProxyStore {
     hasBeenUsed: row['has_been_used'] == 1,
     configurationId: row['id'] as int,
     timeZoneId: row['time_zone_id'] as String? ?? '',
+    nurtureAfterSignup: row['nurture_after_signup'] == 1,
+    signupFailed: row['signup_failed'] == 1,
   );
 
   static Future<Map<String, Object?>?> _findSaved(
@@ -439,26 +497,26 @@ class ProxyStore {
     });
   }
 
+  static SavedProxy _readSaved(Map<String, Object?> row) => SavedProxy(
+    id: row['id'] as int,
+    name: row['name'] as String,
+    proxy: _readProxy(row),
+    userAgent: row['user_agent'] as String,
+    timeZoneId: row['time_zone_id'] as String? ?? '',
+    account: _readAccount(row),
+    statusAccount: _readStatus(row),
+    hasBeenUsed: row['has_been_used'] == 1,
+    nurtureAfterSignup: row['nurture_after_signup'] == 1,
+    signupFailed: row['signup_failed'] == 1,
+  );
+
   Future<List<SavedProxy>> list() async {
     final rows = await (await _database).query(
       'configurations',
       where: 'listed = 1',
       orderBy: 'id DESC',
     );
-    return rows
-        .map(
-          (row) => SavedProxy(
-            id: row['id'] as int,
-            name: row['name'] as String,
-            proxy: _readProxy(row),
-            userAgent: row['user_agent'] as String,
-            timeZoneId: row['time_zone_id'] as String? ?? '',
-            account: _readAccount(row),
-            statusAccount: _readStatus(row),
-            hasBeenUsed: row['has_been_used'] == 1,
-          ),
-        )
-        .toList();
+    return rows.map(_readSaved).toList();
   }
 
   Future<int> save({
@@ -469,6 +527,7 @@ class ProxyStore {
     AccountCredentials? account,
     AccountStatus? statusAccount,
     String? timeZoneId,
+    bool? nurtureAfterSignup,
   }) async {
     final db = await _database;
     return db.transaction(
@@ -481,6 +540,7 @@ class ProxyStore {
         account: account,
         statusAccount: statusAccount,
         timeZoneId: timeZoneId,
+        nurtureAfterSignup: nurtureAfterSignup,
       ),
     );
   }
@@ -499,6 +559,7 @@ class ProxyStore {
             account: draft.account,
             statusAccount: draft.statusAccount,
             timeZoneId: draft.timeZoneId,
+            nurtureAfterSignup: draft.nurtureAfterSignup,
           ),
         );
       }
@@ -515,6 +576,7 @@ class ProxyStore {
     AccountCredentials? account,
     AccountStatus? statusAccount,
     String? timeZoneId,
+    bool? nurtureAfterSignup,
   }) async {
     account?.validate();
     final requestedTimeZone = timeZoneId == null
@@ -550,6 +612,12 @@ class ProxyStore {
       if (requestedAgent != null) 'user_agent': requestedAgent,
       if (account != null) ..._accountValues(account),
       if (statusAccount != null) 'statusAccount': statusAccount.name,
+      if (nurtureAfterSignup != null)
+        'nurture_after_signup': nurtureAfterSignup ? 1 : 0,
+      if (account != null &&
+          existing != null &&
+          existing['account_email'] != account.email.trim())
+        'signup_failed': 0,
       if (requestedTimeZone != null) 'time_zone_id': requestedTimeZone,
       if (requestedTimeZone == null &&
           existing != null &&
@@ -650,11 +718,92 @@ class ProxyStore {
     if (email.trim().isEmpty) return false;
     return await (await _database).update(
           'configurations',
-          {'statusAccount': AccountStatus.registered.name},
+          {'statusAccount': AccountStatus.registered.name, 'signup_failed': 0},
           where: 'id = ? AND account_email = ?',
           whereArgs: [id, email.trim()],
         ) ==
         1;
+  }
+
+  /// Log a failed automatic signup and list the configuration as failed,
+  /// unless it has meanwhile been registered or given another account.
+  Future<bool> recordSignupFailure(
+    int id,
+    String email, {
+    required String message,
+    String step = '',
+    DateTime? at,
+  }) async {
+    if (email.trim().isEmpty) return false;
+    final db = await _database;
+    return db.transaction((txn) async {
+      final rows = await txn.query(
+        'configurations',
+        columns: ['id'],
+        where: 'id = ? AND account_email = ? AND statusAccount = ?',
+        whereArgs: [id, email.trim(), AccountStatus.unregistered.name],
+        limit: 1,
+      );
+      if (rows.isEmpty) return false;
+      await txn.insert('signup_failures', {
+        'configuration_id': id,
+        'email': email.trim(),
+        'message': message.trim().isEmpty
+            ? 'Không rõ nguyên nhân.'
+            : message.trim(),
+        'step': step.trim(),
+        'created_at': (at ?? DateTime.now()).millisecondsSinceEpoch,
+      });
+      await txn.update(
+        'configurations',
+        {'signup_failed': 1},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      return true;
+    });
+  }
+
+  /// Unregistered configurations whose last automatic signup failed, most
+  /// recently failed first, each with its newest [logLimit] attempts.
+  Future<List<FailedConfiguration>> listFailedConfigurations({
+    int logLimit = 20,
+  }) async {
+    final db = await _database;
+    final rows = await db.rawQuery(
+      '''SELECT c.*, COUNT(f.id) AS failure_count,
+        MAX(f.created_at) AS last_failure
+      FROM configurations c
+      LEFT JOIN signup_failures f ON f.configuration_id = c.id
+      WHERE c.listed = 1 AND c.signup_failed = 1 AND c.statusAccount = ?
+      GROUP BY c.id
+      ORDER BY last_failure DESC, c.id DESC''',
+      [AccountStatus.unregistered.name],
+    );
+    return [
+      for (final row in rows)
+        FailedConfiguration(
+          configuration: _readSaved(row),
+          failureCount: (row['failure_count'] as num?)?.toInt() ?? 0,
+          failures: (await db.query(
+            'signup_failures',
+            where: 'configuration_id = ?',
+            whereArgs: [row['id']],
+            orderBy: 'created_at DESC, id DESC',
+            limit: logLimit,
+          )).map(SignupFailure.fromRow).toList(),
+        ),
+    ];
+  }
+
+  /// Remove a configuration from the failed list; its log is kept.
+  Future<void> clearSignupFailure(int id) async {
+    await (await _database).update(
+      'configurations',
+      {'signup_failed': 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<void> setUsed(int id, bool used) async {

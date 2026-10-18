@@ -40,6 +40,8 @@ class TikTokPage extends StatelessWidget {
     this.nurtureRepository,
     this.otpReaderFactory,
     this.proxyStore,
+    this.logoutAfterNurture = false,
+    this.autoAdvance = false,
   }) : useNativeWebView = useNativeWebView || manualViewingPlan != null;
 
   final AppConfiguration configuration;
@@ -53,6 +55,8 @@ class TikTokPage extends StatelessWidget {
   final NurtureRepository? nurtureRepository;
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
   final ProxyStore? proxyStore;
+  final bool logoutAfterNurture;
+  final bool autoAdvance;
   String get initialUrl => startWithBrowserCheck
       ? TikTokController.browserCheckUrl
       : startWithIpCheck
@@ -74,6 +78,8 @@ class TikTokPage extends StatelessWidget {
       nurtureRepository: nurtureRepository,
       otpReaderFactory: otpReaderFactory,
       proxyStore: proxyStore,
+      logoutAfterNurture: logoutAfterNurture,
+      autoAdvance: autoAdvance,
       onFlowFinished: (result) {
         if (context.mounted && ModalRoute.of(context)?.isCurrent == true) {
           Navigator.of(context).pop<TikTokFlowResult>(result);
@@ -178,8 +184,23 @@ class _TikTokView extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: !logic.logoutBusy && logic.waitingToLogout
-                        ? _LogoutCountdown(logoutAt: logic.signupLogoutAt!)
+                    child: logic.autoRunFailing
+                        ? Text(
+                            'Không hoàn tất cấu hình này. Tự chuyển sang cấu hình tiếp theo sau ${TikTokController.autoFailureDelay.inSeconds} giây…',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white,
+                            ),
+                          )
+                        : !logic.logoutBusy && logic.waitingToLogout
+                        ? _LogoutCountdown(
+                            logoutAt: logic.signupLogoutAt!,
+                            done: logic.logoutFollowsNurture
+                                ? 'Đã nuôi xong.'
+                                : 'Đăng ký thành công.',
+                          )
                         : Text(
                             logic.logoutBusy
                                 ? 'Đang đăng xuất TikTok để quay về Home…'
@@ -208,7 +229,7 @@ class _TikTokView extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    onPressed: logic.cancelAutoActions,
+                    onPressed: logic.stopByUser,
                     child: const Text('Dừng'),
                   ),
                 ],
@@ -410,7 +431,8 @@ class _TikTokView extends StatelessWidget {
               if (logic.autoLoginBusy ||
                   logic.autoSignupBusy ||
                   logic.waitingToLogout ||
-                  logic.logoutBusy)
+                  logic.logoutBusy ||
+                  logic.autoRunFailing)
                 _autoControls(),
             ],
           ),
@@ -420,11 +442,12 @@ class _TikTokView extends StatelessWidget {
   }
 }
 
-/// Shows the exact remaining hold instead of the randomized 2–4 minute range.
+/// Shows the exact remaining hold instead of the randomized 1–2 minute range.
 class _LogoutCountdown extends StatefulWidget {
-  const _LogoutCountdown({required this.logoutAt});
+  const _LogoutCountdown({required this.logoutAt, required this.done});
 
   final DateTime logoutAt;
+  final String done;
 
   @override
   State<_LogoutCountdown> createState() => _LogoutCountdownState();
@@ -453,8 +476,8 @@ class _LogoutCountdownState extends State<_LogoutCountdown> {
     final remaining = widget.logoutAt.difference(DateTime.now());
     final seconds = (remaining.inMilliseconds / 1000).ceil();
     final message = seconds <= 0
-        ? 'Đăng ký thành công. Sắp đăng xuất…'
-        : 'Đăng ký thành công. Tự đăng xuất sau '
+        ? '${widget.done} Sắp đăng xuất…'
+        : '${widget.done} Tự đăng xuất sau '
               '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
     return Text(
       message,

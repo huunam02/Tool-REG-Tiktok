@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../controller/settings_controller.dart';
+import '../core/controller/settings_controller.dart';
 import '../core/accessibility_permission.dart';
 import '../core/proxy_store.dart';
 import 'data_export_preview_page.dart';

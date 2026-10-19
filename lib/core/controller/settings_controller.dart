@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
-import '../core/accessibility_permission.dart';
-import '../core/data_file_export.dart';
-import '../core/proxy_store.dart';
+import '../accessibility_permission.dart';
+import '../data_file_export.dart';
+import '../proxy_store.dart';
 import 'app_controller.dart';
 
 class SettingsController extends AppController with WidgetsBindingObserver {

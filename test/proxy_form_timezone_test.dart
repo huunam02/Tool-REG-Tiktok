@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-import 'package:test_tiktok/controller/proxy_form_controller.dart';
+import 'package:test_tiktok/core/controller/proxy_form_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/screen/widgets/proxy_form.dart';
 

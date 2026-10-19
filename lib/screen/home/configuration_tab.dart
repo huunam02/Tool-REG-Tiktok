@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../controller/home_controller.dart';
+import '../../core/controller/home_controller.dart';
 import '../../core/services/remote_config_service.dart';
 import 'home_style.dart';
 import 'remote_entries_page.dart';

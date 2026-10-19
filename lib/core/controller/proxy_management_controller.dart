@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../core/proxy_store.dart';
-import '../core/proxy_draft.dart';
+import '../proxy_store.dart';
+import '../proxy_draft.dart';
 import 'app_controller.dart';
 
 enum ProxyUsageFilter { all, unused, used }

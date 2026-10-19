@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import '../core/desktop_user_agents.dart';
-import '../core/otp_settings_store.dart';
-import '../core/proxy_store.dart';
+import '../desktop_user_agents.dart';
+import '../otp_settings_store.dart';
+import '../proxy_store.dart';
 import 'app_controller.dart';
 
 class StartupController extends AppController {

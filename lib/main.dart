@@ -7,7 +7,7 @@ import 'package:get/get.dart';
 import 'package:test_tiktok/core/services/remote_config_service.dart';
 import 'package:test_tiktok/firebase_options.dart';
 
-import 'controller/startup_controller.dart';
+import 'core/controller/startup_controller.dart';
 import 'core/app_action_theme.dart';
 import 'core/device_memory.dart';
 import 'core/otp_settings_store.dart';

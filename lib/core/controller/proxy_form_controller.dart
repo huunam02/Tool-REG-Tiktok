@@ -4,18 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-import '../core/app_configuration.dart';
-import '../core/account_password.dart';
-import '../core/proxy_store.dart';
-import '../core/proxy_draft.dart';
-import '../core/configuration_data.dart';
-import '../core/configuration_file_import.dart';
-import '../core/gpu_profile.dart';
-import '../core/nurture_data.dart';
-import '../core/proxy_time_zone.dart';
-import '../core/proxy_time_zone_detector.dart';
-import '../core/webview_user_agent.dart';
-import '../core/chrome_user_agent.dart';
+import '../app_configuration.dart';
+import '../account_password.dart';
+import '../proxy_store.dart';
+import '../proxy_draft.dart';
+import '../configuration_data.dart';
+import '../configuration_file_import.dart';
+import '../gpu_profile.dart';
+import '../nurture_data.dart';
+import '../proxy_time_zone.dart';
+import '../proxy_time_zone_detector.dart';
+import '../webview_user_agent.dart';
+import '../chrome_user_agent.dart';
 import 'app_controller.dart';
 
 class ProxyFormController extends AppController {

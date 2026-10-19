@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../controller/home_controller.dart';
+import '../../core/controller/home_controller.dart';
 
 /// Progress of an automatic run, shown above the tabs with a Stop button.
 class AutoRunBanner extends StatelessWidget {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../controller/home_controller.dart';
+import '../../core/controller/home_controller.dart';
 import '../../core/nurture_data.dart';
 import '../../core/signup_failure.dart';
 import '../widgets/proxy_widgets.dart';

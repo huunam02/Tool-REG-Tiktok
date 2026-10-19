@@ -4,7 +4,7 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-import '../controller/tiktok_controller.dart';
+import '../core/controller/tiktok_controller.dart';
 import '../core/scripts/auto_cookie_script.dart';
 import '../core/scripts/auto_interest_script.dart';
 import '../core/scripts/auto_watch_script.dart';

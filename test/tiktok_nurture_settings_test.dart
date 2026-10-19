@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:test_tiktok/controller/tiktok_controller.dart';
+import 'package:test_tiktok/core/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/tiktok_flow_result.dart';

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../controller/home_controller.dart';
+import '../../core/controller/home_controller.dart';
 import '../../core/proxy_store.dart';
 import '../widgets/proxy_widgets.dart';
 import 'home_style.dart';

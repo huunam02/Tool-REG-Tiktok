@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:test_tiktok/controller/tiktok_controller.dart';
+import 'package:test_tiktok/core/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/captcha_settings_store.dart';
 import 'package:test_tiktok/core/rotate_captcha.dart';

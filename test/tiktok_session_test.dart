@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:test_tiktok/controller/home_controller.dart';
+import 'package:test_tiktok/core/controller/home_controller.dart';
 import 'package:test_tiktok/core/app_session.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/otp_settings_store.dart';

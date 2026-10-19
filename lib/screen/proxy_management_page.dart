@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../controller/proxy_management_controller.dart';
+import '../core/controller/proxy_management_controller.dart';
 import '../core/proxy_store.dart';
 import '../core/app_configuration.dart';
 import '../core/configuration_data.dart';

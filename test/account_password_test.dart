@@ -1,7 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:test_tiktok/controller/proxy_form_controller.dart';
+import 'package:test_tiktok/core/controller/proxy_form_controller.dart';
 import 'package:test_tiktok/core/account_password.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/proxy_store.dart';

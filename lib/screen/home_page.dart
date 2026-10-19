@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../controller/home_controller.dart';
+import '../core/controller/home_controller.dart';
 import '../core/otp_settings_store.dart';
 import '../core/proxy_store.dart';
 import '../core/tiktok_flow_result.dart';

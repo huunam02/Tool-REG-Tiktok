@@ -10,7 +10,7 @@ import '../../core/configuration_data.dart';
 import '../../core/configuration_file_import.dart';
 import '../../core/nurture_data.dart';
 import '../../core/proxy_time_zone.dart';
-import '../../controller/proxy_form_controller.dart';
+import '../../core/controller/proxy_form_controller.dart';
 import 'controller_scope.dart';
 import 'proxy_widgets.dart';
 

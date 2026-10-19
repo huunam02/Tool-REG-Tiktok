@@ -7,7 +7,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:get/get.dart';
-import 'package:test_tiktok/controller/home_controller.dart';
+import 'package:test_tiktok/core/controller/home_controller.dart';
 
 import 'package:test_tiktok/core/desktop_user_agents.dart';
 import 'package:test_tiktok/screen/home_page.dart';
@@ -21,7 +21,7 @@ import 'package:test_tiktok/core/scripts/auto_interest_script.dart';
 import 'package:test_tiktok/core/scripts/auto_signup_script.dart';
 import 'package:test_tiktok/core/otp_api.dart';
 import 'package:test_tiktok/core/webview_locale.dart';
-import 'package:test_tiktok/controller/tiktok_controller.dart';
+import 'package:test_tiktok/core/controller/tiktok_controller.dart';
 
 import 'support/memory_nurture_store.dart';
 import 'support/memory_proxy_store.dart';

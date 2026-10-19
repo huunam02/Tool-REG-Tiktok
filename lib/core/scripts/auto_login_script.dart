@@ -1,11 +1,9 @@
 import 'dart:convert';
 
 import 'home_account_modal_script.dart';
-
-
+import 'authenticated_session_script.dart';
 
 String buildAutoLoginScript({
-
   required String email,
 
   required String password,
@@ -31,9 +29,7 @@ String buildAutoLoginScript({
   bool useAccessibilityEmailVerification = false,
 
   int emailVerificationDelayMs = 5000,
-
 }) =>
-
     '''
 
 (() => {
@@ -42,33 +38,7 @@ String buildAutoLoginScript({
 
   return ($autoLoginStepScript)(
 
-    ${jsonEncode({
-
-          'email': email,
-
-          'password': password,
-
-          'attempt': attempt,
-
-          'otp': otp.trim(),
-
-          'otpRequestedAt': otpRequestedAt,
-
-          'emailVerificationRequestedAt': emailVerificationRequestedAt,
-
-          'allowOtpSubmit': allowOtpSubmit,
-
-          'waitForOtpApi': waitForOtpApi,
-
-          'useAccessibilitySendCode': useAccessibilitySendCode,
-
-          'useAccessibilityContinue': useAccessibilityContinue,
-
-          'useAccessibilityEmailVerification': useAccessibilityEmailVerification,
-
-          'emailVerificationDelayMs': emailVerificationDelayMs,
-
-        })}, $allowSubmit, ($openHomeAccountModalScript)
+    ${jsonEncode({'email': email, 'password': password, 'attempt': attempt, 'otp': otp.trim(), 'otpRequestedAt': otpRequestedAt, 'emailVerificationRequestedAt': emailVerificationRequestedAt, 'allowOtpSubmit': allowOtpSubmit, 'waitForOtpApi': waitForOtpApi, 'useAccessibilitySendCode': useAccessibilitySendCode, 'useAccessibilityContinue': useAccessibilityContinue, 'useAccessibilityEmailVerification': useAccessibilityEmailVerification, 'emailVerificationDelayMs': emailVerificationDelayMs})}, $allowSubmit, ($openHomeAccountModalScript), ($authenticatedSessionScript)
 
   );
 
@@ -76,15 +46,13 @@ String buildAutoLoginScript({
 
 ''';
 
-
-
 // Polled by Flutter while the login action is active. Credentials stay local
 
 // to this call; Flutter pastes through the native editor and remembers submission.
 
 const String autoLoginStepScript = r'''
 
-(config, allowSubmit, openHomeAccountModal) => {
+(config, allowSubmit, openHomeAccountModal, isAuthenticated) => {
 
   if (location.origin !== 'https://www.tiktok.com') return 'wrong-origin';
 
@@ -176,13 +144,13 @@ const String autoLoginStepScript = r'''
 
 
 
-  if (find('[data-e2e="profile-icon"]')) {
+  if (isAuthenticated()) {
 
     return allowSubmit ? 'already-logged-in' : 'login-success';
 
   }
 
-  if (find('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], ' +
+  if (find('#captcha-verify-container, .captcha-verify-container, .captcha-disable-scroll, [id*="captcha"], [class*="Captcha"], ' +
 
       'iframe[src*="captcha"]')) {
 
@@ -370,18 +338,13 @@ const String autoLoginStepScript = r'''
     // attempt can reuse a region when the live button still occupies it.
     const cache = window.__flutterNativeTapTargets ||= new Map();
     const pointIn = rect => {
-      let x = rect.left + rect.width / 2;
-      let y = rect.top + rect.height / 2;
+      // Always the exact centre of the control; no random offset.
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
       if (![x, y, viewportWidth, viewportHeight].every(Number.isFinite) ||
           rect.width <= 0 || rect.height <= 0 || viewportWidth <= 0 || viewportHeight <= 0 ||
           x < offsetX || y < offsetY || x >= offsetX + viewportWidth ||
           y >= offsetY + viewportHeight) return null;
-      const jitterX = Math.min(6, rect.width * 0.15,
-        (x - offsetX) * 0.8, (offsetX + viewportWidth - x) * 0.8);
-      const jitterY = Math.min(6, rect.height * 0.15,
-        (y - offsetY) * 0.8, (offsetY + viewportHeight - y) * 0.8);
-      x += (Math.random() * 2 - 1) * jitterX;
-      y += (Math.random() * 2 - 1) * jitterY;
       // A cache hit still has to land on the currently authorized control.
       const hit = document.elementFromPoint(x, y);
       if (!hit || hit !== control && !control.contains(hit)) return null;
@@ -423,11 +386,12 @@ const String autoLoginStepScript = r'''
         root !== request?.root || !hasTitle(root, identityTitle) || findVerification() ||
         !request?.pending || request.failed || request.control.isConnected === false ||
         findEmailVerificationMethod(root) !== request.control ||
-        find('#captcha-verify-container, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]')) return null;
+        find('#captcha-verify-container, .captcha-verify-container, .captcha-disable-scroll, [id*="captcha"], [class*="Captcha"], iframe[src*="captcha"]')) return null;
     return nativeButtonTarget(request.control, 'login/select-verification-email');
   };
 
-  const continuePattern = /^(continue|tiếp tục)$/i;
+  // OTP dialogs can label the same native confirmation action as Next.
+  const continuePattern = /^(continue|next|tiếp tục|tiếp theo)$/i;
   const passwordFormRoot = () => {
     const editor = findForm('input[type="password"]');
     return editor?.closest('form') || editor?.parentElement
@@ -829,9 +793,8 @@ const String autoLoginStepScript = r'''
 
 ''';
 
-
-
-String buildAutoLoginStopScript(int attempt) => '''
+String buildAutoLoginStopScript(int attempt) =>
+    '''
 
 (() => {
 

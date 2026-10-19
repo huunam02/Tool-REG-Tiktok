@@ -13,6 +13,39 @@ import 'gesture_description.dart';
 class FlutterAccessibilityService {
   FlutterAccessibilityService._();
 
+  static Future<void> signupCancelPaste() =>
+      _methodChannel.invokeMethod('signupCancelPaste');
+
+  /// Temporarily hide IME while preserving editor focus in a fixed viewport.
+  /// Native cancellation and a ten-second lease restore the keyboard policy.
+  static Future<bool> signupSetKeyboardSuppressed(bool suppressed) async =>
+      await _methodChannel.invokeMethod<bool>('signupSetKeyboardSuppressed', {'suppressed': suppressed}) ?? false;
+
+  /// Accessibility ACTION_CLICK on the Post button beside the focused,
+  /// non-empty comment editor, for layouts where it is clipped off-screen.
+  static Future<bool> signupSubmitComment() async =>
+      await _methodChannel.invokeMethod<bool>('signupSubmitComment') ?? false;
+
+  static Future<bool> signupDismissKeyboard() async =>
+      await _methodChannel.invokeMethod<bool>('signupDismissKeyboard') ?? false;
+
+  /// Redacted on-demand snapshot of the host app's visible WebView.
+  static Future<Map<String, dynamic>> signupSnapshot() async =>
+      Map<String, dynamic>.from(await _methodChannel
+              .invokeMapMethod<String, dynamic>('signupSnapshot') ??
+          {});
+
+  /// Field input is performed exclusively by AccessibilityService.
+  /// Email, password, OTP and comment editors are checked before input.
+  /// Existing drafts are preserved. Single numeric OTP uses ACTION_SET_TEXT;
+  /// other OTP uses the real Paste menu. No DOM or InputConnection fallback.
+  static Future<Map<String, dynamic>> signupPasteFocused(
+          String text, String field) async =>
+      Map<String, dynamic>.from(await _methodChannel
+              .invokeMapMethod<String, dynamic>(
+                  'signupPasteFocused', {'text': text, 'field': field}) ??
+          {'ok': false});
+
   static const MethodChannel _methodChannel =
       MethodChannel('x-slayer/accessibility_channel');
   static const EventChannel _eventChannel =

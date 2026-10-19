@@ -2,28 +2,71 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import 'chrome_user_agent.dart';
+
 bool get needsAndroidDesktopIdentity =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-String? androidChromeDesktopUserAgent(String nativeAgent) {
-  final major = RegExp(r'Chrome/(\d+)\.').firstMatch(nativeAgent)?.group(1);
-  if (major == null) return null;
-  return 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/$major.0.0.0 Safari/537.36';
-}
+String get currentAndroidChromeDesktopUserAgent =>
+    chromeDesktopUserAgent('X11; Linux x86_64');
+
+String androidChromeDesktopUserAgent(String configuredAgent) =>
+    isMiuiBrowserUserAgent(configuredAgent)
+    ? miuiBrowserUserAgent
+    : chromeDesktopUserAgent(
+        isWindowsChromeUserAgent(configuredAgent)
+            ? windowsChromePlatform
+            : linuxChromePlatform,
+        major: recentChromeMajorForUserAgent(configuredAgent),
+      );
 
 /// Complete native Client Hints configuration before the first navigation.
-Future<void> configureAndroidDesktopIdentity(
+Future<String> configureAndroidDesktopIdentity(
   InAppWebViewController controller, {
   required String userAgent,
+  bool useInstalledEngine = true,
+  bool fixedSignupViewport = false,
+  double? viewportWidth,
 }) async {
-  if (!needsAndroidDesktopIdentity) return;
-  await const MethodChannel(
-    'test_tiktok/webview_identity',
-  ).invokeMethod<String>('configure', {
-    'id': controller.platform.params.id,
-    'userAgent': userAgent,
-  });
+  if (!needsAndroidDesktopIdentity) return userAgent;
+  if (useInstalledEngine) {
+    return configureAndroidEngineDesktopIdentity(
+      controller,
+      fixedSignupViewport: fixedSignupViewport,
+      viewportWidth: viewportWidth,
+    );
+  }
+  return await const MethodChannel(
+        'test_tiktok/webview_identity',
+      ).invokeMethod<String>('configure', {
+        'id': controller.platform.params.id,
+        'userAgent': userAgent,
+        'chromeFullVersion': chromeFullVersionForUserAgent(userAgent),
+        if (fixedSignupViewport) 'fixedSignupViewport': true,
+        if (fixedSignupViewport && viewportWidth != null)
+          'viewportWidth': viewportWidth,
+      }) ??
+      userAgent;
+}
+
+/// Use the installed engine's version without overriding CPU or memory.
+Future<String> configureAndroidEngineDesktopIdentity(
+  InAppWebViewController controller, {
+  bool fixedSignupViewport = false,
+  double? viewportWidth,
+}) async {
+  final agent = await const MethodChannel('test_tiktok/webview_identity')
+      .invokeMethod<String>('configureEngine', {
+        'id': controller.platform.params.id,
+        if (fixedSignupViewport) 'fixedSignupViewport': true,
+        // Frame width in dp; the frame can be narrower than the screen.
+        if (fixedSignupViewport && viewportWidth != null)
+          'viewportWidth': viewportWidth,
+      });
+  if (agent == null || agent.isEmpty) {
+    throw StateError('Không đọc được nhận diện WebView.');
+  }
+  return agent;
 }
 
 /// Keep a desktop identity while matching the WebKit engine used on iOS.
@@ -50,17 +93,9 @@ Future<String> resolveWebViewUserAgent(
   Future<String> Function()? nativeAgentLoader,
 }) async {
   if (needsAndroidDesktopIdentity) {
-    if (configuredAgent.trim().isNotEmpty) return configuredAgent;
-    try {
-      final nativeAgent =
-          await (nativeAgentLoader ??
-                  InAppWebViewController.getDefaultUserAgent)()
-              .timeout(const Duration(seconds: 2));
-      return androidChromeDesktopUserAgent(nativeAgent) ?? configuredAgent;
-    } catch (_) {
-      // The native configure step must still succeed before any URL loads.
-      return androidChromeDesktopUserAgent(configuredAgent) ?? configuredAgent;
-    }
+    // A configured Chrome version changes the advertised identity, not the
+    // installed Chromium engine. Native Client Hints use the same version.
+    return androidChromeDesktopUserAgent(configuredAgent);
   }
   // A selected identity must reach the WebView unchanged. Deriving Safari
   // from the same device on every launch collapsed different proxy UAs into
@@ -68,7 +103,7 @@ Future<String> resolveWebViewUserAgent(
   if (configuredAgent.trim().isNotEmpty ||
       kIsWeb ||
       defaultTargetPlatform != TargetPlatform.iOS) {
-    return configuredAgent;
+    return normalizeDesktopUserAgentForPlatform(configuredAgent);
   }
   try {
     final nativeAgent =

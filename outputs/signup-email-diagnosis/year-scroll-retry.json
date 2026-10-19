@@ -1,0 +1,20 @@
+{
+  "reportedFailure": "Danh sách Year không cuộn tới 1971; đã dừng.",
+  "previousBehavior": "Stop immediately on any repeated visible year range.",
+  "change": "Allow at most three swipe attempts per unchanged visible range; use a longer swipe on recovery; retain total iteration limit.",
+  "testsPassed": 51,
+  "testCoverage": [
+    "one missed swipe recovers for native and HTML lists",
+    "two missed swipes recover for native and HTML lists",
+    "permanently frozen dropdown still stops before OTP"
+  ],
+  "installedOn": "emulator-5554",
+  "liveRetest": {
+    "webView": "155.0.8059.43",
+    "selectedYear": "1973",
+    "yearReadbackConfirmed": true,
+    "emailStillEmpty": true,
+    "stoppedBeforeEmailAndOtp": true,
+    "fullSignupVerified": false
+  }
+}

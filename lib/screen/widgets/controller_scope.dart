@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../controller/app_controller.dart';
+import '../../core/controller/app_controller.dart';
 
 /// Each view owns its controller, including its initialization and disposal.
 class ControllerScope<T extends AppController> extends StatelessWidget {

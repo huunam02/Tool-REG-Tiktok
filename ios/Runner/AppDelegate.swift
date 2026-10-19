@@ -12,10 +12,10 @@ import Network
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Set WebKit language preferences before any WebView is created.
+    // Remove the language overrides previously set by this app.
     let defaults = UserDefaults.standard
-    defaults.set(["en-US", "en"], forKey: "AppleLanguages")
-    defaults.set("en_US", forKey: "AppleLocale")
+    defaults.removeObject(forKey: "AppleLanguages")
+    defaults.removeObject(forKey: "AppleLocale")
     GeneratedPluginRegistrant.register(with: self)
     if let controller = window?.rootViewController as? FlutterViewController {
       proxyChannel = FlutterMethodChannel(
@@ -53,8 +53,11 @@ import Network
           return
         }
         let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: endpointPort)
-        let proxy = ProxyConfiguration(httpCONNECTProxy: endpoint,
+        var proxy = ProxyConfiguration(httpCONNECTProxy: endpoint,
           tlsOptions: scheme == "https" ? NWProtocolTLS.Options() : nil)
+        // Never fall back to a direct connection if this proxy fails.
+        proxy.allowFailover = false
+        proxy.excludedDomains = []
         let username = arguments?["username"] as? String ?? ""
         if !username.isEmpty {
           proxy.applyCredential(username: username,

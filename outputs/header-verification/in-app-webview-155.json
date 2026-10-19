@@ -1,0 +1,57 @@
+{
+  "app": "com.brisklane.browser",
+  "device": "emulator-5554",
+  "webview": "155.0.8059.43",
+  "transport": "existing app WebView and configured proxy",
+  "tests": [
+    {
+      "kind": "navigation",
+      "method": "GET",
+      "headers": {
+        "Sec-Ch-Ua": "\"Google Chrome\";v=\"155\", \"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+        "Sec-Ch-Ua-Platform": "\"Linux\"",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      "passed": true
+    },
+    {
+      "kind": "fetch-get",
+      "status": 200,
+      "method": "GET",
+      "headers": {
+        "Sec-Ch-Ua": "\"Google Chrome\";v=\"155\", \"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+        "Sec-Ch-Ua-Platform": "\"Linux\"",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      "passed": true
+    },
+    {
+      "kind": "fetch-post",
+      "status": 200,
+      "method": "POST",
+      "headers": {
+        "Sec-Ch-Ua": "\"Google Chrome\";v=\"155\", \"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+        "Sec-Ch-Ua-Platform": "\"Linux\"",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      "body": "{\"probe\":\"app-header-check\",\"payload\":\"POST body preserved\"}",
+      "json": {
+        "payload": "POST body preserved",
+        "probe": "app-header-check"
+      },
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "knownLimitation": "CORS preflight OPTIONS can still expose the app package; not re-tested in this in-app HTTPS check.",
+  "configurationListAfterCheck": {
+    "total": 2,
+    "unused": 2,
+    "used": 0
+  },
+  "installedAppUpdated": true,
+  "physicalPhoneTested": false
+}

@@ -9,8 +9,8 @@ enum TikTokLaunchAction { browse, login, signup }
 
 extension TikTokLaunchUrl on TikTokLaunchAction {
   String get initialUrl => switch (this) {
-        TikTokLaunchAction.browse => tiktokHomeUrl,
-        TikTokLaunchAction.login => tiktokHomeUrl,
-        TikTokLaunchAction.signup => tiktokHomeUrl,
-      };
+    TikTokLaunchAction.browse => tiktokHomeUrl,
+    TikTokLaunchAction.login => tiktokHomeUrl,
+    TikTokLaunchAction.signup => tiktokHomeUrl,
+  };
 }

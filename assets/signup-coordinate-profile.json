@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "complete": true,
+  "designSize": [400, 800],
+  "cssWidth": 980,
+  "language": "en",
+  "calibrationDevice": "Pixel_9 / Android / 1080x2424 / density420",
+  "birthday": "2001-02-03",
+  "points": {
+    "open-login": [371.13, 19.31],
+    "open-signup": [233.18, 501.59],
+    "signup-phone-email": [199.63, 347.89],
+    "use-email": [145.08, 422.12],
+    "open-month": [151.27, 358.01],
+    "select-month": [145, 391],
+    "open-day": [199.81, 358.01],
+    "select-day": [185, 405.2],
+    "open-year": [248.36, 358.01],
+    "select-year": [238, 464],
+    "focus-email": [199.81, 405.44],
+    "newsletter": [137.02, 435.61],
+    "send-code": [202.06, 466.17],
+    "focus-otp": [146.39, 389.32],
+    "otp-paste-menu": [127.4, 353.3],
+    "focus-password": [202.06, 386.13],
+    "submit-password": [202.06, 446.3],
+    "skip-username": [202.06, 472.16]
+  },
+  "yearScroll": {"from": [247, 480], "to": [247, 390], "durationMs": 450, "count": 3},
+  "otpPaste": "accessibility-long-press-menu-paste",
+  "evidence": "outputs/signup-calibration/actions.jsonl",
+  "validation": "One live calibration completed through Sign up, Skip, authenticated home; full unattended replay pending."
+}

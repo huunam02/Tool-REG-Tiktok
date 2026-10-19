@@ -14,6 +14,7 @@ abstract final class ProxyColors {
   static const cyan = AppActionTheme.primary;
   static const green = Color(0xFF74DBA1);
   static const amber = Color(0xFFFFCD78);
+  static const red = Color(0xFFFF7B7B);
 
   static ThemeData theme(BuildContext context) {
     final scheme = ColorScheme.fromSeed(
@@ -264,6 +265,22 @@ class ProxyDetails extends StatelessWidget {
           Icons.computer_outlined,
           valueKey: userAgentKey ?? Key('${keyPrefix}UserAgent'),
         ),
+        const SizedBox(height: 10),
+        _field(
+          context,
+          'Múi giờ WebView',
+          profile.timeZoneId.isEmpty ? 'Chưa xác định' : profile.timeZoneId,
+          Icons.schedule,
+          valueKey: Key('${keyPrefix}TimeZone'),
+        ),
+        const SizedBox(height: 10),
+        _field(
+          context,
+          'Thiết bị (GPU)',
+          profile.gpuProfile.label,
+          Icons.smartphone,
+          valueKey: Key('${keyPrefix}GpuProfile'),
+        ),
         if (profile.account != null) ...[
           const SizedBox(height: 10),
           _field(
@@ -272,6 +289,22 @@ class ProxyDetails extends StatelessWidget {
             profile.statusAccount.label,
             Icons.verified_user_outlined,
             valueKey: Key('${keyPrefix}AccountStatus'),
+          ),
+          const SizedBox(height: 10),
+          _field(
+            context,
+            'Nuôi sau khi đăng ký',
+            profile.nurtureAfterSignup ? 'Bật' : 'Tắt (chỉ đăng ký)',
+            Icons.spa_outlined,
+            valueKey: Key('${keyPrefix}NurtureAfterSignup'),
+          ),
+          const SizedBox(height: 10),
+          _field(
+            context,
+            'Cấu hình nuôi',
+            profile.nurtureSettings.summary,
+            Icons.tune,
+            valueKey: Key('${keyPrefix}NurtureSettings'),
           ),
           const SizedBox(height: 10),
           _field(

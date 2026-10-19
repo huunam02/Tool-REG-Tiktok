@@ -7,6 +7,7 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
+import 'package:test_tiktok/core/chrome_user_agent.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -33,10 +34,604 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  test('upgrading erases the unused Local IP column', () async {
+    await store.save(name: 'A', proxy: WebViewProxy.parse('192.0.2.7:8080')!);
+    await store.close();
+    final old = await databaseFactoryFfi.openDatabase(filename);
+    await old.execute(
+      "ALTER TABLE configurations ADD COLUMN local_ip TEXT NOT NULL DEFAULT ''",
+    );
+    await old.execute("UPDATE configurations SET local_ip = '192.168.22.34'");
+    await old.setVersion(17);
+    await old.close();
+    store = openStore();
+    expect((await store.list()).single.name, 'A');
+    await store.close();
+    final migrated = await databaseFactoryFfi.openDatabase(filename);
+    final columns = await migrated.rawQuery(
+      'PRAGMA table_info(configurations)',
+    );
+    expect(
+      columns.map((column) => column['name']),
+      isNot(contains('local_ip')),
+    );
+    await migrated.close();
+    store = openStore();
+  });
+
+  test('persists Nuôi sau khi đăng ký per configuration', () async {
+    const account = AccountCredentials(
+      email: 'nurture@example.com',
+      password: 'password',
+      mailboxPassword: 'mail',
+    );
+    final ids = await store.saveDrafts([
+      const ProxyDraft(
+        'Nurture',
+        null,
+        'agent',
+        account: account,
+        nurtureAfterSignup: true,
+      ),
+      const ProxyDraft(
+        'Plain',
+        null,
+        'agent',
+        account: AccountCredentials(
+          email: 'plain@example.com',
+          password: 'password',
+          mailboxPassword: 'mail',
+        ),
+      ),
+    ]);
+    final saved = {for (final entry in await store.list()) entry.id: entry};
+    expect(saved[ids.first]!.nurtureAfterSignup, isTrue);
+    expect(saved[ids.last]!.nurtureAfterSignup, isFalse);
+    await store.useSaved(ids.first);
+    expect((await store.getCurrentProfile())!.nurtureAfterSignup, isTrue);
+    // Saving without the flag (e.g. marking registered) keeps it.
+    await store.markRegistered(ids.first, account.email);
+    expect((await store.getCurrentProfile())!.nurtureAfterSignup, isTrue);
+    await store.save(
+      id: ids.first,
+      name: 'Nurture',
+      proxy: null,
+      nurtureAfterSignup: false,
+    );
+    expect((await store.getCurrentProfile())!.nurtureAfterSignup, isFalse);
+  });
+
+  test(
+    'signup failures are logged per configuration until registered',
+    () async {
+      const account = AccountCredentials(
+        email: 'failed@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      final failed = await store.save(
+        name: 'Failed',
+        proxy: null,
+        account: account,
+      );
+      final other = await store.save(
+        name: 'Other',
+        proxy: null,
+        account: const AccountCredentials(
+          email: 'other@example.com',
+          password: 'password',
+          mailboxPassword: 'mail',
+        ),
+      );
+      expect(await store.listFailedConfigurations(), isEmpty);
+      // A changed email cannot log against the configuration.
+      expect(
+        await store.recordSignupFailure(
+          failed,
+          'someone@example.com',
+          message: 'x',
+        ),
+        isFalse,
+      );
+      final first = DateTime(2026, 10, 18, 1, 34);
+      expect(
+        await store.recordSignupFailure(
+          failed,
+          account.email,
+          message: 'TikTok báo lỗi tài khoản (mã 1023).',
+          step: 'Đang mở danh sách Year…',
+          at: first,
+        ),
+        isTrue,
+      );
+      await store.recordSignupFailure(
+        failed,
+        account.email,
+        message: '  ',
+        at: first.add(const Duration(minutes: 40)),
+      );
+      var list = await store.listFailedConfigurations();
+      expect(list.single.configuration.id, failed);
+      expect(list.single.configuration.signupFailed, isTrue);
+      expect(list.single.failureCount, 2);
+      expect(list.single.failures.map((failure) => failure.message), [
+        'Không rõ nguyên nhân.',
+        'TikTok báo lỗi tài khoản (mã 1023).',
+      ]);
+      expect(list.single.failures.last.step, 'Đang mở danh sách Year…');
+      expect(list.single.failures.last.createdAt, first);
+      expect(
+        (await store.list())
+            .singleWhere((entry) => entry.id == other)
+            .signupFailed,
+        isFalse,
+      );
+      expect(
+        (await store.listFailedConfigurations(logLimit: 1)).single.failures,
+        hasLength(1),
+      );
+
+      // The log survives reopening; dismissing keeps it for a later failure.
+      await store.close();
+      store = openStore();
+      await store.clearSignupFailure(failed);
+      expect(await store.listFailedConfigurations(), isEmpty);
+      await store.recordSignupFailure(failed, account.email, message: 'again');
+      list = await store.listFailedConfigurations();
+      expect(list.single.failureCount, 3);
+
+      // Registering clears the failed state.
+      expect(await store.markRegistered(failed, account.email), isTrue);
+      expect(await store.listFailedConfigurations(), isEmpty);
+      expect(
+        (await store.list())
+            .singleWhere((entry) => entry.id == failed)
+            .signupFailed,
+        isFalse,
+      );
+      expect(
+        await store.recordSignupFailure(failed, account.email, message: 'late'),
+        isFalse,
+      );
+    },
+  );
+
+  test('a new account email or deletion removes the failed state', () async {
+    const account = AccountCredentials(
+      email: 'failed@example.com',
+      password: 'password',
+      mailboxPassword: 'mail',
+    );
+    final id = await store.save(name: 'Failed', proxy: null, account: account);
+    await store.recordSignupFailure(id, account.email, message: 'error');
+    await store.save(
+      id: id,
+      name: 'Failed',
+      proxy: null,
+      account: const AccountCredentials(
+        email: 'replacement@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      ),
+    );
+    expect(await store.listFailedConfigurations(), isEmpty);
+    await store.recordSignupFailure(
+      id,
+      'replacement@example.com',
+      message: 'error',
+    );
+    expect(await store.listFailedConfigurations(), hasLength(1));
+    await store.delete(id);
+    expect(await store.listFailedConfigurations(), isEmpty);
+    await store.close();
+    final db = await databaseFactoryFfi.openDatabase(filename);
+    expect(await db.query('signup_failures'), isEmpty);
+    await db.close();
+    store = openStore();
+  });
+
+  test('version 11 databases gain the signup failure log', () async {
+    await store.save(
+      name: 'Old',
+      proxy: null,
+      account: const AccountCredentials(
+        email: 'old@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      ),
+    );
+    await store.close();
+    final db = await databaseFactoryFfi.openDatabase(filename);
+    await db.execute('DROP TABLE signup_failures');
+    await db.execute('ALTER TABLE configurations DROP COLUMN signup_failed');
+    await db.setVersion(11);
+    await db.close();
+    store = openStore();
+    final entry = (await store.list()).single;
+    expect(entry.signupFailed, isFalse);
+    expect(
+      await store.recordSignupFailure(
+        entry.id,
+        'old@example.com',
+        message: 'error',
+      ),
+      isTrue,
+    );
+    expect(await store.listFailedConfigurations(), hasLength(1));
+  });
+
+  test('version 10 databases gain the nurture column switched off', () async {
+    await store.save(
+      name: 'Old',
+      proxy: null,
+      account: const AccountCredentials(
+        email: 'old@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      ),
+    );
+    await store.close();
+    final db = await databaseFactoryFfi.openDatabase(filename);
+    await db.execute(
+      'ALTER TABLE configurations DROP COLUMN nurture_after_signup',
+    );
+    await db.setVersion(10);
+    await db.close();
+    store = openStore();
+    final entries = await store.list();
+    expect(entries.single.nurtureAfterSignup, isFalse);
+    final id = await store.save(
+      id: entries.single.id,
+      name: 'Old',
+      proxy: null,
+      nurtureAfterSignup: true,
+    );
+    expect(
+      (await store.list())
+          .singleWhere((entry) => entry.id == id)
+          .nurtureAfterSignup,
+      isTrue,
+    );
+  });
+
+  test(
+    'changing configuration resets persisted login and rejects stale confirmation',
+    () async {
+      const firstAccount = AccountCredentials(
+        email: 'first@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      const secondAccount = AccountCredentials(
+        email: 'second@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      final first = await store.save(
+        name: 'First',
+        proxy: null,
+        account: firstAccount,
+      );
+      final second = await store.save(
+        name: 'Second',
+        proxy: null,
+        account: secondAccount,
+      );
+      await store.useSaved(first);
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
+      expect(
+        await store.setCurrentAccountLoggedIn(first, firstAccount.email, true),
+        isTrue,
+      );
+      await store.useSaved(first);
+      expect(await store.canReuseCurrentAccountSession(), isTrue);
+      await store.useSaved(second);
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
+      expect(
+        await store.setCurrentAccountLoggedIn(first, firstAccount.email, true),
+        isFalse,
+      );
+      expect(
+        await store.setCurrentAccountLoggedIn(second, firstAccount.email, true),
+        isFalse,
+      );
+      await store.close();
+      store = openStore();
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
+      expect(
+        await store.setCurrentAccountLoggedIn(
+          second,
+          secondAccount.email,
+          true,
+        ),
+        isTrue,
+      );
+      await store.close();
+      store = openStore();
+      expect(await store.canReuseCurrentAccountSession(), isTrue);
+      await store.useSaved(first);
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
+      await store.setCurrentAccountLoggedIn(first, firstAccount.email, true);
+      await store.setCurrent(null);
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
+    },
+  );
+
+  test(
+    'signup marks only the opened configuration and survives reopening',
+    () async {
+      const account = AccountCredentials(
+        email: 'signup@example.com',
+        password: 'tiktok-password',
+        mailboxPassword: 'mail-password',
+      );
+      final id = await store.save(
+        name: 'Signup',
+        proxy: null,
+        account: account,
+        userAgent: 'signup-agent',
+      );
+      final otherId = await store.save(
+        name: 'Other',
+        proxy: WebViewProxy.parse('192.0.2.8:8080'),
+        account: account,
+      );
+      await store.useSaved(id);
+      expect(await store.markRegistered(id, account.email), isTrue);
+      expect(
+        (await store.getCurrentProfile())!.statusAccount,
+        AccountStatus.registered,
+      );
+      await store.useSaved(otherId);
+      expect(await store.markRegistered(id, account.email), isTrue);
+      await store.close();
+      store = openStore();
+      final rows = await store.list();
+      final registered = rows.singleWhere((row) => row.id == id);
+      expect(registered.statusAccount, AccountStatus.registered);
+      expect(registered.name, 'Signup');
+      expect(registered.userAgent, 'signup-agent');
+      expect(sameAccount(registered.account, account), isTrue);
+      final current = (await store.getCurrentProfile())!;
+      expect(current.configurationId, otherId);
+      expect(current.statusAccount, AccountStatus.unregistered);
+    },
+  );
+
+  test(
+    'signup cannot register a deleted configuration or a changed email',
+    () async {
+      final id = await store.save(
+        name: 'Changed',
+        proxy: null,
+        account: const AccountCredentials(
+          email: 'new@example.com',
+          password: 'password',
+          mailboxPassword: 'mail',
+        ),
+      );
+      expect(await store.markRegistered(id, 'old@example.com'), isFalse);
+      expect(await store.markRegistered(id, ''), isFalse);
+      expect(
+        (await store.list()).single.statusAccount,
+        AccountStatus.unregistered,
+      );
+      await store.delete(id);
+      expect(await store.markRegistered(id, 'new@example.com'), isFalse);
+      expect(await store.list(), isEmpty);
+    },
+  );
+
+  test(
+    'timezone survives batch save, selection, edits and reopening',
+    () async {
+      final proxy = WebViewProxy.parse('192.0.2.7:8080')!;
+      final ids = await store.saveDrafts([
+        ProxyDraft('US', proxy, 'agent', timeZoneId: 'America/New_York'),
+        ProxyDraft(
+          'JP',
+          WebViewProxy.parse('192.0.2.8:8080'),
+          'agent',
+          timeZoneId: 'Asia/Tokyo',
+        ),
+      ]);
+      await store.useSaved(ids.first);
+      await store.close();
+      store = openStore();
+      expect((await store.getCurrentProfile())!.timeZoneId, 'America/New_York');
+      expect((await store.list()).map((row) => row.timeZoneId), [
+        'Asia/Tokyo',
+        'America/New_York',
+      ]);
+      await store.save(id: ids.first, name: 'renamed', proxy: proxy);
+      expect((await store.getCurrentProfile())!.timeZoneId, 'America/New_York');
+      await store.save(
+        id: ids.first,
+        name: 'edited',
+        proxy: proxy,
+        timeZoneId: 'America/Los_Angeles',
+      );
+      expect((await store.getCurrentProfile())!.timeZoneId, 'America/New_York');
+      expect(
+        (await store.list())
+            .singleWhere((row) => row.id == ids.first)
+            .timeZoneId,
+        'America/Los_Angeles',
+      );
+      await store.useSaved(ids.first);
+      expect(
+        (await store.getCurrentProfile())!.timeZoneId,
+        'America/Los_Angeles',
+      );
+    },
+  );
+
+  test(
+    'v7 migration adds timezone without changing selected credentials or metadata',
+    () async {
+      final id = await store.save(
+        name: 'Existing',
+        proxy: WebViewProxy.parse(
+          '192.0.2.7:8080',
+          username: 'user',
+          password: 'pass',
+        ),
+        userAgent: 'custom-agent',
+      );
+      await store.useSaved(id);
+      await store.close();
+      final old = await databaseFactoryFfi.openDatabase(filename);
+      await old.execute('ALTER TABLE configurations DROP COLUMN time_zone_id');
+      await old.execute('PRAGMA user_version = 7');
+      await old.close();
+      store = openStore();
+      final selected = (await store.getCurrentProfile())!;
+      expect(selected.configurationId, id);
+      expect(selected.proxy!.username, 'user');
+      expect(selected.proxy!.password, 'pass');
+      expect(selected.userAgent, 'custom-agent');
+      expect(selected.hasBeenUsed, isTrue);
+      expect(selected.timeZoneId, isEmpty);
+      await store.close();
+      final migrated = await databaseFactoryFfi.openDatabase(filename);
+      expect(await migrated.getVersion(), 19);
+      expect(
+        (await migrated.rawQuery(
+          'PRAGMA table_info(configurations)',
+        )).map((row) => row['name']),
+        contains('time_zone_id'),
+      );
+      await migrated.close();
+      store = openStore();
+    },
+  );
+
+  test(
+    'invalid timezone rolls back a batch and changed proxy clears old timezone',
+    () async {
+      final proxy = WebViewProxy.parse('192.0.2.7:8080')!;
+      final id = await store.save(
+        name: 'US',
+        proxy: proxy,
+        timeZoneId: 'America/New_York',
+      );
+      await expectLater(
+        store.saveDrafts([
+          ProxyDraft('changed', proxy, 'agent', timeZoneId: 'Asia/Tokyo'),
+          ProxyDraft(
+            'invalid',
+            WebViewProxy.parse('192.0.2.8:8080'),
+            'agent',
+            timeZoneId: 'bad;script',
+          ),
+        ]),
+        throwsFormatException,
+      );
+      expect((await store.list()).single.timeZoneId, 'America/New_York');
+      await store.save(
+        id: id,
+        name: 'new proxy',
+        proxy: WebViewProxy.parse('192.0.2.9:8080'),
+      );
+      expect((await store.list()).single.timeZoneId, isEmpty);
+    },
+  );
+
+  test(
+    'automatic timezone caching only updates the matching blank active row',
+    () async {
+      final proxy = WebViewProxy.parse('192.0.2.7:8080')!;
+      final id = await store.save(name: 'old', proxy: proxy);
+      expect(
+        await store.cacheCurrentTimeZone(id, proxy, 'Asia/Tokyo'),
+        isFalse,
+      );
+      await store.useSaved(id);
+      expect(
+        await store.cacheCurrentTimeZone(
+          id,
+          WebViewProxy.parse('192.0.2.8:8080')!,
+          'Asia/Tokyo',
+        ),
+        isFalse,
+      );
+      expect(
+        await store.cacheCurrentTimeZone(id, proxy, 'America/New_York'),
+        isTrue,
+      );
+      expect(
+        await store.cacheCurrentTimeZone(id, proxy, 'Asia/Tokyo'),
+        isFalse,
+      );
+      await store.close();
+      store = openStore();
+      expect((await store.getCurrentProfile())!.timeZoneId, 'America/New_York');
+    },
+  );
+
+  test(
+    'version 6 upgrades generated UAs and preserves accounts and custom UAs',
+    () async {
+      const oldAgent =
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+          'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+      const custom = 'CustomBrowser/1.0';
+      const account = AccountCredentials(
+        email: 'person@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      final id = await store.save(
+        name: 'Existing',
+        proxy: WebViewProxy.parse('192.0.2.7:8080'),
+        userAgent: oldAgent,
+        account: account,
+        statusAccount: AccountStatus.registered,
+      );
+      await store.useSaved(id);
+      await store.save(
+        name: 'Edge',
+        proxy: WebViewProxy.parse('192.0.2.8:8080'),
+        userAgent: '$oldAgent Edg/140.0.0.0',
+      );
+      await store.save(
+        name: 'Custom',
+        proxy: WebViewProxy.parse('192.0.2.9:8080'),
+        userAgent: custom,
+      );
+      await store.close();
+      final previous = await databaseFactoryFfi.openDatabase(filename);
+      await previous.execute('PRAGMA user_version = 6');
+      await previous.close();
+      store = openStore();
+      final selected = (await store.getCurrentProfile())!;
+      final expected = windowsChromeUserAgent;
+      expect(selected.configurationId, id);
+      expect(selected.userAgent, expected);
+      expect(selected.account!.email, account.email);
+      expect(selected.account!.password, account.password);
+      expect(selected.account!.mailboxPassword, account.mailboxPassword);
+      expect(selected.statusAccount, AccountStatus.registered);
+      expect(selected.hasBeenUsed, isTrue);
+      final saved = await store.list();
+      expect(
+        saved.singleWhere((row) => row.name == 'Edge').userAgent,
+        expected,
+      );
+      expect(
+        saved.singleWhere((row) => row.name == 'Custom').userAgent,
+        custom,
+      );
+      await store.close();
+      store = openStore();
+      expect((await store.getCurrentProfile())!.userAgent, expected);
+    },
+  );
+
   test('saves all imported drafts and rolls back a failed batch', () async {
     final records = ImportedConfiguration.parseMany(
-      '192.0.2.7:8080:user:pass first@example.com|tiktok|mail|1\n'
-      '192.0.2.8:8080:user:pass second@example.com|tiktok|mail',
+      '192.0.2.7:8080:user:pass|first@example.com|tiktok|mail|1\n'
+      '192.0.2.8:8080:user:pass|second@example.com|tiktok|mail',
     );
     final drafts = [
       for (final row in records)
@@ -122,7 +717,16 @@ void main() {
         where:
             "type = 'table' AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata'",
       );
-      expect(tables.map((e) => e['name']), ['configurations']);
+      expect(
+        tables.map((e) => e['name']),
+        unorderedEquals([
+          'configurations',
+          'nurture_accounts',
+          'nurture_sessions',
+          'app_settings',
+          'signup_failures',
+        ]),
+      );
       final columns = await db.rawQuery('PRAGMA table_info(configurations)');
       expect(columns.map((e) => e['name']), contains('statusAccount'));
       expect(columns.map((e) => e['name']), isNot(contains('statusaccount')));

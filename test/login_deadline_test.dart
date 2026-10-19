@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:test_tiktok/controller/tiktok_controller.dart';
+import 'package:test_tiktok/core/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/otp_api.dart';
 import 'package:test_tiktok/core/scripts/auto_login_script.dart';
 import 'package:test_tiktok/core/scripts/auto_watch_script.dart';
+
+import 'support/memory_nurture_store.dart';
 
 void main() {
   for (final submittedAt in [42, 119]) {
@@ -21,6 +23,7 @@ void main() {
         final logic = TikTokController(
           configuration: _configuration(),
           otpReaderFactory: (_) => reader,
+          nurtureRepository: MemoryNurtureRepository(() async => []),
           now: () => now,
         )..onInit();
         logic.webViewController = InAppWebViewController.fromPlatform(
@@ -66,6 +69,7 @@ void main() {
         expect(reader.requests, hasLength(1));
         expect(reader.closed, isTrue);
         expect(webView.sources.last, contains('"allowOtpSubmit":false'));
+        logic.onClose();
       },
     );
   }
@@ -121,6 +125,7 @@ void main() {
 
     expect(logic.autoWatchEnabled, isTrue);
     expect(webView.watchStarted, isTrue);
+    logic.onClose();
   });
 }
 

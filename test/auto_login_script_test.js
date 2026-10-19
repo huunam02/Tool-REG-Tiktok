@@ -8,6 +8,8 @@ const source = readFileSync(
   new URL('../lib/core/scripts/auto_login_script.dart', `file://${__filename}`), 'utf8',
 );
 const step = source.match(/autoLoginStepScript = r'''([\s\S]*?)''';/)[1];
+const authSource = readFileSync(new URL('../lib/core/scripts/authenticated_session_script.dart', `file://${__filename}`), 'utf8');
+const authStep = authSource.match(/authenticatedSessionScript = r'''([\s\S]*?)''';/)[1];
 const homeSource = readFileSync(
   new URL('../lib/core/scripts/home_account_modal_script.dart', `file://${__filename}`), 'utf8',
 );
@@ -70,7 +72,7 @@ function setup({ autoPaste = true, pasteResult = true, sendCodeAcknowledged = tr
       },
     },
   };
-  const execute = runInNewContext(`((config, allowSubmit) => (${step})(config, allowSubmit, (${homeStep})))`, {
+  const execute = runInNewContext(`((config, allowSubmit) => (${step})(config, allowSubmit, (${homeStep}), (${authStep})))`, {
     window, location, document, innerWidth: 400, innerHeight: 800,
     Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
     Date: class extends Date { static now() { return time; } },
@@ -333,6 +335,61 @@ test('Android Continue uses the live point inside the login modal after native p
   }
 });
 
+test('identity Email verification uses a gesture for OTP Next once the native paste finishes', async () => {
+  for (const label of ['Next', 'Tiếp theo']) {
+    const env = setup();
+    env.config.useAccessibilityEmailVerification = true;
+    env.config.useAccessibilityContinue = true;
+    env.config.waitForOtpApi = true;
+    const identity = identityDialog(env);
+    identity.verify.textContent = label;
+    identity.verify.contains = node => node === identity.verify;
+    let measurements = 0;
+    identity.verify.getBoundingClientRect = () => {
+      measurements++;
+      return {left: 50, top: 100, width: 100, height: 40};
+    };
+    env.window.visualViewport = {width: 400, height: 600};
+    env.document.elementFromPoint = () => identity.verify;
+    const pasteHandler = env.window.flutter_inappwebview.callHandler;
+    env.window.flutter_inappwebview.callHandler = (...args) => {
+      if (args[0] === 'FlutterLoginPaste') return pasteHandler(...args);
+      env.requests.push(args);
+      return Promise.resolve(true);
+    };
+    const outside = env.add('button', label);
+    assert.equal(env.run(false), 'requesting-email-verification');
+    await flush();
+    assert.equal(env.run(false), 'email-verification-selected');
+    identity.showCode();
+    assert.equal(env.run(false), 'verification-requested');
+    assert.equal(env.run(false), 'otp-required');
+    assert.equal(env.requests.length, 1);
+    env.config.otp = '012345';
+    assert.equal(env.run(false), 'waiting-otp-paste');
+    assert.equal(identity.verify.clicks, 0);
+    assert.equal(env.requests.some(([handler]) => handler === 'FlutterLoginOtpContinue'), false);
+    await env.resolvePaste();
+    assert.equal(env.run(false), 'otp-submitted');
+    await flush();
+    assert.deepEqual(env.requests.filter(([handler]) => handler !== 'FlutterLoginPaste'), [
+      ['FlutterLoginEmailVerification', 1], ['FlutterLoginOtpContinue', 1],
+    ]);
+    const state = env.window.__flutterAutoLogin;
+    assert.notEqual(state.getOtpContinueTarget(1), null);
+    const firstMeasurements = measurements;
+    assert.notEqual(state.getOtpContinueTarget(1), null);
+    assert.equal(measurements, firstMeasurements, 'reuse the OTP button region while it remains valid');
+    assert.equal(env.window.__flutterNativeTapTargets.has('login/continue-otp'), true);
+    env.document.elementFromPoint = () => outside;
+    assert.equal(state.getOtpContinueTarget(1), null);
+    assert.equal(env.run(false), 'waiting-result');
+    assert.equal(env.requests.filter(([handler]) => handler === 'FlutterLoginOtpContinue').length, 1);
+    assert.equal(identity.verify.clicks, 0);
+    assert.equal(outside.clicks, 0);
+  }
+});
+
 test('password and OTP Continue dispatch independent gestures even when sharing a DOM button', async () => {
   const env = setup();
   env.config.useAccessibilityContinue = true;
@@ -367,14 +424,14 @@ test('password and OTP Continue dispatch independent gestures even when sharing 
   assert.equal(env.submit.clicks, 0);
 });
 
-test('Continue gesture failures remain visible after either login submission is latched', async () => {
+test('Continue/Next gesture failures remain visible after either login submission is latched', async () => {
   for (const stage of ['password', 'otp']) {
     for (const rejected of [false, true]) {
       const env = setup();
       env.config.useAccessibilityContinue = true;
       env.email.value = env.config.email;
       env.password.value = env.config.password;
-      env.submit.textContent = 'Continue';
+      env.submit.textContent = stage === 'password' ? 'Continue' : 'Next';
       if (stage === 'otp') {
         env.config.otp = '012345';
         env.config.otpRequestedAt = 0;
@@ -610,6 +667,7 @@ test('selects Email in the foreground identity dialog and waits for OTP feedback
   assert.equal(identity.verify.clicks, 1);
   assert.equal(env.requests.length, 3);
   identity.modal.hidden = flow.modal.hidden = true;
+  env.submit.hidden = true;
   env.add('[data-e2e="profile-icon"]');
   assert.equal(env.run(false), 'login-success');
 });
@@ -928,10 +986,48 @@ test('reports a login error without retrying credentials', () => {
 
 test('requires a visible account avatar to report a logged-in session', () => {
   const env = setup();
+  env.location.pathname = '/';
+  env.submit.hidden = true;
   env.add('[data-e2e="profile-icon"]');
   assert.equal(env.run(), 'already-logged-in');
   assert.equal(env.run(false), 'login-success');
   assert.equal(env.submit.clicks, 0);
+});
+
+test('recognizes current signed-in navigation when the legacy profile icon is hidden', () => {
+  const env = setup();
+  env.location.pathname = '/';
+  env.submit.hidden = true;
+  env.add('[data-e2e="profile-icon"]').hidden = true;
+  env.add('[data-e2e="nav-messages"]');
+  assert.equal(env.run(), 'already-logged-in');
+  assert.equal(env.run(false), 'login-success');
+  assert.equal(env.requests.length, 0);
+});
+
+test('does not infer authentication from a profile link or video author avatar', () => {
+  const env = setup();
+  env.location.pathname = '/';
+  env.submit.hidden = true;
+  env.add('[data-e2e="nav-profile"]');
+  env.add('[data-e2e="video-author-avatar"]');
+  assert.notEqual(env.run(false), 'login-success');
+});
+
+test('signed-in navigation behind CAPTCHA or a login form is not success', () => {
+  for (const blockedBy of ['captcha', 'modal', 'login-button']) {
+    const env = setup();
+    env.location.pathname = '/';
+    env.submit.hidden = true;
+    env.add('[data-e2e="nav-messages"]');
+    if (blockedBy === 'captcha') env.add('#captcha-verify-container');
+    if (blockedBy === 'modal') {
+      const title = env.add('h2', 'Verify your email');
+      env.add('[role="dialog"]').querySelectorAll = () => [title];
+    }
+    if (blockedBy === 'login-button') env.add('[data-e2e="top-login-button"]');
+    assert.notEqual(env.run(false), 'login-success');
+  }
 });
 
 test('requests a code once and pastes OTP as soon as it is ready', async () => {

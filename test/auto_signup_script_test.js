@@ -107,6 +107,174 @@ async function fill(env) {
   await env.resolvePaste();
 }
 
+test('manual fields preserve user input and still dispatch Send code, Sign up and Skip', async () => {
+  const env = setup();
+  env.config.manualFieldInput = true;
+  env.config.useAccessibilitySendCode = true;
+  env.config.useAccessibilityPasswordSubmit = true;
+  env.config.useAccessibilityUsernameSkip = true;
+  env.password.hidden = true;
+  const send = env.add('button', 'Send code', 'BUTTON');
+  env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.requests.push(args);
+    if (args[0] === 'FlutterSignupSendCode') {
+      send.textContent = 'Resend code (60s)';
+      send.disabled = true;
+    }
+    return Promise.resolve(true);
+  };
+  assert.equal(env.run(), 'waiting-manual-email');
+  env.email.value = 'typing';
+  assert.equal(env.run(), 'waiting-manual-email');
+  assert.equal(env.requests.length, 0);
+  env.email.value = 'manual@example.org'; // Deliberately different from config.
+  assert.equal(env.run(), 'requesting-verification');
+  await flush();
+  assert.equal(env.run(), 'verification-requested');
+  assert.equal(env.email.value, 'manual@example.org');
+  assert.deepEqual(env.email.events, []);
+  env.email.hidden = true;
+  send.hidden = true;
+  const code = env.add('input[name="code"]', '', 'INPUT');
+  assert.equal(env.run(), 'waiting-manual-otp');
+  code.value = '123';
+  assert.equal(env.run(), 'waiting-manual-otp');
+  assert.equal(env.submit.clicks, 0);
+  code.value = '654321';
+  env.document.activeElement = code;
+  assert.equal(env.run(), 'otp-submitted');
+  assert.equal(env.document.activeElement, code); // No automatic blur.
+  assert.equal(env.submit.clicks, 1);
+  code.hidden = true;
+  env.password.hidden = false;
+  assert.equal(env.run(false), 'waiting-password-screen');
+  env.advance(350);
+  assert.equal(env.run(false), 'waiting-manual-password');
+  env.password.value = 'ManualPass1!';
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.advance(349);
+  env.password.value = 'ManualPass2!';
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.advance(349);
+  assert.equal(env.run(false), 'waiting-password-submit');
+  env.advance(1);
+  assert.equal(env.run(false), 'password-submitted');
+  await flush();
+  assert.equal(env.window.__flutterAutoSignup.canSubmitPasswordWithAccessibility(1), true);
+  assert.equal(env.password.value, 'ManualPass2!');
+  assert.deepEqual(env.password.events, []);
+  env.password.hidden = env.submit.hidden = true;
+  env.add('h2', 'Create username');
+  const skip = env.add('button', 'Skip', 'BUTTON');
+  assert.equal(env.run(false), 'waiting-username-skip');
+  env.advance(2000);
+  assert.equal(env.run(false), 'username-skipped');
+  await flush();
+  assert.equal(skip.clicks, 0);
+  assert.deepEqual(env.requests, [
+    ['FlutterSignupSendCode', 1],
+    ['FlutterSignupPasswordSubmit', 1],
+    ['FlutterSignupUsernameSkip', 1],
+  ]);
+  assert.equal(env.window.__flutterAutoSignup.canPasteFromClipboard(), false);
+});
+
+test('manual OTP fields wait for all six slots without typing, focusing or blurring', () => {
+  const env = setup({ inputs: false });
+  env.config.manualFieldInput = true;
+  env.config.otpRequestedAt = 0;
+  const slots = Array.from({ length: 6 }, () => {
+    const input = env.add('input[maxlength="1"]', '', 'INPUT');
+    input.type = 'tel';
+    input.selectors = ['input[type="tel"]'];
+    return input;
+  });
+  slots[0].value = '6';
+  assert.equal(env.run(), 'waiting-manual-otp');
+  assert.equal(env.submit.clicks, 0);
+  slots.forEach((input, i) => { input.value = '654321'[i]; });
+  env.document.activeElement = slots[5];
+  assert.equal(env.run(), 'otp-submitted');
+  assert.equal(env.document.activeElement, slots[5]);
+  assert.equal(env.requests.length, 0);
+  assert.equal(env.submit.clicks, 1);
+});
+
+test('manual birthday does not change selectors or dispatch input events', () => {
+  const env = setup({ inputs: false });
+  env.config.manualFieldInput = true;
+  const fields = [new env.Select([]), new env.Select([]), new env.Select([])];
+  const next = env.add('button', 'Next', 'BUTTON');
+  next.disabled = true;
+  assert.equal(env.run(), 'waiting-manual-birthday');
+  fields.forEach(field => {
+    assert.equal(field.value, '');
+    assert.deepEqual(field.events, []);
+  });
+  next.disabled = false; // TikTok enables Next after the user's selection.
+  assert.equal(env.run(), 'next-submitted');
+  assert.equal(next.clicks, 1);
+  assert.equal(env.requests.length, 0);
+});
+
+test('manual signup waits for Send code acknowledgement without dispatching or timing out', async () => {
+  const env = setup();
+  env.config.manualAccessibilityButtons = true;
+  env.config.useAccessibilitySendCode = true;
+  env.config.waitForOtpApi = true;
+  const send = env.add('button', 'Send code', 'BUTTON');
+  await fill(env);
+  assert.equal(env.run(), 'waiting-manual-send-code');
+  env.advance(30000);
+  assert.equal(env.run(), 'waiting-manual-send-code');
+  assert.equal(env.window.__flutterAutoSignup.otpRequestedAt, null);
+  assert.equal(env.window.__flutterAutoSignup.codeRequest, null);
+  assert.equal(send.clicks, 0);
+  assert.equal(env.requests.length, 2); // Input bridges only.
+
+  send.click(); // User tap changes the button into TikTok's resend countdown.
+  assert.equal(env.run(), 'verification-requested');
+  assert.equal(env.window.__flutterAutoSignup.otpRequestedAt, 30000);
+  assert.equal(env.run(), 'otp-required');
+  assert.equal(env.requests.length, 2);
+});
+
+test('manual signup fills the password then waits for Sign up and Skip without a fallback click', async () => {
+  const env = setup();
+  env.config.manualAccessibilityButtons = true;
+  env.config.useAccessibilityPasswordSubmit = true;
+  env.config.useAccessibilityUsernameSkip = true;
+  env.config.otpRequestedAt = 0;
+  env.email.hidden = true;
+  assert.equal(env.run(), 'waiting-password-screen');
+  env.advance(350);
+  assert.equal(env.run(), 'waiting-next');
+  await env.resolvePaste();
+  assert.equal(env.password.value, env.config.password);
+  assert.equal(env.run(), 'waiting-manual-password-submit');
+  env.advance(30000);
+  assert.equal(env.run(), 'waiting-manual-password-submit');
+  assert.equal(env.submit.clicks, 0);
+  assert.equal(env.window.__flutterAutoSignup.passwordSubmitted, false);
+  assert.deepEqual(env.requests, [['FlutterSignupPaste', 1, 'password']]);
+
+  // User submits; TikTok replaces the password screen with Create username.
+  env.password.hidden = true;
+  env.submit.hidden = true;
+  const heading = env.add('h2', 'Create username');
+  const skip = env.add('button', 'Skip', 'BUTTON');
+  assert.equal(env.run(), 'waiting-manual-username-skip');
+  env.advance(30000);
+  assert.equal(env.run(), 'waiting-manual-username-skip');
+  assert.equal(skip.clicks, 0);
+  assert.equal(env.requests.length, 1);
+
+  // User skips; TikTok closes signup and exposes the authenticated profile.
+  heading.hidden = skip.hidden = true;
+  env.add('[data-e2e="profile-icon"]');
+  assert.equal(env.run(false), 'signup-success');
+});
+
 for (const split of [false, true]) {
   test(`signup pastes the complete OTP into ${split ? 'six slots' : 'one input'}`, async () => {
     const env = setup({inputs: false, autoPaste: false});

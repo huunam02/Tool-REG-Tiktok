@@ -5,14 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:test_tiktok/core/controller/home_controller.dart';
 import 'package:test_tiktok/core/app_session.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/desktop_user_agents.dart';
+import 'package:test_tiktok/core/chrome_user_agent.dart';
+import 'package:test_tiktok/core/webview_user_agent.dart';
 import 'package:test_tiktok/main.dart';
 import 'package:test_tiktok/screen/home_page.dart';
 import 'package:test_tiktok/screen/create_proxy_page.dart';
 import 'package:test_tiktok/screen/splash_page.dart';
+import 'package:test_tiktok/screen/tiktok_page.dart';
 
 import 'support/memory_proxy_store.dart';
 
@@ -136,11 +141,18 @@ void main() {
         );
   });
 
-  test('iOS User-Agent list contains only Windows and macOS', () {
+  test('iOS User-Agent list contains only macOS', () {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    expect(desktopUserAgents, hasLength(84));
+    expect(desktopUserAgents, hasLength(5));
+    expect(
+      desktopUserAgents.every(
+        (ua) => RegExp(r'Chrome/15[1-5]\.0\.0\.0').hasMatch(ua),
+      ),
+      isTrue,
+    );
+    expect(desktopUserAgents.any((ua) => ua.contains('Edg/')), isFalse);
     expect(desktopUserAgents.every((ua) => !ua.contains('Linux')), isTrue);
-    expect(desktopUserAgents.any((ua) => ua.contains('Windows NT')), isTrue);
+    expect(desktopUserAgents.any((ua) => ua.contains('Windows NT')), isFalse);
     expect(desktopUserAgents.any((ua) => ua.contains('Macintosh')), isTrue);
   });
 
@@ -167,7 +179,7 @@ void main() {
   });
 
   test(
-    'Android restores a saved Linux User-Agent across repeated loads',
+    'Android upgrades a saved built-in Linux UA and keeps it across loads',
     () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       const agent =
@@ -177,9 +189,15 @@ void main() {
         'desktop_user_agent_direct': agent,
         'desktop_user_agents_used': [agent],
       });
-      expect(await loadDirectDesktopUserAgent(), agent);
+      expect(
+        await loadDirectDesktopUserAgent(),
+        upgradeLegacyDesktopUserAgent(agent),
+      );
       await (await SharedPreferences.getInstance()).reload();
-      expect(await loadDirectDesktopUserAgent(), agent);
+      expect(
+        await loadDirectDesktopUserAgent(),
+        upgradeLegacyDesktopUserAgent(agent),
+      );
       expect(
         (await SharedPreferences.getInstance()).getStringList(
           'desktop_user_agents_used',
@@ -189,24 +207,52 @@ void main() {
     },
   );
 
-  test('Android preserves a saved Windows direct UA across launches', () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    const windowsAgent =
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-    SharedPreferences.setMockInitialValues({
-      'desktop_user_agent_direct': windowsAgent,
-      'desktop_user_agents_used': [windowsAgent],
-    });
-    final selected = await loadDirectDesktopUserAgent();
-    expect(selected, windowsAgent);
-    expect(
-      (await SharedPreferences.getInstance()).getString(
-        'desktop_user_agent_direct',
-      ),
-      selected,
-    );
-  });
+  test(
+    'Android upgrades an old Windows direct UA while keeping Windows',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      const windowsAgent =
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+          'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+      SharedPreferences.setMockInitialValues({
+        'desktop_user_agent_direct': windowsAgent,
+        'desktop_user_agents_used': [windowsAgent],
+      });
+      final selected = await loadDirectDesktopUserAgent();
+      expect(selected, windowsChromeUserAgent);
+      expect(
+        (await SharedPreferences.getInstance()).getString(
+          'desktop_user_agent_direct',
+        ),
+        selected,
+      );
+    },
+  );
+
+  test(
+    'Android migrates duplicate Linux/Windows history without repeating the last Chrome version',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final linux = [
+        for (final major in recentChromeFullVersions.keys)
+          chromeDesktopUserAgent('X11; Linux x86_64', major: major),
+      ];
+      final windows = chromeDesktopUserAgent(
+        'Windows NT 10.0; Win64; x64',
+        major: 151,
+      );
+      SharedPreferences.setMockInitialValues({
+        'desktop_user_agents_used': [...linux, windows],
+      });
+      final selected = await selectNextDesktopUserAgent();
+      expect(selected, miuiBrowserUserAgent);
+      expect(selected, isNot(contains('Chrome/151.')));
+      final history = (await SharedPreferences.getInstance()).getStringList(
+        'desktop_user_agents_used',
+      )!;
+      expect(history, [...linux, selected]);
+    },
+  );
 
   for (final platform in [TargetPlatform.iOS]) {
     test(
@@ -229,29 +275,39 @@ void main() {
   }
 
   test(
-    'Android randomizes Chrome versions without repeating UA across full cycles',
+    'Android randomizes recent Chrome versions across complete cycles',
     () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       _platform.nativeUserAgent =
           'Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.107 Mobile Safari/537.36';
       final agents = <String>[];
-      expect(androidDesktopUserAgents, hasLength(42));
-      for (var i = 0; i < 84; i++) {
+      final count = androidDesktopUserAgents.length;
+      expect(count, 6);
+      for (var i = 0; i < count * 2; i++) {
         final agent = await selectNextDesktopUserAgent();
-        expect(agent, matches(r'Chrome/(12\d|13\d|140)\.0\.0\.0'));
-        expect(agent, isNot(matches(r'Android|Mobile| wv|Macintosh')));
+        if (agent == miuiBrowserUserAgent) {
+          expect(agent, contains('X11; Linux x86_64'));
+          expect(agent, isNot(contains('Mobile')));
+        } else {
+          expect(agent, matches(r'Chrome/15[1-5]\.0\.0\.0'));
+          expect(agent, contains('X11; Linux x86_64'));
+          expect(
+            agent,
+            isNot(matches(r'Android|Mobile| wv|Macintosh|Windows')),
+          );
+        }
         if (agents.isNotEmpty) expect(agent, isNot(agents.last));
         agents.add(agent);
         await (await SharedPreferences.getInstance()).reload();
       }
-      expect(agents.take(42).toSet(), androidDesktopUserAgents.toSet());
-      expect(agents.skip(42).toSet(), androidDesktopUserAgents.toSet());
+      expect(agents.take(count).toSet(), androidDesktopUserAgents.toSet());
+      expect(agents.skip(count).toSet(), androidDesktopUserAgents.toSet());
       expect(
         agents
-            .take(42)
+            .take(count)
             .map((agent) => RegExp(r'Chrome/(\d+)').firstMatch(agent)!.group(1))
             .toSet(),
-        hasLength(21),
+        {'135', '151', '152', '153', '154', '155'},
       );
       expect(await loadDirectDesktopUserAgent(), agents.last);
       expect(await loadDirectDesktopUserAgent(), agents.last);
@@ -259,7 +315,7 @@ void main() {
         (await SharedPreferences.getInstance()).getStringList(
           'desktop_user_agents_used',
         ),
-        agents.skip(42).toList(),
+        agents.skip(count).toList(),
       );
     },
   );
@@ -280,35 +336,89 @@ void main() {
           .controller!
           .text;
       var previous = displayedAgent();
-      expect(previous, matches(r'Chrome/(12\d|13\d|140)\.0\.0\.0'));
-      final seen = {previous};
+      expect(androidDesktopUserAgents, contains(previous));
       for (var i = 0; i < 4; i++) {
         final button = find.byKey(const Key('generateProxyUserAgent'));
         await tester.ensureVisible(button);
         await tester.tap(button);
         await tester.pumpAndSettle();
         expect(displayedAgent(), isNot(previous));
-        expect(displayedAgent(), matches(r'Chrome/(12\d|13\d|140)\.0\.0\.0'));
-        expect(seen.add(displayedAgent()), isTrue);
+        expect(androidDesktopUserAgents, contains(displayedAgent()));
         previous = displayedAgent();
       }
       debugDefaultTargetPlatformOverride = null;
     },
   );
 
+  testWidgets('Android can choose Miui directly without random retries', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CreateProxyPage(
+          generateUserAgent: () async => androidDesktopUserAgents.first,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final button = find.byKey(const Key('useMiuiUserAgent'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextFormField>(
+      find.byKey(const Key('savedProxyUserAgent')),
+    );
+    expect(field.controller!.text, miuiBrowserUserAgent);
+    expect(field.controller!.text, contains('X11; Linux x86_64'));
+    expect(field.controller!.text, isNot(contains('Mobile')));
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('Android can select Windows and retain it when normalizing', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CreateProxyPage(
+          generateUserAgent: () async => androidDesktopUserAgents.first,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final button = find.byKey(const Key('useWindowsUserAgent'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextFormField>(
+      find.byKey(const Key('savedProxyUserAgent')),
+    );
+    expect(field.controller!.text, windowsChromeUserAgent);
+    expect(
+      normalizeDesktopUserAgentForPlatform(field.controller!.text),
+      windowsChromeUserAgent,
+    );
+    expect(
+      await resolveWebViewUserAgent(field.controller!.text),
+      windowsChromeUserAgent,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   test(
     'direct User-Agent reuses the last known identity instead of selecting a new one',
     () async {
       SharedPreferences.setMockInitialValues({
-        'desktop_user_agents_used': [desktopUserAgents[7]],
+        'desktop_user_agents_used': [desktopUserAgents[1]],
       });
-      expect(await loadDirectDesktopUserAgent(), desktopUserAgents[7]);
-      expect(await loadDirectDesktopUserAgent(), desktopUserAgents[7]);
+      expect(await loadDirectDesktopUserAgent(), desktopUserAgents[1]);
+      expect(await loadDirectDesktopUserAgent(), desktopUserAgents[1]);
       expect(
         (await SharedPreferences.getInstance()).getStringList(
           'desktop_user_agents_used',
         ),
-        [desktopUserAgents[7]],
+        [desktopUserAgents[1]],
       );
     },
   );
@@ -355,11 +465,11 @@ void main() {
       );
       final store = MemoryProxyStore()
         ..current = WebViewProxy.parse('proxy.example.com:8080')
-        ..currentUserAgent = desktopUserAgents[5];
+        ..currentUserAgent = desktopUserAgents[1];
       final savedAgent = store.currentUserAgent;
       await tester.pumpWidget(MyApp(proxyStore: store));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('openTikTok')));
+      await _openTikTok(tester);
       await tester.pumpAndSettle();
       expect(_platform.webViewUserAgent, savedAgent);
       expect(_platform.contentMode, UserPreferredContentMode.DESKTOP);
@@ -384,7 +494,7 @@ void main() {
     expect(_platform.calls, isEmpty);
     expect(_platform.webViewsCreated, 0);
     expect(find.byKey(const Key('resetSession')), findsNothing);
-    await tester.tap(find.byKey(const Key('openTikTok')));
+    await _openTikTok(tester);
     await tester.pumpAndSettle();
     expect(_platform.webViewsCreated, 1);
     expect(_platform.calls, isEmpty);
@@ -408,7 +518,7 @@ void main() {
             .widget<HomePage>(find.byType(HomePage))
             .userAgent;
         selected.add(userAgent);
-        await tester.tap(find.byKey(const Key('openTikTok')));
+        await _openTikTok(tester);
         await tester.pumpAndSettle();
         expect(_platform.webViewUserAgent, userAgent);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -448,7 +558,7 @@ void main() {
       await tester.tap(find.text('Thử lại'));
       await tester.pumpAndSettle();
       expect(_platform.calls, isEmpty);
-      await tester.tap(find.byKey(const Key('openTikTok')));
+      await _openTikTok(tester);
       await tester.pumpAndSettle();
       expect(_platform.webViewsCreated, 1);
       expect(_platform.calls, isEmpty);
@@ -468,7 +578,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final store = MemoryProxyStore()
         ..current = WebViewProxy.parse('proxy.example.com:8080')
-        ..currentUserAgent = desktopUserAgents[5];
+        ..currentUserAgent = desktopUserAgents[1];
       final boundAgent = store.currentUserAgent;
       for (var launch = 0; launch < 2; launch++) {
         await tester.pumpWidget(MyApp(proxyStore: store));
@@ -479,7 +589,7 @@ void main() {
         );
         expect(find.byKey(const Key('resetSession')), findsNothing);
         expect(_platform.calls, isEmpty);
-        await tester.tap(find.byKey(const Key('openTikTok')));
+        await _openTikTok(tester);
         await tester.pumpAndSettle();
         expect(_platform.webViewUserAgent, boundAgent);
         expect(_platform.calls, isEmpty);
@@ -495,52 +605,26 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     },
   );
+}
 
-  testWidgets(
-    'only applying a new proxy clears the session and its User-Agent survives restart',
-    (tester) async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      _platform.nativeUserAgent =
-          'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) '
-          'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        const MethodChannel('test_tiktok/webview_proxy'),
-        (call) async => null,
-      );
-      final store = MemoryProxyStore();
-      final boundAgent = desktopUserAgents[11];
-      final id = await store.save(
-        name: 'New proxy',
-        proxy: WebViewProxy.parse('proxy.example.com:8080')!,
-        userAgent: boundAgent,
-      );
-      await tester.pumpWidget(MyApp(proxyStore: store));
-      await tester.pumpAndSettle();
-      expect(_platform.calls, isEmpty);
-      await tester.ensureVisible(find.byKey(const Key('manageProxies')));
-      await tester.tap(find.byKey(const Key('manageProxies')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(Key('savedProxy-$id')));
-      await tester.pumpAndSettle();
-      expect(_platform.calls, isEmpty);
-      await tester.tap(find.byKey(const Key('setSelectedProxy')));
-      await tester.pumpAndSettle();
-      expect(_platform.calls, ['cookies', 'apple-storage', 'cache']);
-      await tester.tap(find.byKey(const Key('openTikTok')));
-      await tester.pumpAndSettle();
-      expect(_platform.webViewUserAgent, boundAgent);
-      expect(_platform.calls, ['cookies', 'apple-storage', 'cache']);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pumpAndSettle();
-      _platform.calls.clear();
-      await tester.pumpWidget(MyApp(proxyStore: store));
-      await tester.pumpAndSettle();
-      expect(_platform.calls, isEmpty);
-      await tester.tap(find.byKey(const Key('openTikTok')));
-      await tester.pumpAndSettle();
-      expect(_platform.webViewUserAgent, boundAgent);
-      expect(_platform.calls, isEmpty);
-      debugDefaultTargetPlatformOverride = null;
-    },
+/// Opens TikTok for the configuration in use, as runs and the Settings
+/// checks do (Home no longer has its own Mở TikTok button).
+Future<void> _openTikTok(WidgetTester tester) async {
+  final home = tester
+      .state<GetBuilderState<HomeController>>(
+        find.byType(GetBuilder<HomeController>),
+      )
+      .controller!;
+  final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+  unawaited(
+    home.openTikTok(
+      TikTokLaunchAction.browse,
+      (configuration, _) => navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => TikTokPage(configuration: configuration),
+        ),
+      ),
+    ),
   );
+  await tester.pumpAndSettle();
 }

@@ -1,0 +1,37 @@
+{
+  "device": "emulator-5554",
+  "physicalDeviceTested": false,
+  "webView": "155.0.8059.43",
+  "configurationId": 2,
+  "goal": "Create exactly one account through the app automatic signup flow",
+  "verifiedSteps": {
+    "selectedBirthday": "1977-02-19",
+    "emailEntered": true,
+    "emailLength": 26,
+    "sendCodeTapped": true
+  },
+  "serverResponses": [
+    {
+      "path": "/api/v3/register/verification/age/",
+      "httpStatus": 200,
+      "statusCode": 0
+    },
+    {
+      "path": "/passport/web/email/send_code/",
+      "httpStatus": 200,
+      "errorCode": 7,
+      "message": "error"
+    }
+  ],
+  "visibleTikTokError": "Maximum number of attempts reached. Try again later.",
+  "otpScreenReached": false,
+  "otpApiCalled": false,
+  "passwordScreenReached": false,
+  "newAccountsCreated": 0,
+  "configurationStatusAfterRun": "unregistered",
+  "automaticRunStopped": true,
+  "finalAppScreen": "Home / Signup; automatic run inactive",
+  "blocker": "TikTok rejected the email send-code request due to its attempt limit; retry time is not provided.",
+  "fullSignupVerified": false,
+  "source": "Actual in-app run; sanitized Accessibility snapshots, WebView network status, visible error and app database readback"
+}

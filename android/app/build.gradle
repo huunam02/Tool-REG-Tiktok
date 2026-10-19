@@ -1,12 +1,15 @@
 plugins {
     id "com.android.application"
+    // START: FlutterFire Configuration
+    id 'com.google.gms.google-services'
+    // END: FlutterFire Configuration
     id "kotlin-android"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
 }
 
 android {
-    namespace = "com.stalliondz.tool.tiktok"
+    namespace = "com.brisklane.browser"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -21,7 +24,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.stalliondz.tool.tiktok"
+        applicationId = "com.brisklane.browser"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = Math.max(flutter.minSdkVersion, 24)
@@ -42,6 +45,49 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// Exercise the exact Dart UserScript in a real WebView, without a copied fixture.
+def gpuPrivacyTestAssets = layout.buildDirectory.dir("generated/gpuPrivacyTestAssets")
+def generateGpuPrivacyTestAssets = tasks.register("generateGpuPrivacyTestAssets") {
+    def scriptFile = rootProject.file("../lib/core/webview_privacy.dart")
+    inputs.file(scriptFile)
+    outputs.dir(gpuPrivacyTestAssets)
+    doLast {
+        def directory = gpuPrivacyTestAssets.get().asFile
+        directory.mkdirs()
+        [pixelGpuInfoScript: "pixel_gpu_info.js", disableWebRtcScript: "disable_webrtc.js"].each { name, filename ->
+            def script = (scriptFile.getText("UTF-8") =~ /(?s)const ${name} = r'''(.*?)''';/)
+            if (!script.find()) throw new GradleException("Privacy UserScript not found: " + name)
+            new File(directory, filename).setText(script.group(1), "UTF-8")
+        }
+    }
+}
+android.sourceSets.androidTest.assets.srcDir(gpuPrivacyTestAssets)
+tasks.configureEach {
+    if (name.startsWith("merge") && name.endsWith("AndroidTestAssets")) {
+        dependsOn(generateGpuPrivacyTestAssets)
+    }
+}
+
+def timeZoneTestAssets = layout.buildDirectory.dir("generated/timeZoneTestAssets")
+android.sourceSets.androidTest.assets.srcDir(timeZoneTestAssets)
+def generateTimeZoneTestAsset = tasks.register("generateTimeZoneTestAsset") {
+    def scriptFile = rootProject.file("../lib/core/webview_timezone.dart")
+    inputs.file(scriptFile)
+    outputs.dir(timeZoneTestAssets)
+    doLast {
+        def script = (scriptFile.getText("UTF-8") =~ /(?s)const webViewTimeZoneScriptTemplate = r'''(.*?)''';/)
+        if (!script.find()) throw new GradleException("Timezone UserScript not found")
+        def directory = timeZoneTestAssets.get().asFile
+        directory.mkdirs()
+        new File(directory, "webview_timezone.js").setText(script.group(1), "UTF-8")
+    }
+}
+tasks.configureEach {
+    if (name.startsWith("merge") && name.endsWith("AndroidTestAssets")) {
+        dependsOn(generateTimeZoneTestAsset)
+    }
 }
 
 dependencies {

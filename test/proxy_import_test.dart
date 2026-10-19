@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-import 'package:test_tiktok/controller/proxy_form_controller.dart';
+import 'package:test_tiktok/core/controller/proxy_form_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/configuration_file_import.dart';
@@ -14,10 +14,13 @@ import 'package:test_tiktok/screen/proxy_management_page.dart';
 
 import 'support/memory_proxy_store.dart';
 
+Future<String> _testTimeZone(WebViewProxy proxy, String userAgent) async =>
+    'America/New_York';
+
 void main() {
   const record = '192.0.2.7:9323:proxy-user:proxy-password';
   const combinedRecord =
-      '$record person@example.com|TikTok-password|Mailbox-password';
+      '$record|person@example.com|TikTok-password|Mailbox-password';
   String text(WidgetTester tester, String key) =>
       tester.widget<TextFormField>(find.byKey(Key(key))).controller!.text;
 
@@ -67,7 +70,10 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+        home: CreateProxyPage(
+          detectTimeZone: _testTimeZone,
+          generateUserAgent: () async => 'test-agent',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -98,6 +104,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: ProxyForm(
+            detectTimeZone: _testTimeZone,
             title: 'Tạo cấu hình',
             submitLabel: 'Tạo cấu hình',
             randomizeOnOpen: true,
@@ -159,7 +166,9 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final store = MemoryProxyStore();
     await tester.pumpWidget(
-      MaterialApp(home: ProxyManagementPage(store: store)),
+      MaterialApp(
+        home: ProxyManagementPage(store: store, detectTimeZone: _testTimeZone),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('addProxy')));
@@ -176,6 +185,7 @@ void main() {
     expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
     expect(text(tester, 'savedProxyUsername'), 'proxy-user');
     expect(text(tester, 'savedProxyPassword'), 'proxy-password');
+    expect(text(tester, 'savedProxyTimeZone'), 'America/New_York');
     expect(text(tester, 'savedProxyUserAgent'), agent);
     expect(text(tester, 'proxyImportData'), isEmpty);
     expect(find.text('Đã import thành công 1 cấu hình.'), findsOneWidget);
@@ -200,7 +210,10 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
-        home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+        home: CreateProxyPage(
+          detectTimeZone: _testTimeZone,
+          generateUserAgent: () async => 'test-agent',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -208,7 +221,7 @@ void main() {
       await tester.enterText(
         find.byKey(const Key('proxyImportData')),
         suffix == '|2'
-            ? 'other.example.com:8080:user:pass other@example.com|other|mail|2'
+            ? 'other.example.com:8080:user:pass|other@example.com|other|mail|2'
             : '$combinedRecord$suffix',
       );
       await tester.tap(find.byKey(const Key('applyProxyImportData')));
@@ -256,7 +269,10 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
-        home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+        home: CreateProxyPage(
+          detectTimeZone: _testTimeZone,
+          generateUserAgent: () async => 'test-agent',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -274,6 +290,54 @@ void main() {
     expect(text(tester, 'savedProxyPassword'), 'proxy-password');
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'pasted Excel filename guides to file import and preserves fields',
+    (tester) async {
+      const fileName = 'proxy_email_accounts_corrected.xlsx';
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async =>
+            call.method == 'Clipboard.getData' ? {'text': fileName} : null,
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final logic = tester
+          .state<GetBuilderState<ProxyFormController>>(
+            find.byType(GetBuilder<ProxyFormController>),
+          )
+          .controller!;
+      logic.importData.text = combinedRecord;
+      logic.importProxy();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('importProxyData')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pasteProxyData')));
+      await tester.pumpAndSettle();
+      expect(logic.importError, contains('Import data > Từ file'));
+      expect(text(tester, 'proxyImportData'), fileName);
+      expect(logic.accountEmail.text, 'person@example.com');
+      expect(logic.password.text, 'proxy-password');
+      expect(logic.importing, isFalse);
+      await tester.tap(find.byKey(const Key('applyProxyImportData')));
+      await tester.pumpAndSettle();
+      expect(logic.importError, contains('Import data > Từ file'));
+      expect(logic.accountEmail.text, 'person@example.com');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'clipboard imports multiple configurations and saves after review',
@@ -297,7 +361,12 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        MaterialApp(home: ProxyManagementPage(store: store)),
+        MaterialApp(
+          home: ProxyManagementPage(
+            store: store,
+            detectTimeZone: _testTimeZone,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('addProxy')));
@@ -365,7 +434,10 @@ void main() {
           ).copyWith(textScaler: const TextScaler.linear(1.5)),
           child: child!,
         ),
-        home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+        home: CreateProxyPage(
+          detectTimeZone: _testTimeZone,
+          generateUserAgent: () async => 'test-agent',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -411,7 +483,9 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final store = MemoryProxyStore();
     await tester.pumpWidget(
-      MaterialApp(home: ProxyManagementPage(store: store)),
+      MaterialApp(
+        home: ProxyManagementPage(store: store, detectTimeZone: _testTimeZone),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('addProxy')));
@@ -510,7 +584,12 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        MaterialApp(home: ProxyManagementPage(store: store)),
+        MaterialApp(
+          home: ProxyManagementPage(
+            store: store,
+            detectTimeZone: _testTimeZone,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Tùy chọn cấu hình'));
@@ -551,7 +630,10 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(
-          home: CreateProxyPage(generateUserAgent: () async => 'test-agent'),
+          home: CreateProxyPage(
+            detectTimeZone: _testTimeZone,
+            generateUserAgent: () async => 'test-agent',
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -565,7 +647,7 @@ void main() {
       }
       await tester.enterText(
         find.byKey(const Key('proxyImportData')),
-        '192.0.2.7:99999:user:password person@example.com|tiktok|mailbox',
+        '192.0.2.7:99999:user:password|person@example.com|tiktok|mailbox',
       );
       await tester.tap(find.byKey(const Key('applyProxyImportData')));
       await tester.pumpAndSettle();

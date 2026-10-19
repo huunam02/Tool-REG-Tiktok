@@ -10,11 +10,13 @@ class AccessibilityPermissionService {
     bool? supported,
     Future<bool> Function()? isEnabled,
     Future<bool> Function()? openSettings,
-  })  : supported = supported ?? supportsAccessibilityPermission,
-        _isEnabled = isEnabled ??
-            FlutterAccessibilityService.isAccessibilityPermissionEnabled,
-        _openSettings = openSettings ??
-            FlutterAccessibilityService.requestAccessibilityPermission;
+  }) : supported = supported ?? supportsAccessibilityPermission,
+       _isEnabled =
+           isEnabled ??
+           FlutterAccessibilityService.isAccessibilityPermissionEnabled,
+       _openSettings =
+           openSettings ??
+           FlutterAccessibilityService.requestAccessibilityPermission;
 
   final bool supported;
   final Future<bool> Function() _isEnabled;

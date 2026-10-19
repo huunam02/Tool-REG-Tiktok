@@ -1,0 +1,36 @@
+{
+  "webBounds": [
+    6,
+    289,
+    1073,
+    2423
+  ],
+  "nodes": [
+    {
+      "editable": false,
+      "clickable": true,
+      "length": 0,
+      "description": "",
+      "className": "android.webkit.WebView",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        289,
+        1073,
+        2423
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    }
+  ],
+  "ready": true,
+  "action": "snapshot",
+  "configurationId": 2,
+  "requestId": "f663c6d512b14ed7a93e89705ed07f59"
+}

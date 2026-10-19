@@ -18,7 +18,7 @@ void main() {
   );
 
   testWidgets(
-    'Home shows general settings and the selected configuration without tabs',
+    'Home retains general settings and selected configuration in its first tab',
     (tester) async {
       final store = MemoryProxyStore();
       final id = await store.save(
@@ -29,6 +29,7 @@ void main() {
           password: 'proxy-pass',
         )!,
         userAgent: 'profile-agent',
+        timeZoneId: 'America/New_York',
         account: account,
         statusAccount: AccountStatus.registered,
       );
@@ -48,15 +49,18 @@ void main() {
       expect(find.text('proxy-user'), findsOneWidget);
       expect(find.text('proxy-pass'), findsOneWidget);
       expect(find.text('Đã đăng ký'), findsOneWidget);
-      expect(find.byType(TabBar), findsNothing);
+      expect(find.byType(TabBar), findsOneWidget);
       expect(find.byType(IndexedStack), findsNothing);
-      expect(find.byKey(const Key('comments')), findsOneWidget);
+      expect(find.byKey(const Key('comments')), findsNothing);
       expect(find.byKey(const Key('openTikTok')), findsOneWidget);
       expect(find.text('Đăng nhập tài khoản'), findsOneWidget);
       final preview = tester.widget<ProxyDetails>(find.byType(ProxyDetails));
       expect(sameAccount(preview.profile.account, account), isTrue);
       expect(preview.profile.proxy!.uri.host, '192.0.2.7');
       expect(preview.profile.userAgent, 'profile-agent');
+      expect(preview.profile.timeZoneId, 'America/New_York');
+      expect(find.byKey(const Key('currentProxyTimeZone')), findsOneWidget);
+      expect(find.text('America/New_York'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -166,7 +170,7 @@ void main() {
       expect(find.text('person@example.com'), findsNothing);
       expect(find.text('Đăng ký tài khoản'), findsOneWidget);
       expect(find.text('Đăng nhập tài khoản'), findsNothing);
-      expect(find.byKey(const Key('comments')), findsOneWidget);
+      expect(find.byKey(const Key('comments')), findsNothing);
       await tester.tap(find.byKey(const Key('manageProxies')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(Key('savedProxy-$first')));

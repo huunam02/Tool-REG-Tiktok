@@ -1,0 +1,48 @@
+{
+  "nodes": [
+    {
+      "text": "When’s your birthday?*",
+      "hint": "",
+      "className": "android.widget.TextView",
+      "bounds": [
+        349,
+        1186,
+        729,
+        1212
+      ]
+    },
+    {
+      "text": "Month",
+      "hint": "",
+      "className": "android.widget.Spinner",
+      "bounds": [
+        349,
+        1221,
+        471,
+        1267
+      ]
+    },
+    {
+      "text": "Day",
+      "hint": "",
+      "className": "android.widget.Spinner",
+      "bounds": [
+        478,
+        1221,
+        600,
+        1267
+      ]
+    },
+    {
+      "text": "1991",
+      "hint": "",
+      "className": "android.widget.Spinner",
+      "bounds": [
+        608,
+        1221,
+        729,
+        1267
+      ]
+    }
+  ]
+}

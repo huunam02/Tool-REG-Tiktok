@@ -1,0 +1,21 @@
+{"action": "open-login", "point": [370.95, 19.68], "tapped": true, "ok": true}
+{"action": "phone-email", "point": [202.06, 369.45], "tapped": true, "ok": true}
+{"action": "use-email", "point": [217.62, 347.14], "tapped": true, "ok": true}
+{"action": "focus-email", "point": [202.06, 379.38], "tapped": false, "ok": true}
+{"action": "focus-password", "point": [202.06, 404.12], "tapped": false, "ok": true}
+{"action": "submit-password", "point": [202.06, 452.11], "tapped": false, "ok": true}
+{"action": "focus-email", "point": [202.06, 379.38], "tapped": true, "ok": true}
+{"action": "focus-password", "point": [202.06, 404.12], "tapped": true, "ok": true}
+{"action": "submit-password", "point": [202.06, 452.11], "tapped": true, "ok": true}
+{"action": "back-to-methods", "point": [125.4, 297.47], "tapped": true, "ok": true}
+{"action": "phone-email", "point": [202.06, 369.45], "tapped": true, "ok": true}
+{"action": "use-email", "point": [217.62, 347.14], "tapped": true, "ok": true}
+{"action": "clear-email", "point": [260.73, 379.19], "tapped": true, "ok": true}
+{"action": "submit-password", "point": [202.06, 452.11], "tapped": true, "ok": true}
+{"action": "submit-password", "point": [202.06, 452.11], "tapped": true, "ok": true, "attempt": "third-provided-account"}
+{"action": "select-verification-email", "point": [198.69, 362.32], "tapped": true, "ok": true}
+{"action": "focus-otp", "point": [197.56, 354.26], "tapped": false, "ok": true}
+{"action": "submit-otp", "point": [197.38, 410.31], "tapped": false, "ok": true}
+{"action": "resend-code", "point": [125.21, 377.69], "tapped": false, "ok": true}
+{"action": "submit-otp", "point": [197.38, 410.31], "tapped": true, "ok": true}
+{"action": "authenticated-home", "ok": true, "evidence": "Messages + Profile; login and identity dialogs absent"}

@@ -8,7 +8,8 @@ class TestProxyIpPlatform extends InAppWebViewPlatform {
 
   @override
   PlatformHeadlessInAppWebView createPlatformHeadlessInAppWebView(
-      PlatformHeadlessInAppWebViewCreationParams params) {
+    PlatformHeadlessInAppWebViewCreationParams params,
+  ) {
     final view = TestProxyIpView(params, startupGate: startupGate);
     probes.add(view);
     return view;
@@ -29,18 +30,23 @@ class TestProxyIpView extends PlatformHeadlessInAppWebView {
 
   void loaded(String body, {WebUri? url}) {
     controller.body = body;
-    params.onLoadStop!(callbackController,
-        url ?? controller.loadedRequest?.url ?? params.initialUrlRequest!.url);
+    params.onLoadStop!(
+      callbackController,
+      url ?? controller.loadedRequest?.url ?? params.initialUrlRequest!.url,
+    );
   }
 
   void failed({int status = 503}) => params.onReceivedHttpError!(
-      callbackController,
-      WebResourceRequest(
-          url: controller.loadedRequest?.url ??
-              params.initialUrlRequest?.url ??
-              WebUri('https://api.ipify.org/'),
-          isForMainFrame: true),
-      WebResourceResponse(statusCode: status));
+    callbackController,
+    WebResourceRequest(
+      url:
+          controller.loadedRequest?.url ??
+          params.initialUrlRequest?.url ??
+          WebUri('https://api.ipify.org/'),
+      isForMainFrame: true,
+    ),
+    WebResourceResponse(statusCode: status),
+  );
 
   @override
   Future<void> run() async {
@@ -59,24 +65,28 @@ class TestProxyIpView extends PlatformHeadlessInAppWebView {
 
 class TestProxyIpController extends PlatformInAppWebViewController {
   TestProxyIpController()
-      : super.implementation(
-            const PlatformInAppWebViewControllerCreationParams(id: 1));
+    : super.implementation(
+        const PlatformInAppWebViewControllerCreationParams(id: 1),
+      );
 
   String? body;
   final scripts = <String>[];
   URLRequest? loadedRequest;
 
   @override
-  Future<void> loadUrl(
-      {required URLRequest urlRequest,
-      Uri? iosAllowingReadAccessTo,
-      WebUri? allowingReadAccessTo}) async {
+  Future<void> loadUrl({
+    required URLRequest urlRequest,
+    Uri? iosAllowingReadAccessTo,
+    WebUri? allowingReadAccessTo,
+  }) async {
     loadedRequest = urlRequest;
   }
 
   @override
-  Future<dynamic> evaluateJavascript(
-      {required String source, ContentWorld? contentWorld}) async {
+  Future<dynamic> evaluateJavascript({
+    required String source,
+    ContentWorld? contentWorld,
+  }) async {
     scripts.add(source);
     return body;
   }

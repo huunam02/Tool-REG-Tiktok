@@ -1,0 +1,301 @@
+{
+  "webBounds": [
+    6,
+    289,
+    1073,
+    2423
+  ],
+  "nodes": [
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.webkit.WebView",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        289,
+        1073,
+        2423
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.webkit.WebView",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        289,
+        1073,
+        2423
+      ],
+      "focused": true,
+      "inputType": 0,
+      "id": "0.0",
+      "text": "TikTok - Make Your Day",
+      "scrollable": true,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.widget.Image",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        289,
+        1073,
+        2423
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.0",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.view.View",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        289,
+        1073,
+        2423
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.1",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.widget.TextView",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        289,
+        85,
+        1805
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.1.0",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.view.View",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        85,
+        289,
+        1073,
+        2423
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.1.1",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.view.View",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        289,
+        62,
+        345
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.2",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.view.View",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        348,
+        1073,
+        2423
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.3",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.widget.TextView",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        348,
+        1073,
+        355
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.3.0",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.widget.TextView",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        348,
+        1073,
+        2423
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.3.1",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.view.View",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        2387,
+        1073,
+        2397
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.3.2",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.widget.TextView",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        2387,
+        1073,
+        2392
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.3.2.0",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": false,
+      "length": 0,
+      "description": "",
+      "className": "android.widget.TextView",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        6,
+        2391,
+        1073,
+        2397
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.3.2.1",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    }
+  ],
+  "ready": true,
+  "keyboardVisible": false,
+  "action": "snapshot",
+  "configurationId": null,
+  "requestId": "83482a6f7a814ba8a2d93db89ea5956d"
+}

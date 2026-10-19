@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/webview_proxy_ip.dart';
+import 'package:test_tiktok/core/webview_privacy.dart';
 
 import 'support/test_proxy_ip_platform.dart';
 
@@ -16,7 +17,8 @@ void main() {
         .setMockMethodCallHandler(
           const MethodChannel('test_tiktok/webview_identity'),
           (call) async {
-            expect(call.arguments['userAgent'], 'test-agent');
+            expect(call.method, 'configureEngine');
+            expect(call.arguments.containsKey('userAgent'), isFalse);
             return 'test-agent';
           },
         );
@@ -38,6 +40,23 @@ void main() {
 
   Future<void> flush() => Future<void>.delayed(Duration.zero);
 
+  test('IP probe blocks WebRTC like the main WebView', () async {
+    final result = WebViewProxyIpChecker().check(
+      userAgent: 'test-agent',
+      onAuth: (controller, challenge) async => null,
+    );
+    await flush();
+    final view = platform.probes.single;
+    expect(
+      view.params.initialUserScripts!.any(
+        (script) => script.source == disableWebRtcScript,
+      ),
+      isTrue,
+    );
+    view.loaded('{"ip":"203.0.113.7"}');
+    expect(await result, '203.0.113.7');
+  });
+
   for (final target in [TargetPlatform.android, TargetPlatform.iOS]) {
     test('$target reads IP without executing fetch in TikTok', () async {
       debugDefaultTargetPlatformOverride = target;
@@ -51,7 +70,26 @@ void main() {
       expect(request.headers?['Cache-Control'], 'no-cache');
       expect(view.params.initialSettings!.incognito, isFalse);
       expect(view.params.initialSettings!.cacheEnabled, isTrue);
-      expect(view.params.initialSettings!.userAgent, 'test-agent');
+      expect(
+        view.params.initialSettings!.userAgent,
+        target == TargetPlatform.android ? isNull : 'test-agent',
+      );
+      final privacyScript = view.params.initialUserScripts!.singleWhere(
+        (script) => script.source == disableWebRtcScript,
+      );
+      expect(privacyScript.source, disableWebRtcScript);
+      expect(
+        privacyScript.injectionTime,
+        UserScriptInjectionTime.AT_DOCUMENT_START,
+      );
+      expect(privacyScript.forMainFrameOnly, isFalse);
+      expect(privacyScript.contentWorld, ContentWorld.PAGE);
+      expect(
+        view.params.initialUserScripts!.any(
+          (script) => script.source == pixelGpuInfoScript,
+        ),
+        target != TargetPlatform.android,
+      );
       expect(
         view.params.initialSettings!.preferredContentMode,
         UserPreferredContentMode.DESKTOP,

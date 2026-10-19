@@ -1,0 +1,94 @@
+{"time": "2026-10-16T19:57:46+0700", "action": "snapshot", "label": "home", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T19:57:55+0700", "action": "snapshot", "label": "home-loaded", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T19:58:09+0700", "action": "snapshot", "label": "home-ready", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T19:58:20+0700", "action": "tap", "label": "open-login", "result": {"point": [371.13, 19.31], "action": "tap", "configurationId": 2, "ok": true, "requestId": "c5147cf4074a47649dadfe9b0dcdcdd8"}}
+{"time": "2026-10-16T19:58:23+0700", "action": "snapshot", "label": "login-modal", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T19:58:34+0700", "action": "tap", "label": "open-signup", "result": {"point": [233.18, 501.59], "action": "tap", "configurationId": 2, "ok": true, "requestId": "aa6ab008ffcb414cbea84b36959850c1"}}
+{"time": "2026-10-16T19:58:36+0700", "action": "snapshot", "label": "signup-method", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T19:58:43+0700", "action": "tap", "label": "signup-phone-email", "result": {"point": [199.63, 347.89], "action": "tap", "configurationId": 2, "ok": true, "requestId": "3a2448f4b300412882af56001f24709a"}}
+{"time": "2026-10-16T19:58:47+0700", "action": "snapshot", "label": "phone-form", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T19:58:54+0700", "action": "tap", "label": "use-email", "result": {"point": [145.08, 422.12], "action": "tap", "configurationId": 2, "ok": true, "requestId": "0e954952667643c8a2845ef4f4e55c5a"}}
+{"time": "2026-10-16T19:58:57+0700", "action": "snapshot", "label": "email-birthday", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T19:59:04+0700", "action": "tap", "label": "open-month", "result": {"point": [151.27, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "b5804e96dc3147698f0c24b73da01df4"}}
+{"time": "2026-10-16T19:59:06+0700", "action": "snapshot", "label": "month-options", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T19:59:38+0700", "action": "tap", "label": "select-february", "result": {"point": [145.0, 391.0], "action": "tap", "configurationId": 2, "ok": true, "requestId": "37f5ae44fe694b128ee9fcbff05786f0"}}
+{"time": "2026-10-16T19:59:41+0700", "action": "snapshot", "label": "month-selected", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T19:59:50+0700", "action": "tap", "label": "open-day", "result": {"point": [199.81, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "9cb44b3fbe324ad596e781987b8708a9"}}
+{"time": "2026-10-16T20:00:01+0700", "action": "tap", "label": "select-day-3", "result": {"point": [185.0, 405.2], "action": "tap", "configurationId": 2, "ok": true, "requestId": "0e240489a2a94e7b9faaeb4248d16853"}}
+{"time": "2026-10-16T20:00:03+0700", "action": "snapshot", "label": "day-selected", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:00:07+0700", "action": "tap", "label": "open-year", "result": {"point": [248.36, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "98fd09457f514794bc78428807a4d1c1"}}
+{"time": "2026-10-16T20:00:31+0700", "action": "swipe", "label": "year-scroll-1", "result": {"from": [247.0, 480.0], "to": [247.0, 390.0], "durationMs": 450}}
+{"time": "2026-10-16T20:00:44+0700", "action": "swipe", "label": "year-scroll-2", "result": {"from": [247.0, 480.0], "to": [247.0, 390.0], "durationMs": 450}}
+{"time": "2026-10-16T20:00:48+0700", "action": "swipe", "label": "year-scroll-3", "result": {"from": [247.0, 480.0], "to": [247.0, 390.0], "durationMs": 450}}
+{"time": "2026-10-16T20:01:00+0700", "action": "tap", "label": "select-year-2001", "result": {"point": [238.0, 464.0], "action": "tap", "configurationId": 2, "ok": true, "requestId": "51409b3fd37d4ad8a43b45796a39ec3c"}}
+{"time": "2026-10-16T20:01:03+0700", "action": "snapshot", "label": "birthday-verified", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:01:06+0700", "action": "tap", "label": "focus-email", "result": {"point": [199.81, 405.44], "action": "tap", "configurationId": 2, "ok": true, "requestId": "7155e37635784d56ab690172aa4a702f"}}
+{"time": "2026-10-16T20:01:11+0700", "action": "paste-email", "label": "", "result": {"reason": "value-matched", "action": "paste-email", "configurationId": 2, "ok": true, "requestId": "cc1d72cdb814452faf8ede4341273f31"}}
+{"time": "2026-10-16T20:01:18+0700", "action": "snapshot", "label": "email-pasted-keyboard", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:03:04+0700", "action": "tap", "label": "open-login", "result": {"point": [371.13, 19.31], "action": "tap", "configurationId": 2, "ok": true, "requestId": "aea78e119e9a499ebc719235882ca3ed"}}
+{"time": "2026-10-16T20:03:08+0700", "action": "tap", "label": "open-signup", "result": {"point": [233.18, 501.59], "action": "tap", "configurationId": 2, "ok": true, "requestId": "dc7c663db7404f9088b0148a41c596cf"}}
+{"time": "2026-10-16T20:03:11+0700", "action": "tap", "label": "signup-phone-email", "result": {"point": [199.63, 347.89], "action": "tap", "configurationId": 2, "ok": true, "requestId": "c3131056c5e346f3a7bca4bd6ea55831"}}
+{"time": "2026-10-16T20:03:14+0700", "action": "tap", "label": "use-email", "result": {"point": [145.08, 422.12], "action": "tap", "configurationId": 2, "ok": true, "requestId": "41de5791588c4e70a3d2e9c50ce56934"}}
+{"time": "2026-10-16T20:03:16+0700", "action": "tap", "label": "open-month", "result": {"point": [151.27, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "52761738d6f844249985872fa5c648fc"}}
+{"time": "2026-10-16T20:03:18+0700", "action": "tap", "label": "select-month", "result": {"point": [145, 391], "action": "tap", "configurationId": 2, "ok": true, "requestId": "0dbb44aa02e54afebba56d474915b32c"}}
+{"time": "2026-10-16T20:03:20+0700", "action": "tap", "label": "open-day", "result": {"point": [199.81, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "ea41b931e70341fc94f6195476fe1a59"}}
+{"time": "2026-10-16T20:03:21+0700", "action": "tap", "label": "select-day", "result": {"point": [185, 405.2], "action": "tap", "configurationId": 2, "ok": true, "requestId": "4d2f071d630049249e3693307897ad46"}}
+{"time": "2026-10-16T20:03:24+0700", "action": "tap", "label": "open-year", "result": {"point": [248.36, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "1ed9b98dbed248399268ad4075b3f2ec"}}
+{"time": "2026-10-16T20:03:30+0700", "action": "tap", "label": "select-year", "result": {"action": "tap", "configurationId": 2, "ok": true, "requestId": "db87f5d6552043c4a40fc91b4db53193"}}
+{"time": "2026-10-16T20:03:39+0700", "action": "tap", "label": "focus-email-fixed", "result": {"point": [199.81, 405.44], "action": "tap", "configurationId": 2, "ok": true, "requestId": "fd39c3cd0e9d42a1a8fae4ad9d26ffa9"}}
+{"time": "2026-10-16T20:03:42+0700", "action": "paste-email", "label": "", "result": {"reason": "value-matched", "action": "paste-email", "configurationId": 2, "ok": true, "requestId": "553ac0bc192e4297a20450d0606d91f8"}}
+{"time": "2026-10-16T20:03:56+0700", "action": "snapshot", "label": "email-fixed-scale", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:04:12+0700", "action": "back", "label": "", "result": {"action": "back", "configurationId": 2, "ok": true, "requestId": "195f057bea3a40d78e666fb1bce57d2c"}}
+{"time": "2026-10-16T20:05:52+0700", "action": "tap", "label": "open-login", "result": {"point": [371.13, 19.31], "action": "tap", "configurationId": 2, "ok": true, "requestId": "74d1a0ef783a4a45beab26585ea86d27"}}
+{"time": "2026-10-16T20:05:57+0700", "action": "tap", "label": "open-signup", "result": {"point": [233.18, 501.59], "action": "tap", "configurationId": 2, "ok": true, "requestId": "cfed64c1cb0b43aba9d8fc16bec8ab08"}}
+{"time": "2026-10-16T20:05:59+0700", "action": "tap", "label": "signup-phone-email", "result": {"point": [199.63, 347.89], "action": "tap", "configurationId": 2, "ok": true, "requestId": "916b432db0b64802a85cab705d781827"}}
+{"time": "2026-10-16T20:06:02+0700", "action": "tap", "label": "use-email", "result": {"point": [145.08, 422.12], "action": "tap", "configurationId": 2, "ok": true, "requestId": "213d2620b4dd45969313085a737ba3a8"}}
+{"time": "2026-10-16T20:06:04+0700", "action": "tap", "label": "open-month", "result": {"point": [151.27, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "bbf11462ebe44587980d5537da516c12"}}
+{"time": "2026-10-16T20:06:06+0700", "action": "tap", "label": "select-month", "result": {"point": [145, 391], "action": "tap", "configurationId": 2, "ok": true, "requestId": "4df64003ad8a4f2ca6dfdfd7d72d7137"}}
+{"time": "2026-10-16T20:06:08+0700", "action": "tap", "label": "open-day", "result": {"point": [199.81, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "0d39e1fca54142d68a60d7e1ea5145dc"}}
+{"time": "2026-10-16T20:06:10+0700", "action": "tap", "label": "select-day", "result": {"point": [185, 405.2], "action": "tap", "configurationId": 2, "ok": true, "requestId": "4ad6cc5b9edb44cdb474ea149d884000"}}
+{"time": "2026-10-16T20:06:13+0700", "action": "tap", "label": "open-year", "result": {"point": [248.36, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "222631740bb34a7f99f68802a14cb6df"}}
+{"time": "2026-10-16T20:06:19+0700", "action": "tap", "label": "select-year", "result": {"action": "tap", "configurationId": 2, "ok": true, "requestId": "6bc17aebd5c64b7c99d14a9493a60eaa"}}
+{"time": "2026-10-16T20:06:48+0700", "action": "tap", "label": "focus-email-live", "result": {"point": [199.81, 405.44], "action": "tap", "configurationId": 2, "ok": true, "requestId": "ffd1be40f9dd4da8b07a5dd61ef4f337"}}
+{"time": "2026-10-16T20:06:52+0700", "action": "paste-email", "label": "", "result": {"reason": "value-matched", "action": "paste-email", "configurationId": 2, "ok": true, "requestId": "abc1456d02024a6bb0a5eae0f3c587d8"}}
+{"time": "2026-10-16T20:06:59+0700", "action": "snapshot", "label": "email-live", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:07:07+0700", "action": "back", "label": "", "result": {"action": "back", "configurationId": 2, "ok": true, "requestId": "bf1ab9cb5a6c482895aa11b96dd621af"}}
+{"time": "2026-10-16T20:08:09+0700", "action": "tap", "label": "open-login", "result": {"point": [371.13, 19.31], "action": "tap", "configurationId": 2, "ok": true, "requestId": "bb7c4343a99b4e7ab1b8514994b4e422"}}
+{"time": "2026-10-16T20:08:11+0700", "action": "tap", "label": "open-signup", "result": {"point": [233.18, 501.59], "action": "tap", "configurationId": 2, "ok": true, "requestId": "7a9c4a64c6a64ae9ae6533927645df33"}}
+{"time": "2026-10-16T20:08:13+0700", "action": "tap", "label": "signup-phone-email", "result": {"point": [199.63, 347.89], "action": "tap", "configurationId": 2, "ok": true, "requestId": "97a772aacbf746ae8479d6e2c96cdda0"}}
+{"time": "2026-10-16T20:08:15+0700", "action": "tap", "label": "use-email", "result": {"point": [145.08, 422.12], "action": "tap", "configurationId": 2, "ok": true, "requestId": "b334df44763a4b4cb2956a120904ab18"}}
+{"time": "2026-10-16T20:08:18+0700", "action": "tap", "label": "open-month", "result": {"point": [151.27, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "68165b6ae077451cad9ec0ff42f1d7dd"}}
+{"time": "2026-10-16T20:08:20+0700", "action": "tap", "label": "select-month", "result": {"point": [145, 391], "action": "tap", "configurationId": 2, "ok": true, "requestId": "a9d9e7a08cce44429bf8753a0fce280e"}}
+{"time": "2026-10-16T20:08:22+0700", "action": "tap", "label": "open-day", "result": {"point": [199.81, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "c2e0aad292974b0aab538aa982db42b2"}}
+{"time": "2026-10-16T20:08:24+0700", "action": "tap", "label": "select-day", "result": {"point": [185, 405.2], "action": "tap", "configurationId": 2, "ok": true, "requestId": "7bfccf28ba224d3cbbddac88d0d3bfee"}}
+{"time": "2026-10-16T20:08:26+0700", "action": "tap", "label": "open-year", "result": {"point": [248.36, 358.01], "action": "tap", "configurationId": 2, "ok": true, "requestId": "ca14276427814164b6429db07de0b552"}}
+{"time": "2026-10-16T20:08:32+0700", "action": "tap", "label": "select-year", "result": {"action": "tap", "configurationId": 2, "ok": true, "requestId": "29ec0d1ae82847f8bc25406ad350f996"}}
+{"time": "2026-10-16T20:09:08+0700", "action": "tap", "label": "focus-email-before-send", "result": {"point": [199.81, 405.44], "action": "tap", "configurationId": 2, "ok": true, "requestId": "7ff785169c584c33a2e252b25bf0807b"}}
+{"time": "2026-10-16T20:09:11+0700", "action": "paste-email", "label": "", "result": {"reason": "value-matched", "action": "paste-email", "configurationId": 2, "ok": true, "requestId": "5b9079637ead48918b51d8bc9314bc16"}}
+{"time": "2026-10-16T20:09:22+0700", "action": "tap", "label": "send-code", "result": {"point": [202.06, 466.17], "action": "tap", "configurationId": 2, "ok": true, "requestId": "9d7e6b3f61d841a989c75e4068472490"}}
+{"time": "2026-10-16T20:09:24+0700", "action": "snapshot", "label": "send-code-result", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:09:42+0700", "action": "snapshot", "label": "otp-form", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:09:50+0700", "action": "tap", "label": "focus-otp", "result": {"point": [146.39, 389.32], "action": "tap", "configurationId": 2, "ok": true, "requestId": "f404e96de16748e294f9af9767d7f734"}}
+{"time": "2026-10-16T20:27:07+0700", "action": "snapshot", "label": "otp-current", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:28:40+0700", "action": "snapshot", "label": "after-user-otp", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:29:04+0700", "action": "tap", "label": "refocus-otp", "result": {"point": [146.39, 389.32], "action": "tap", "configurationId": 2, "ok": true, "requestId": "3c10a5d3fe364cb5a0fa9d6a82daee50"}}
+{"time": "2026-10-16T20:29:16+0700", "action": "snapshot", "label": "otp-paste-refocused", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:30:01+0700", "action": "snapshot", "label": "otp-clipboard-sync", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:31:25+0700", "action": "tap", "label": "otp-paste-menu", "result": {"point": [127.4, 353.3], "action": "tap", "configurationId": 2, "ok": true, "requestId": "273a0cec78ca47cda31e6792ff97d13a"}}
+{"time": "2026-10-16T20:31:28+0700", "action": "snapshot", "label": "otp-context-paste-result", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:31:38+0700", "action": "tap", "label": "focus-password", "result": {"point": [202.06, 386.13], "action": "tap", "configurationId": 2, "ok": true, "requestId": "ac9fff6399a44725a607a86eea982e53"}}
+{"time": "2026-10-16T20:31:43+0700", "action": "paste-password", "label": "", "result": {"reason": "password-length-matched", "action": "paste-password", "configurationId": 2, "ok": true, "requestId": "5c0676eb69a84d74b66969e595d88ac1"}}
+{"time": "2026-10-16T20:31:49+0700", "action": "snapshot", "label": "password-ready", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:32:09+0700", "action": "tap", "label": "submit-password", "result": {"point": [202.06, 446.3], "action": "tap", "configurationId": 2, "ok": true, "requestId": "612db90adbdc4e9c9135ee12575649a2"}}
+{"time": "2026-10-16T20:32:13+0700", "action": "snapshot", "label": "signup-result", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:32:19+0700", "action": "snapshot", "label": "signup-result-settled", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:32:29+0700", "action": "tap", "label": "skip-username", "result": {"point": [202.06, 472.16], "action": "tap", "configurationId": 2, "ok": true, "requestId": "e66ccdb8af3940158156fc4d4a0a5674"}}
+{"time": "2026-10-16T20:32:33+0700", "action": "snapshot", "label": "after-skip", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:32:40+0700", "action": "snapshot", "label": "registration-finished", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T20:33:03+0700", "action": "snapshot", "label": "authenticated-home", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T21:10:41+0700", "action": "snapshot", "label": "birthday-error-current", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T21:11:00+0700", "action": "snapshot", "label": "birthday-year-open", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T21:14:56+0700", "action": "snapshot", "label": "birthday-fix-progress", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T21:18:45+0700", "action": "snapshot", "label": "birthday-fix-readback", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T21:19:20+0700", "action": "snapshot", "label": "birthday-fix-after-selection", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}
+{"time": "2026-10-16T21:20:23+0700", "action": "snapshot", "label": "birthday-fixed-verified", "result": {"ready": true, "webBounds": [6, 289, 1073, 2423]}}

@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/proxy_store.dart';
+import '../../core/webview_user_agent.dart';
 import '../../core/app_configuration.dart';
+import '../../core/account_password.dart';
 import '../../core/otp_api.dart';
 import '../../core/configuration_data.dart';
 import '../../core/configuration_file_import.dart';
-import '../../controller/proxy_form_controller.dart';
+import '../../core/nurture_data.dart';
+import '../../core/proxy_time_zone.dart';
+import '../../core/controller/proxy_form_controller.dart';
 import 'controller_scope.dart';
 import 'proxy_widgets.dart';
 
@@ -22,6 +27,7 @@ class ProxyForm extends StatelessWidget {
     required this.randomizeOnOpen,
     required this.generateUserAgent,
     this.pickImportFile,
+    this.detectTimeZone,
   });
 
   final SavedProxy? entry;
@@ -30,6 +36,8 @@ class ProxyForm extends StatelessWidget {
   final bool randomizeOnOpen;
   final Future<String> Function() generateUserAgent;
   final Future<ConfigurationImportFile?> Function()? pickImportFile;
+  final Future<String> Function(WebViewProxy proxy, String userAgent)?
+  detectTimeZone;
 
   @override
   Widget build(BuildContext context) => ControllerScope<ProxyFormController>(
@@ -38,6 +46,7 @@ class ProxyForm extends StatelessWidget {
       randomizeOnOpen: randomizeOnOpen,
       selectUserAgent: generateUserAgent,
       pickImportFile: pickImportFile,
+      detectTimeZone: detectTimeZone,
     ),
     builder: (logic) => _ProxyFormView(
       logic: logic,
@@ -122,7 +131,9 @@ class _ProxyFormView extends StatelessWidget {
                     color: ProxyColors.cyan,
                   ),
                   title: const Text('Dán từ clipboard'),
-                  subtitle: const Text('Mỗi cấu hình một dòng'),
+                  subtitle: const Text(
+                    'Dán nội dung cấu hình, mỗi dòng một cấu hình',
+                  ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   tileColor: ProxyColors.input,
                   shape: RoundedRectangleBorder(
@@ -217,6 +228,125 @@ class _ProxyFormView extends StatelessWidget {
     ),
   );
 
+  /// Cấu hình nuôi of one configuration, prefilled with the defaults.
+  List<Widget> _nurtureSettingsFields(
+    ConfigurationFormFields fields,
+    int index,
+  ) {
+    const d = NurtureSettings.defaults;
+    const maxMinutes = NurtureSettings.maxSessionMinutes;
+    String? number(String? value, int min, int max, String unit) {
+      final parsed = int.tryParse(value?.trim() ?? '');
+      if (parsed == null || parsed < min || parsed > max) {
+        return 'Từ $min đến $max$unit.';
+      }
+      return null;
+    }
+
+    Widget field(
+      String name,
+      TextEditingController controller,
+      String label,
+      String unit,
+      int fallback,
+      String? Function(String?) validator,
+    ) => TextFormField(
+      key: _configurationKey(name, index),
+      controller: controller,
+      keyboardType: TextInputType.number,
+      textInputAction: TextInputAction.next,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(3),
+      ],
+      decoration: InputDecoration(
+        labelText: label,
+        suffixText: unit.trim(),
+        helperText: 'Mặc định: $fallback$unit',
+        errorMaxLines: 2,
+      ),
+      validator: validator,
+    );
+
+    String? rate(String? value) => number(value, 0, 100, '%');
+    Widget pair(Widget first, Widget second) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: first),
+        const SizedBox(width: 12),
+        Expanded(child: second),
+      ],
+    );
+
+    return [
+      _fieldLabel(
+        'Cấu hình nuôi',
+        action: TextButton(
+          key: _configurationKey('resetNurtureSettings', index),
+          onPressed: () => logic.mutate(() => fields.showNurtureSettings(d)),
+          child: const Text('Mặc định'),
+        ),
+      ),
+      pair(
+        field(
+          'nurtureLikePercent',
+          fields.nurtureLikePercent,
+          'Thả tim',
+          '%',
+          d.likePercent,
+          rate,
+        ),
+        field(
+          'nurtureCommentPercent',
+          fields.nurtureCommentPercent,
+          'Bình luận',
+          '%',
+          d.commentPercent,
+          rate,
+        ),
+      ),
+      const SizedBox(height: 12),
+      field(
+        'nurtureLongWatchPercent',
+        fields.nurtureLongWatchPercent,
+        'Tỷ lệ xem lâu (không vuốt ngay)',
+        '%',
+        d.longWatchPercent,
+        rate,
+      ),
+      const SizedBox(height: 12),
+      pair(
+        field(
+          'nurtureMinMinutes',
+          fields.nurtureMinMinutes,
+          'Nuôi tối thiểu',
+          ' phút',
+          d.minMinutes,
+          (value) => number(value, 1, maxMinutes, ' phút'),
+        ),
+        field(
+          'nurtureMaxMinutes',
+          fields.nurtureMaxMinutes,
+          'Nuôi tối đa',
+          ' phút',
+          d.maxMinutes,
+          (value) =>
+              number(value, 1, maxMinutes, ' phút') ??
+              ((int.tryParse(fields.nurtureMinMinutes.text.trim()) ?? 0) >
+                      int.parse(value!.trim())
+                  ? 'Phải ≥ thời gian tối thiểu.'
+                  : null),
+        ),
+      ),
+      const SizedBox(height: 6),
+      const Text(
+        'Video được thả tim hoặc bình luận luôn xem hết; video còn lại xem '
+        'lâu theo tỷ lệ trên, nếu không thì vuốt sau vài giây.',
+        style: TextStyle(fontSize: 12, height: 1.4, color: ProxyColors.muted),
+      ),
+    ];
+  }
+
   Key _configurationKey(String name, int index) =>
       Key(index == 0 ? name : '$name-$index');
 
@@ -236,6 +366,7 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedProxyUrl', index),
           controller: fields.url,
+          onChanged: (_) => logic.update(),
           autocorrect: false,
           keyboardType: TextInputType.url,
           textInputAction: TextInputAction.next,
@@ -257,6 +388,7 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedProxyUsername', index),
           controller: fields.username,
+          onChanged: (_) => logic.update(),
           autocorrect: false,
           textInputAction: TextInputAction.next,
           decoration: const InputDecoration(
@@ -269,6 +401,7 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedProxyPassword', index),
           controller: fields.password,
+          onChanged: (_) => logic.update(),
           autocorrect: false,
           enableSuggestions: false,
           textInputAction: TextInputAction.next,
@@ -309,7 +442,7 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedProxyUserAgent', index),
           controller: fields.userAgent,
-          onChanged: (_) => logic.update(),
+          onChanged: (_) => logic.normalizeUserAgentFor(fields),
           enabled: !fields.generating,
           autocorrect: false,
           enableSuggestions: false,
@@ -318,6 +451,10 @@ class _ProxyFormView extends StatelessWidget {
           style: const TextStyle(fontSize: 12, height: 1.6),
           decoration: InputDecoration(
             hintText: 'Nhập User-Agent trên một dòng',
+            helperText: needsAndroidDesktopIdentity
+                ? 'Mặc định TikTok và kiểm tra proxy dùng Chrome theo WebView đang cài. '
+                      'Mẫu lưu ở đây chỉ dùng khi chọn User-Agent đã chọn (thủ công) trong màn TikTok.'
+                : null,
             helperMaxLines: 4,
           ),
           validator: (value) =>
@@ -327,6 +464,18 @@ class _ProxyFormView extends StatelessWidget {
               ? 'Nhập User-Agent hợp lệ trên một dòng.'
               : null,
         ),
+        if (needsAndroidDesktopIdentity)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: _configurationKey('useMiuiUserAgent', index),
+              onPressed: fields.generating
+                  ? null
+                  : () => logic.useMiuiUserAgentFor(fields),
+              icon: const Icon(Icons.phone_android, size: 16),
+              label: const Text('Dùng Miui Browser 14 (Desktop)'),
+            ),
+          ),
         if (fields.generationFailed)
           const Padding(
             padding: EdgeInsets.only(top: 10),
@@ -336,17 +485,86 @@ class _ProxyFormView extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 20),
-        SwitchListTile(
-          key: _configurationKey('savedAccountStatus', index),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Đã đăng ký', style: _fieldLabelStyle),
-          value: fields.statusAccount == AccountStatus.registered,
-          onChanged: (value) => logic.mutate(
-            () => fields.statusAccount = value
-                ? AccountStatus.registered
-                : AccountStatus.unregistered,
+        _fieldLabel(
+          'Múi giờ WebView',
+          action: TextButton.icon(
+            key: _configurationKey('detectProxyTimeZone', index),
+            onPressed: !logic.canDetectTimeZone || fields.detectingTimeZone
+                ? null
+                : () => logic.detectTimeZoneFor(fields),
+            icon: fields.detectingTimeZone
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh, size: 16),
+            label: Text(
+              fields.detectingTimeZone ? 'Đang tra…' : 'Tra theo proxy',
+            ),
           ),
         ),
+        TextFormField(
+          key: _configurationKey('savedProxyTimeZone', index),
+          controller: fields.timeZoneId,
+          autocorrect: false,
+          enableSuggestions: false,
+          textInputAction: TextInputAction.next,
+          onChanged: (_) => logic.mutate(() => fields.timeZoneError = null),
+          decoration: const InputDecoration(
+            hintText: 'America/New_York',
+            helperText: 'Mã múi giờ IANA. Để trống để tự tra khi mở WebView.',
+            helperMaxLines: 2,
+            prefixIcon: Icon(Icons.schedule, size: 20),
+          ),
+          validator: (value) {
+            try {
+              normalizeProxyTimeZone(value);
+              return null;
+            } on FormatException catch (error) {
+              return error.message;
+            }
+          },
+        ),
+        if (fields.timeZoneError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              fields.timeZoneError!,
+              style: const TextStyle(color: ProxyColors.amber, fontSize: 12),
+            ),
+          ),
+        const SizedBox(height: 16),
+        _fieldLabel(
+          'Thiết bị (GPU)',
+          action: TextButton.icon(
+            key: _configurationKey('changeGpuProfile', index),
+            onPressed: () => logic.mutate(fields.changeGpuProfile),
+            icon: const Icon(Icons.refresh, size: 16),
+            label: const Text('Đổi'),
+          ),
+        ),
+        // Read-only: chosen at random, only Đổi or a backup changes it.
+        InputDecorator(
+          decoration: const InputDecoration(
+            helperText: 'GPU điện thoại mà trang web thấy qua WebGL.',
+            prefixIcon: Icon(Icons.smartphone, size: 20),
+          ),
+          child: Text(
+            fields.gpuProfile.label,
+            key: _configurationKey('savedGpuProfile', index),
+          ),
+        ),
+        const SizedBox(height: 20),
+        SwitchListTile(
+          key: _configurationKey('savedNurtureAfterSignup', index),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Nuôi sau khi đăng ký', style: _fieldLabelStyle),
+          value: fields.nurtureAfterSignup,
+          onChanged: (value) => logic.setNurtureAfterSignup(fields, value),
+        ),
+        const SizedBox(height: 8),
+        ..._nurtureSettingsFields(fields, index),
         const SizedBox(height: 16),
         _fieldLabel('Email đăng ký'),
         TextFormField(
@@ -369,9 +587,19 @@ class _ProxyFormView extends StatelessWidget {
           controller: fields.accountPassword,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Nhập mật khẩu TikTok',
-            prefixIcon: Icon(Icons.lock_outline, size: 20),
+            prefixIcon: const Icon(Icons.lock_outline, size: 20),
+            helperText:
+                'Tự tạo 9–13 ký tự: chữ đầu viết hoa, 2 số cuối. Giữ mật khẩu từ import.',
+            helperMaxLines: 2,
+            suffixIcon: IconButton(
+              tooltip: 'Tạo mật khẩu khác',
+              onPressed: () => logic.mutate(
+                () => fields.accountPassword.text = generateAccountPassword(),
+              ),
+              icon: const Icon(Icons.refresh),
+            ),
           ),
           validator: (value) => value == null || value.trim().isEmpty
               ? 'Nhập mật khẩu TikTok.'
@@ -391,6 +619,18 @@ class _ProxyFormView extends StatelessWidget {
           validator: (value) => value == null || value.trim().isEmpty
               ? 'Nhập mật khẩu email lấy OTP.'
               : null,
+        ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          key: _configurationKey('savedAccountStatus', index),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Đã đăng ký', style: _fieldLabelStyle),
+          value: fields.statusAccount == AccountStatus.registered,
+          onChanged: (value) => logic.mutate(
+            () => fields.statusAccount = value
+                ? AccountStatus.registered
+                : AccountStatus.unregistered,
+          ),
         ),
       ],
     ),
@@ -429,7 +669,8 @@ class _ProxyFormView extends StatelessWidget {
                           TextFormField(
                             key: const Key('proxyImportData'),
                             controller: logic.importData,
-                            enabled: !logic.importing,
+                            enabled:
+                                !(logic.importing || logic.detectingTimeZones),
                             autocorrect: false,
                             enableSuggestions: false,
                             keyboardType: TextInputType.multiline,
@@ -438,9 +679,10 @@ class _ProxyFormView extends StatelessWidget {
                             maxLines: 8,
                             onChanged: logic.clearImportError,
                             decoration: InputDecoration(
-                              hintText: 'Dán dữ liệu',
+                              hintText: 'Dán nội dung cấu hình',
                               helperText:
-                                  'host:port:user:pass email|mật khẩu TikTok|mật khẩu email OTP[|0/1]\n'
+                                  'Để đọc Excel/TXT, chọn Import data > Từ file.\n'
+                                  'host:port:user:pass|email|mật khẩu TikTok|mật khẩu email OTP[|0/1]\n'
                                   'Mỗi dòng một cấu hình. 1: đã đăng ký; 0 hoặc bỏ qua: chưa đăng ký.',
                               helperMaxLines: 6,
                               errorText: logic.importError,
@@ -448,7 +690,9 @@ class _ProxyFormView extends StatelessWidget {
                               suffixIcon: IconButton(
                                 key: const Key('applyProxyImportData'),
                                 tooltip: 'Import dữ liệu đã nhập',
-                                onPressed: logic.importing
+                                onPressed:
+                                    (logic.importing ||
+                                        logic.detectingTimeZones)
                                     ? null
                                     : logic.importProxy,
                                 icon: const Icon(Icons.check_rounded, size: 20),
@@ -458,7 +702,8 @@ class _ProxyFormView extends StatelessWidget {
                           const SizedBox(height: 10),
                           OutlinedButton.icon(
                             key: const Key('importProxyData'),
-                            onPressed: logic.importing
+                            onPressed:
+                                (logic.importing || logic.detectingTimeZones)
                                 ? null
                                 : () => _showImportOptions(context),
                             icon: const Icon(
@@ -466,7 +711,11 @@ class _ProxyFormView extends StatelessWidget {
                               size: 19,
                             ),
                             label: Text(
-                              logic.importing ? 'Đang import…' : 'Import data',
+                              logic.importing
+                                  ? 'Đang import…'
+                                  : logic.detectingTimeZones
+                                  ? 'Đang tra múi giờ…'
+                                  : 'Import data',
                             ),
                           ),
                         ],
@@ -474,16 +723,18 @@ class _ProxyFormView extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                   ],
-                  if (logic.hasMultipleImports)
+                  if (logic.hasMultipleImports) ...[
                     _fieldLabel(
                       '${logic.configurations.length} cấu hình',
                       action: TextButton(
-                        onPressed: logic.importing
+                        onPressed: (logic.importing || logic.detectingTimeZones)
                             ? null
                             : logic.clearImportedConfigurations,
                         child: const Text('Bỏ danh sách'),
                       ),
                     ),
+                    const SizedBox(height: 8),
+                  ],
                   for (
                     var index = 0;
                     index < logic.configurations.length;
@@ -512,7 +763,7 @@ class _ProxyFormView extends StatelessWidget {
               key: const Key('saveProxyEntry'),
               onPressed:
                   logic.generating ||
-                      logic.importing ||
+                      (logic.importing || logic.detectingTimeZones) ||
                       logic.configurations.any(
                         (fields) => fields.userAgent.text.trim().isEmpty,
                       )

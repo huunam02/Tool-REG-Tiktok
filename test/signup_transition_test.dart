@@ -1,6 +1,6 @@
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:test_tiktok/controller/tiktok_controller.dart';
+import 'package:test_tiktok/core/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/otp_api.dart';
 import 'package:test_tiktok/core/scripts/auto_signup_script.dart';
@@ -16,12 +16,13 @@ void main() {
         var now = DateTime(2026, 10, 14);
         final view = _SignupView();
         final notices = <String>[];
+        final reader = _OtpReader();
         final logic = TikTokController(
           configuration: AppConfiguration(
             userAgent: 'test-agent',
             comments: [],
-            signupEmail: 'signup@example.com',
-            signupPassword: 'signup-password',
+            signupEmail: '',
+            signupPassword: '',
             loginUsername: '',
             loginPassword: '',
             signupMailboxPassword: 'mail-password',
@@ -31,7 +32,7 @@ void main() {
             ),
           ),
           useAccessibility: false,
-          otpReaderFactory: (_) => _OtpReader(),
+          otpReaderFactory: (_) => reader,
           now: () => now,
         )..onInit();
         logic.webViewController = InAppWebViewController.fromPlatform(
@@ -49,8 +50,20 @@ void main() {
           await tester.pump();
         }
 
+        await step('waiting-manual-email');
+        expect(
+          view.sources.last,
+          contains('"manualAccessibilityButtons":false'),
+        );
+        expect(view.sources.last, contains('"manualFieldInput":true'));
+        expect(logic.signupStatus, 'Hãy nhập email trên TikTok.');
+        expect(logic.signupOtpRequest, isNull);
         await step('verification-requested');
-        await step('waiting-otp-paste');
+        await step('waiting-manual-otp');
+        expect(logic.signupStatus, 'Hãy nhập đủ 6 số OTP trên TikTok.');
+        expect(logic.autoSignupBusy, isTrue);
+        expect(reader.requests, 0);
+        await step('otp-submitted');
         await step('verification-required');
         expect(logic.autoSignupBusy, isTrue);
         expect(notices, isEmpty);
@@ -67,16 +80,21 @@ void main() {
         } else {
           await step('waiting-password-screen');
           await step('waiting-next');
-          await step('waiting-password-submit');
+          await step('waiting-manual-password');
           expect(logic.autoSignupBusy, isTrue);
           expect(view.sources.last, contains('"allowPasswordSubmit":true'));
+          expect(logic.signupStatus, 'Hãy nhập mật khẩu trên TikTok.');
           await step('password-submitted');
+          await step('username-skipped');
           await step('signup-success');
           await signup;
           expect(notices, ['Đăng ký TikTok thành công.']);
-          expect(view.watchStarted, isTrue);
+          expect(view.watchStarted, isFalse);
+          expect(logic.autoWatchEnabled, isFalse);
           expect(view.stopCalls, 1);
         }
+        expect(reader.requests, 0);
+        logic.onClose();
       },
     );
   }
@@ -112,11 +130,15 @@ class _SignupView extends PlatformInAppWebViewController {
 }
 
 class _OtpReader implements OtpCodeReader {
+  int requests = 0;
   @override
   Future<String> fetchCode({
     required String email,
     required String password,
-  }) async => '012345';
+  }) async {
+    requests++;
+    return '012345';
+  }
 
   @override
   void close() {}

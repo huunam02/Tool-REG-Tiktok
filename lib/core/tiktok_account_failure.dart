@@ -1,8 +1,11 @@
 /// Translate account errors that TikTok logs without displaying in its dialog.
 /// Never retain raw console messages: they may contain account information.
 class TikTokAccountFailure {
-  const TikTokAccountFailure(this.title, this.message,
-      {required this.priority});
+  const TikTokAccountFailure(
+    this.title,
+    this.message, {
+    required this.priority,
+  });
 
   final String title;
   final String message;
@@ -29,9 +32,9 @@ class TikTokAccountFailure {
     ).hasMatch(message);
     if (!accountMessage) return null;
     if (RegExp(
-            r'maximum number of attempts reached|too many (attempts|requests)',
-            caseSensitive: false)
-        .hasMatch(message)) {
+      r'maximum number of attempts reached|too many (attempts|requests)',
+      caseSensitive: false,
+    ).hasMatch(message)) {
       return rateLimited;
     }
     if (RegExp(r'get region err', caseSensitive: false).hasMatch(message)) {

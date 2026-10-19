@@ -9,6 +9,8 @@ import 'package:xml/xml.dart';
 
 import 'configuration_data.dart';
 import 'data_excel_layout.dart';
+import 'gpu_profile.dart';
+import 'nurture_data.dart';
 
 class ConfigurationImportFile {
   const ConfigurationImportFile(this.name, this.bytes);
@@ -87,8 +89,21 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
         matchesExcelHeaders(headers, nurtureExcelHeaders)) {
       continue;
     }
+    final columns = {
+      for (var i = 0; i < headers.length; i++) headers[i].trim(): i,
+    };
+    // Exports since Cấu hình nuôi start with the configuration columns and
+    // carry its columns; other columns are found by header or ignored.
+    final withNurtureSettings =
+        headers.length > configurationExcelHeaders.length &&
+        matchesExcelHeaders(
+          headers.take(configurationExcelHeaders.length).toList(),
+          configurationExcelHeaders,
+        ) &&
+        nurtureSettingsExcelHeaders.every(columns.containsKey);
     final combinedExport =
-        matchesExcelHeaders(headers, dataExcelHeaders) ||
+        withNurtureSettings ||
+        matchesExcelHeaders(headers, previousDataExcelHeaders) ||
         matchesExcelHeaders(headers, legacyDataExcelHeaders);
     final exportedConfiguration =
         combinedExport ||
@@ -115,6 +130,12 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
             [0, 2, 3, 4].every((column) => cells[column].trim().isEmpty)) {
           continue;
         }
+        final nurtureSettings = withNurtureSettings
+            ? _readNurtureSettings(cells, columns)
+            : null;
+        final gpuProfileId = withNurtureSettings
+            ? _readGpuProfile(cells, columns)
+            : null;
         // Additional exported configuration columns are for reference only.
         if (exportedConfiguration && cells.length > 5) {
           cells.removeRange(5, cells.length);
@@ -127,7 +148,12 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
             'hoặc các cột proxy, email, mật khẩu TikTok, mật khẩu email, trạng thái (không bắt buộc).',
           ),
         };
-        records.add(ImportedConfiguration.parse(line));
+        records.add(
+          ImportedConfiguration.parse(line).copyWith(
+            nurtureSettings: nurtureSettings,
+            gpuProfileId: gpuProfileId,
+          ),
+        );
       } on FormatException catch (error) {
         throw FormatException(
           'Sheet ${sheet.key}, dòng ${index + 1}: ${error.message}',
@@ -217,4 +243,52 @@ List<int> _normalizeExcelXml(Uint8List bytes) {
     }
   }
   return changed ? ZipEncoder().encode(archive) : bytes;
+}
+
+/// Cấu hình nuôi columns of a combined export row; empty cells use the
+/// defaults.
+NurtureSettings _readNurtureSettings(
+  List<String> cells,
+  Map<String, int> columns,
+) {
+  const d = NurtureSettings.defaults;
+  int read(int offset, int fallback) {
+    final index = columns[nurtureSettingsExcelHeaders[offset]]!;
+    final text = index < cells.length
+        ? cells[index].trim().replaceFirst(RegExp(r'\s*%$'), '')
+        : '';
+    if (text.isEmpty) return fallback;
+    final value = int.tryParse(text) ?? double.tryParse(text)?.round();
+    if (value == null) {
+      throw FormatException(
+        'Cột "${nurtureSettingsExcelHeaders[offset]}" phải là số nguyên.',
+      );
+    }
+    return value;
+  }
+
+  final settings = NurtureSettings(
+    likePercent: read(0, d.likePercent),
+    commentPercent: read(1, d.commentPercent),
+    longWatchPercent: read(2, d.longWatchPercent),
+    minMinutes: read(3, d.minMinutes),
+    maxMinutes: read(4, d.maxMinutes),
+  );
+  final error = settings.error;
+  if (error != null) throw FormatException(error);
+  return settings;
+}
+
+/// The Thiết bị GPU cell (id or device name); null when absent or empty.
+String? _readGpuProfile(List<String> cells, Map<String, int> columns) {
+  final index = columns[gpuProfileExcelHeader];
+  final text = index != null && index < cells.length ? cells[index] : '';
+  if (text.trim().isEmpty) return null;
+  final profile = GpuProfile.find(text);
+  if (profile == null) {
+    throw FormatException(
+      'Cột "$gpuProfileExcelHeader": không có thiết bị "${text.trim()}".',
+    );
+  }
+  return profile.id;
 }

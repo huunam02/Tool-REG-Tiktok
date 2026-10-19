@@ -352,10 +352,9 @@ class _TikTokView extends StatelessWidget {
                       webViewTimeZoneUserScript(
                         logic.configuration.webViewTimeZone!,
                       ),
-                    if (!logic.usesEngineIdentity) pixelGpuInfoUserScript(),
-                    disableWebRtcUserScript(
-                      localIp: logic.configuration.webViewLocalIp,
-                    ),
+                    // Every mode reports the configuration's phone GPU.
+                    gpuInfoUserScript(logic.configuration.gpuProfile),
+                    disableWebRtcUserScript(),
                     if (forceEnglishWebViewLocale && !logic.useNativeWebView)
                       englishWebViewLocaleUserScript(),
                     if (!logic.useNativeWebView &&

@@ -9,18 +9,20 @@ class TestSessionPlatform extends InAppWebViewPlatform {
 
   @override
   PlatformCookieManager createPlatformCookieManager(
-          PlatformCookieManagerCreationParams params) =>
-      _Cookies(params, this);
+    PlatformCookieManagerCreationParams params,
+  ) => _Cookies(params, this);
 
   @override
   PlatformWebStorageManager createPlatformWebStorageManager(
-          PlatformWebStorageManagerCreationParams params) =>
-      _Storage(params, this);
+    PlatformWebStorageManagerCreationParams params,
+  ) => _Storage(params, this);
 
   @override
   PlatformInAppWebViewController createPlatformInAppWebViewControllerStatic() =>
       _Controller(
-          const PlatformInAppWebViewControllerCreationParams(id: null), this);
+        const PlatformInAppWebViewControllerCreationParams(id: null),
+        this,
+      );
 }
 
 class _Cookies extends PlatformCookieManager {

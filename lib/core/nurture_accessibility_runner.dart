@@ -343,6 +343,8 @@ class NurtureAccessibilityRunner {
     this.onLike,
     this.onLikeSkipped,
     this.likeRate = defaultLikeRate,
+    this.commentRate = defaultCommentRate,
+    this.longWatchRate = defaultLongWatchRate,
     this.searchKeyword,
     Random? random,
     DateTime Function()? now,
@@ -365,6 +367,16 @@ class NurtureAccessibilityRunner {
   /// Share of posts that are liked (0–1). A liked post is watched in full.
   final double likeRate;
   static const defaultLikeRate = .3;
+
+  /// Share of posts that get a comment (0–1). A commented post is watched in
+  /// full.
+  final double commentRate;
+  static const defaultCommentRate = .2;
+
+  /// Share of the other posts watched in full (up to a minute) instead of
+  /// being swiped after a few seconds (0–1).
+  final double longWatchRate;
+  static const defaultLongWatchRate = .5;
 
   /// Search-mode nurture: the keyword is entered and submitted through
   /// Accessibility, then a result from the Videos tab is watched. Null or
@@ -472,18 +484,17 @@ class NurtureAccessibilityRunner {
     final watch = min(video.duration, cap ?? video.duration);
     final like =
         video.like != null && watch >= 4 && _random.nextDouble() < likeRate;
-    // A liked post is watched in full.
-    final full = like || _random.nextBool();
+    // Comment early in the (short) watch: from 3s to half of it, at most 20s.
+    final latest = min((watch * .5).floor(), _latestCommentSeconds);
+    final comment =
+        latest >= 3 &&
+        comments.isNotEmpty &&
+        _random.nextDouble() < commentRate;
+    // A liked or commented post is watched in full.
+    final full = like || comment || _random.nextDouble() < longWatchRate;
     final likeLatest = min(watch ~/ 2, _latestLikeSeconds);
     final likeAt = like ? 2 + _random.nextInt(likeLatest - 1) : -1;
-    // Comment early in the (short) watch: from 3s to half of it, at most 20s.
-    final latest = min(
-      (min(video.duration, cap ?? video.duration) * .5).floor(),
-      _latestCommentSeconds,
-    );
-    final commentAt = latest >= 3 && comments.isNotEmpty
-        ? 3 + _random.nextInt(latest - 2)
-        : -1;
+    final commentAt = comment ? 3 + _random.nextInt(latest - 2) : -1;
     return _WatchPlan(
       full,
       min(2 + _random.nextInt(4), max(1, video.duration ~/ 2)),

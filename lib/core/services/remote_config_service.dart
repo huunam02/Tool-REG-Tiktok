@@ -97,6 +97,12 @@ class RemoteConfig {
       };
     } catch (_) {
       // The defaults are available before Firebase or platform channels are ready.
+    } finally {
+      if (kDebugMode) {
+        for (final key in RemoteConfigKey.values) {
+          debugPrint('[RemoteConfig] ${key.name} = ${getString(key)}');
+        }
+      }
     }
   }
 }

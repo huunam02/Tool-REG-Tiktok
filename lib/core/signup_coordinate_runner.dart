@@ -30,7 +30,7 @@ class SignupCoordinateProfile {
       );
 }
 
-/// UI input is exclusively Accessibility gestures + ACTION_PASTE. No DOM input.
+/// UI input uses Accessibility gestures and editor actions. No DOM input.
 /// Coordinates are recorded; Accessibility nodes validate the expected target.
 class SignupCoordinateRunner {
   SignupCoordinateRunner({
@@ -101,8 +101,16 @@ class SignupCoordinateRunner {
     await _guard();
   }
 
-  Future<void> _pauseAfterAction({bool afterOtp = false}) =>
-      _pause(afterOtp ? 650 : 2000 + _random.nextInt(5001));
+  Future<void> _pauseAfterAction({
+    bool afterOtp = false,
+    bool birthdayAction = false,
+  }) => _pause(
+    afterOtp
+        ? 650
+        : birthdayAction
+        ? 1000 + _random.nextInt(2001)
+        : 2000 + _random.nextInt(5001),
+  );
 
   Future<SignupSnapshot> _snapshot({bool allowNotReady = false}) async {
     await _guard();
@@ -294,6 +302,7 @@ class SignupCoordinateRunner {
     bool editable = false,
     bool Function(SignupNode)? where,
     Future<void> Function()? onTapped,
+    bool birthdayAction = false,
   }) async {
     if (_actions.contains(name)) {
       throw StateError('Bước $name đã thực hiện, không bấm lại.');
@@ -314,7 +323,7 @@ class SignupCoordinateRunner {
     _actions.add(name); // A gesture is never repeated on timeout/navigation.
     await accessibility.tap(snapshot.viewport, point);
     await onTapped?.call();
-    await _pauseAfterAction();
+    await _pauseAfterAction(birthdayAction: birthdayAction);
   }
 
   Future<void> _paste(String field, String text) async {
@@ -466,6 +475,7 @@ class SignupCoordinateRunner {
       await _tap(
         'open-${field.toLowerCase()}',
         expected: RegExp(field, caseSensitive: false),
+        birthdayAction: true,
       );
     }
     onStatus('Đang mở danh sách $field…');
@@ -478,7 +488,7 @@ class SignupCoordinateRunner {
     if (menu?.expanded != true) {
       throw StateError('Chưa đọc được danh sách $field đang mở.');
     }
-    final seen = <String>{};
+    final visits = <String, int>{};
     for (var scrolls = 0; scrolls < 80; scrolls++) {
       final snapshot = await _snapshot();
       menu = await _birthdayMenu(snapshot, field);
@@ -492,7 +502,7 @@ class SignupCoordinateRunner {
       if (matches.isNotEmpty) {
         final visible = matches.first.bounds.intersect(listBounds);
         await accessibility.tap(snapshot.viewport, visible.center);
-        await _pauseAfterAction();
+        await _pauseAfterAction(birthdayAction: true);
         await _wait(
           (s) =>
               _birthdayValue(s, field, value) && !s.nodes.any((n) => n.picker),
@@ -516,7 +526,15 @@ class SignupCoordinateRunner {
         throw StateError('Danh sách $field không có mục $value.');
       }
       final signature = visibleValues.join(',');
-      if (!seen.add(signature)) {
+      final attempts = visits.update(
+        signature,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+      // dispatchGesture can complete without scrolling a busy HTML dropdown.
+      // Retry at most three swipes for the same visible range; one missed
+      // gesture or stale read must not abort an otherwise usable form.
+      if (attempts > 3) {
         throw StateError('Danh sách $field không cuộn tới $value; đã dừng.');
       }
       final ascending =
@@ -527,14 +545,16 @@ class SignupCoordinateRunner {
         throw StateError('Thiếu mục $value trong danh sách $field.');
       }
       final forward = ascending ? target > max : target < min;
-      final top = listBounds.top + listBounds.height * 0.2;
-      final bottom = listBounds.bottom - listBounds.height * 0.2;
+      // Use more of the list on recovery, keeping both ends inside its bounds.
+      final inset = attempts == 1 ? 0.2 : 0.1;
+      final top = listBounds.top + listBounds.height * inset;
+      final bottom = listBounds.bottom - listBounds.height * inset;
       await accessibility.swipe(
         snapshot.viewport,
         Offset(listBounds.center.dx, forward ? bottom : top),
         Offset(listBounds.center.dx, forward ? top : bottom),
       );
-      await _pauseAfterAction();
+      await _pauseAfterAction(birthdayAction: true);
     }
     throw StateError('Chưa tìm được $value trong danh sách $field.');
   }

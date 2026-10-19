@@ -14,6 +14,7 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/otp_settings_store.dart';
 import 'package:test_tiktok/core/scripts/auto_login_script.dart';
+import 'package:test_tiktok/core/services/remote_config_service.dart';
 import 'package:test_tiktok/core/scripts/auto_logout_script.dart';
 import 'package:test_tiktok/core/scripts/auto_signup_script.dart';
 import 'package:test_tiktok/core/scripts/auto_watch_script.dart';
@@ -354,7 +355,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('runAccountAction')));
+      await tester.tap(find.byKey(const Key('signupTab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Key('signupConfiguration-$first')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('signupAll')));
       await tester.pumpAndSettle();
       expect(clears, 1);
       expect(find.byKey(const Key('autoRunBanner')), findsNothing);
@@ -468,7 +473,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('nurtureTab')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('Nuôi toàn bộ (2 tài khoản'), findsOneWidget);
+      expect(find.text('Tài khoản đã đăng ký số lượng: 2'), findsOneWidget);
+      expect(find.text('Chạy nuôi lần lượt các tài khoản'), findsOneWidget);
+      // Tapping an account nurtures it first.
+      await tester.tap(find.byKey(const Key('nurtureAccount-b@example.com')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('nurtureAll')));
       await tester.pumpAndSettle();
       var page = tester.widget<TikTokPage>(find.byType(TikTokPage));
@@ -513,11 +522,192 @@ void main() {
   );
 
   testWidgets(
-    'manual login from Home nurtures and keeps the account signed in',
+    'Đăng ký lists pending configurations and runs the tapped one first',
     (tester) async {
       final restore = fakeWebView(tester);
       addTearDown(restore);
-      final platform = InAppWebViewPlatform.instance! as _Platform;
+      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final store = MemoryProxyStore();
+      AccountCredentials account(String name) => AccountCredentials(
+        email: '$name@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      );
+      final a = await store.save(name: 'A', proxy: null, account: account('a'));
+      final registered = await store.save(
+        name: 'Registered',
+        proxy: null,
+        account: account('r'),
+        statusAccount: AccountStatus.registered,
+      );
+      final failed = await store.save(
+        name: 'Failed',
+        proxy: null,
+        account: account('f'),
+      );
+      await store.recordSignupFailure(failed, 'f@example.com', message: 'x');
+      final noAccount = await store.save(name: 'Empty', proxy: null);
+      final b = await store.save(name: 'B', proxy: null, account: account('b'));
+      final c = await store.save(name: 'C', proxy: null, account: account('c'));
+      await store.useSaved(b);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            userAgent: 'agent',
+            proxyStore: store,
+            clearSession: () async {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('signupTab')));
+      await tester.pumpAndSettle();
+      expect(find.text('Chờ đăng ký: 3'), findsOneWidget);
+      for (final id in [registered, failed, noAccount]) {
+        expect(find.byKey(Key('signupConfiguration-$id')), findsNothing);
+      }
+      // Newest first; the top one runs first until another is tapped.
+      final top = tester.getTopLeft(find.byKey(Key('signupConfiguration-$c')));
+      expect(
+        tester.getTopLeft(find.byKey(Key('signupConfiguration-$a'))).dy,
+        greaterThan(top.dy),
+      );
+      expect(currentHome(tester).signupPriority?.id, c);
+      await tester.tap(find.byKey(Key('signupConfiguration-$a')));
+      await tester.pumpAndSettle();
+      expect(currentHome(tester).signupPriority?.id, a);
+      expect(
+        find.descendant(
+          of: find.byKey(Key('signupConfiguration-$a')),
+          matching: find.text('Chạy trước'),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('signupAll')));
+      await tester.pumpAndSettle();
+      var page = tester.widget<TikTokPage>(find.byType(TikTokPage));
+      expect(page.configuration.configurationId, a);
+      expect(page.launchAction, TikTokLaunchAction.signup);
+      // A finished account hands over to the next one in the list.
+      tester
+          .state<NavigatorState>(find.byType(Navigator))
+          .pop(TikTokFlowResult.signupLoggedOut);
+      await tester.pumpAndSettle();
+      await skipAutoRunPause(tester);
+      page = tester.widget<TikTokPage>(find.byType(TikTokPage));
+      expect(page.configuration.configurationId, c);
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TikTokPage), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await restore();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final failed in [false, true]) {
+    testWidgets(
+      '${failed ? 'Cấu hình lỗi' : 'Nuôi'} runs the tapped item first, '
+      'then the list in its shown order',
+      (tester) async {
+        final restore = fakeWebView(tester);
+        addTearDown(restore);
+        await tester.binding.setSurfaceSize(const Size(900, 1400));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final store = MemoryProxyStore();
+        final ids = <int>[];
+        for (final name in ['a', 'b', 'c']) {
+          final id = await store.save(
+            name: name,
+            proxy: null,
+            account: AccountCredentials(
+              email: '$name@example.com',
+              password: 'password',
+              mailboxPassword: 'mail',
+            ),
+            statusAccount: failed
+                ? AccountStatus.unregistered
+                : AccountStatus.registered,
+          );
+          if (failed) {
+            await store.recordSignupFailure(
+              id,
+              '$name@example.com',
+              message: 'x',
+            );
+          }
+          ids.add(id);
+        }
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomePage(
+              userAgent: 'agent',
+              proxyStore: store,
+              clearSession: () async {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(Key(failed ? 'failedTab' : 'nurtureTab')));
+        await tester.pumpAndSettle();
+        final home = currentHome(tester);
+        Finder card(int id) => find.byKey(
+          Key(
+            failed
+                ? 'failedConfiguration-$id'
+                : 'nurtureAccount-${'abc'[ids.indexOf(id)]}@example.com',
+          ),
+        );
+        // The list as shown, top to bottom.
+        final shown = [...ids]
+          ..sort(
+            (x, y) => tester
+                .getTopLeft(card(x))
+                .dy
+                .compareTo(tester.getTopLeft(card(y)).dy),
+          );
+        int? priority() => failed
+            ? home.failedPriority?.configuration.id
+            : home.nurturePriority?.configurationId;
+        expect(priority(), shown.first);
+        await tester.ensureVisible(card(shown[1]));
+        await tester.tap(card(shown[1]));
+        await tester.pumpAndSettle();
+        expect(priority(), shown[1]);
+        await tester.tap(
+          find.byKey(Key(failed ? 'retryFailedSignups' : 'nurtureAll')),
+        );
+        await tester.pumpAndSettle();
+        final opened = <int?>[];
+        for (var i = 0; i < 3; i++) {
+          if (i > 0) await skipAutoRunPause(tester);
+          opened.add(
+            tester
+                .widget<TikTokPage>(find.byType(TikTokPage))
+                .configuration
+                .configurationId,
+          );
+          tester
+              .state<NavigatorState>(find.byType(Navigator))
+              .pop(TikTokFlowResult.failed);
+          await tester.pumpAndSettle();
+        }
+        expect(opened, [shown[1], shown[0], shown[2]]);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        await restore();
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'Cấu hình only manages configurations and lists keywords and comments',
+    (tester) async {
+      final restore = fakeWebView(tester);
+      addTearDown(restore);
       await tester.binding.setSurfaceSize(const Size(900, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final store = MemoryProxyStore();
@@ -538,70 +728,21 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Đăng nhập và nuôi Account'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('runAccountAction')));
-      await tester.pumpAndSettle();
-      final loginPage = tester.widget<TikTokPage>(find.byType(TikTokPage));
-      expect(loginPage.launchAction, TikTokLaunchAction.login);
-      expect(loginPage.autoAdvance, isFalse);
-      expect(loginPage.configuration.configurationId, id);
-      final login = currentLogic(tester);
-      final loginView = _View();
-      login.webViewController = InAppWebViewController.fromPlatform(
-        platform: loginView,
-      );
-      final authentication = login.autoLogin();
-      await tester.pump();
-      for (var i = 0; i < 11 && login.autoLoginBusy; i++) {
-        await tester.pump(const Duration(seconds: 1));
+      // No configuration in use is shown and nothing runs from here.
+      expect(find.byKey(const Key('manageProxies')), findsOneWidget);
+      for (final key in ['runAccountAction', 'openTikTok']) {
+        expect(find.byKey(Key(key)), findsNothing);
       }
-      await authentication;
-      platform.loggedIn = true;
-      expect(login.autoWatchEnabled, isTrue);
-      await tester.pump(const Duration(minutes: 10));
-      await tester.pumpAndSettle();
-      expect(find.byType(TikTokPage), findsNothing);
+      expect(find.text('person@example.com'), findsNothing);
+      expect(find.byKey(const Key('searchKeywordList')), findsOneWidget);
+      expect(find.byKey(const Key('commentList')), findsOneWidget);
       expect(
-        find.text('Đã nuôi xong. Tài khoản vẫn đang đăng nhập.'),
+        find.text(RemoteConfig.searchKeywords.first, findRichText: true),
         findsOneWidget,
       );
-      expect(loginView.logoutCalls, 0);
-      expect(find.text('Nuôi tiếp Account'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('runAccountAction')));
+      await tester.tap(find.byKey(const Key('nurtureTab')));
       await tester.pumpAndSettle();
-      final continuedPage = tester.widget<TikTokPage>(find.byType(TikTokPage));
-      expect(continuedPage.launchAction, TikTokLaunchAction.browse);
-      expect(continuedPage.startWithNurture, isTrue);
-      expect(continuedPage.configuration.configurationId, id);
-      expect(continuedPage.configuration.otpApi, isNull);
-      final continued = currentLogic(tester);
-      final continuedView = _View();
-      continued.webViewController = InAppWebViewController.fromPlatform(
-        platform: continuedView,
-      );
-      continued.initialPageLoaded = true;
-      continued.mutate(() => continued.loadingProgress = 100);
-      await continued.runInitialAction();
-      await tester.pump();
-      expect(continued.autoWatchEnabled, isTrue);
-      expect(continuedView.watchStarts, 1);
-      await tester.pump(const Duration(minutes: 10));
-      await tester.pumpAndSettle();
-      expect(find.byType(TikTokPage), findsNothing);
-      expect(find.text('Nuôi tiếp Account'), findsOneWidget);
-      expect(continuedView.logoutCalls, 0);
-      // The separate Mở TikTok action remains fully manual, even with cookies.
-      await tester.tap(find.byKey(const Key('openTikTok')));
-      await tester.pumpAndSettle();
-      expect(
-        tester.widget<TikTokPage>(find.byType(TikTokPage)).startWithNurture,
-        isFalse,
-      );
-      platform.loggedIn = false;
-      await tester.tap(find.byTooltip('Back'));
-      await tester.pumpAndSettle();
-      expect(find.text('Nuôi tiếp Account'), findsNothing);
-      expect(find.text('Đăng nhập và nuôi Account'), findsOneWidget);
+      expect(find.byKey(const Key('nurtureAll')), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
       await restore();
@@ -935,7 +1076,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // The normal signup run leaves failed configurations to this tab.
-      await tester.tap(find.byKey(const Key('runAccountAction')));
+      await tester.tap(find.byKey(const Key('signupTab')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(Key('signupConfiguration-$failed')), findsNothing);
+      await tester.tap(find.byKey(const Key('signupAll')));
       await tester.pumpAndSettle();
       expect(
         tester

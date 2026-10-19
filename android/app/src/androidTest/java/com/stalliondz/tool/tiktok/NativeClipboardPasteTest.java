@@ -1,5 +1,7 @@
 package com.stalliondz.tool.tiktok;
 
+import com.brisklane.browser.MainActivity;
+
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;

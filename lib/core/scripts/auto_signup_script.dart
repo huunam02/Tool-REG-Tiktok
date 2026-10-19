@@ -2,10 +2,7 @@ import 'dart:convert';
 
 import 'home_account_modal_script.dart';
 
-
-
 String buildAutoSignupScript({
-
   required String email,
 
   required String password,
@@ -39,54 +36,12 @@ String buildAutoSignupScript({
   bool manualAccessibilityButtons = false,
 
   bool manualFieldInput = false,
-
 }) =>
-
     '''
 
-($autoSignupStepScript)(${jsonEncode({
-
-          'email': email,
-
-          'password': password,
-
-          'year': birthday.year,
-
-          'month': birthday.month,
-
-          'day': birthday.day,
-
-          'attempt': attempt,
-
-          'otp': otp.trim(),
-
-          'otpRequestedAt': otpRequestedAt,
-
-          'allowOtpSubmit': allowOtpSubmit,
-
-          'allowPasswordSubmit': allowPasswordSubmit,
-
-          'waitForOtpApi': waitForOtpApi,
-
-          'useAccessibilitySendCode': useAccessibilitySendCode,
-
-          'sendCodeDelayMs': sendCodeDelayMs,
-
-          'useAccessibilityPasswordSubmit': useAccessibilityPasswordSubmit,
-
-          'passwordSubmitDelayMs': passwordSubmitDelayMs,
-
-          'useAccessibilityUsernameSkip': useAccessibilityUsernameSkip,
-
-          'manualAccessibilityButtons': manualAccessibilityButtons,
-
-          'manualFieldInput': manualFieldInput,
-
-        })}, $allowSubmit, ($openHomeAccountModalScript));
+($autoSignupStepScript)(${jsonEncode({'email': email, 'password': password, 'year': birthday.year, 'month': birthday.month, 'day': birthday.day, 'attempt': attempt, 'otp': otp.trim(), 'otpRequestedAt': otpRequestedAt, 'allowOtpSubmit': allowOtpSubmit, 'allowPasswordSubmit': allowPasswordSubmit, 'waitForOtpApi': waitForOtpApi, 'useAccessibilitySendCode': useAccessibilitySendCode, 'sendCodeDelayMs': sendCodeDelayMs, 'useAccessibilityPasswordSubmit': useAccessibilityPasswordSubmit, 'passwordSubmitDelayMs': passwordSubmitDelayMs, 'useAccessibilityUsernameSkip': useAccessibilityUsernameSkip, 'manualAccessibilityButtons': manualAccessibilityButtons, 'manualFieldInput': manualFieldInput})}, $allowSubmit, ($openHomeAccountModalScript));
 
 ''';
-
-
 
 // Flutter polls one step at a time. Input is entered using native clipboard
 
@@ -1130,9 +1085,8 @@ const String autoSignupStepScript = r'''
 
 ''';
 
-
-
-String buildAutoSignupStopScript(int attempt) => '''
+String buildAutoSignupStopScript(int attempt) =>
+    '''
 
 (() => {
 

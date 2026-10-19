@@ -2,6 +2,7 @@ package com.stalliondz.tool.tiktok
 
 import android.webkit.WebSettings
 import android.webkit.WebView
+import com.brisklane.browser.WebViewHeaderPrivacy
 import androidx.webkit.UserAgentMetadata
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
@@ -14,10 +15,11 @@ object DesktopChromeIdentity {
     // even when the site inserts/replaces its viewport after navigation.
     private val desktopViewportScript = """
         (() => {
-            // Keep the legacy JS platform consistent with the desktop UA and
-            // native Client Hints, including documents inside frames.
+            // Chrome's "Desktop site" on a real Android phone sends the Linux
+            // x86_64 UA and Client Hints but keeps the ARM JS platform, also
+            // inside frames; an x86 platform beside a phone GPU never occurs.
             Object.defineProperty(Navigator.prototype, 'platform', {
-                get: () => 'Linux x86_64', configurable: false
+                get: () => 'Linux armv8l', configurable: false
             });
             // Pixel 9 Pro XL hardware profile, also in subframes. Desktop
             // Chrome still advertises Linux/x86 in UA and Client Hints.
@@ -129,6 +131,7 @@ object DesktopChromeIdentity {
                     .build()
             } else it
         }
+        WebViewHeaderPrivacy.maskPackageName(webView)
         settings.userAgentString = userAgent
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
@@ -149,7 +152,7 @@ object DesktopChromeIdentity {
         val viewportScript = desktopViewportScript
             .replace("__VIEWPORT_CONTENT__", viewportContent)
             .replace("__EMULATE_HARDWARE__", emulateHardware.toString())
-        val identityScript = if (isWindows) viewportScript.replace("Linux x86_64", "Win32")
+        val identityScript = if (isWindows) viewportScript.replace("Linux armv8l", "Win32")
             else viewportScript
         WebViewCompat.addDocumentStartJavaScript(webView, identityScript, setOf("*"))
         WebSettingsCompat.setUserAgentMetadata(settings,

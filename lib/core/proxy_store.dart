@@ -7,6 +7,9 @@ import 'proxy_draft.dart';
 import 'desktop_user_agents.dart';
 import 'chrome_user_agent.dart';
 import 'proxy_time_zone.dart';
+import 'device_memory.dart';
+import 'gpu_profile.dart';
+import 'nurture_data.dart';
 import 'nurture_store.dart';
 import 'signup_failure.dart';
 
@@ -21,6 +24,8 @@ class ProxyProfile {
     this.configurationId,
     this.timeZoneId = '',
     this.nurtureAfterSignup = false,
+    this.nurtureSettings = NurtureSettings.defaults,
+    this.gpuProfileId = '',
     this.signupFailed = false,
   });
 
@@ -34,22 +39,34 @@ class ProxyProfile {
   final String timeZoneId;
   final bool nurtureAfterSignup;
 
+  /// Like/comment/long-watch rates and session length for this account.
+  final NurtureSettings nurtureSettings;
+
+  /// The phone GPU pages see over WebGL; fixed per configuration.
+  final String gpuProfileId;
+  GpuProfile get gpuProfile => GpuProfile.byId(gpuProfileId);
+
   /// The last automatic signup of this configuration failed.
   final bool signupFailed;
 
-  ProxyProfile copyWith({String? userAgent, String? timeZoneId}) =>
-      ProxyProfile(
-        proxy: proxy,
-        userAgent: userAgent ?? this.userAgent,
-        timeZoneId: timeZoneId ?? this.timeZoneId,
-        name: name,
-        hasBeenUsed: hasBeenUsed,
-        account: account,
-        statusAccount: statusAccount,
-        configurationId: configurationId,
-        nurtureAfterSignup: nurtureAfterSignup,
-        signupFailed: signupFailed,
-      );
+  ProxyProfile copyWith({
+    String? userAgent,
+    String? timeZoneId,
+    String? gpuProfileId,
+  }) => ProxyProfile(
+    proxy: proxy,
+    userAgent: userAgent ?? this.userAgent,
+    timeZoneId: timeZoneId ?? this.timeZoneId,
+    name: name,
+    hasBeenUsed: hasBeenUsed,
+    account: account,
+    statusAccount: statusAccount,
+    configurationId: configurationId,
+    nurtureAfterSignup: nurtureAfterSignup,
+    nurtureSettings: nurtureSettings,
+    gpuProfileId: gpuProfileId ?? this.gpuProfileId,
+    signupFailed: signupFailed,
+  );
 }
 
 class SavedProxy extends ProxyProfile {
@@ -63,6 +80,8 @@ class SavedProxy extends ProxyProfile {
     super.statusAccount,
     super.timeZoneId,
     super.nurtureAfterSignup,
+    super.nurtureSettings,
+    super.gpuProfileId,
     super.signupFailed,
   }) : super(configurationId: id);
   final int id;
@@ -133,7 +152,10 @@ class ProxyStore {
       nurture_after_signup INTEGER NOT NULL DEFAULT 0
         CHECK (nurture_after_signup IN (0, 1)),
       signup_failed INTEGER NOT NULL DEFAULT 0
-        CHECK (signup_failed IN (0, 1))
+        CHECK (signup_failed IN (0, 1)),
+      registered_at INTEGER,
+      gpu_profile TEXT NOT NULL DEFAULT '',
+      $_nurtureSettingsColumns
     )''');
     await db.execute(
       'CREATE UNIQUE INDEX one_current_configuration '
@@ -142,6 +164,65 @@ class ProxyStore {
     await SqliteNurtureRepository.createSchema(db);
     await _createSignupFailureSchema(db);
   }
+
+  /// Per-configuration nurture settings; the defaults are [NurtureSettings].
+  static final _nurtureSettingsColumnDefinitions = () {
+    const d = NurtureSettings.defaults;
+    const max = NurtureSettings.maxSessionMinutes;
+    return {
+      'nurture_like_percent':
+          'INTEGER NOT NULL DEFAULT ${d.likePercent} '
+          'CHECK (nurture_like_percent BETWEEN 0 AND 100)',
+      'nurture_comment_percent':
+          'INTEGER NOT NULL DEFAULT ${d.commentPercent} '
+          'CHECK (nurture_comment_percent BETWEEN 0 AND 100)',
+      'nurture_long_watch_percent':
+          'INTEGER NOT NULL DEFAULT ${d.longWatchPercent} '
+          'CHECK (nurture_long_watch_percent BETWEEN 0 AND 100)',
+      'nurture_min_minutes':
+          'INTEGER NOT NULL DEFAULT ${d.minMinutes} '
+          'CHECK (nurture_min_minutes BETWEEN 1 AND $max)',
+      'nurture_max_minutes':
+          'INTEGER NOT NULL DEFAULT ${d.maxMinutes} '
+          'CHECK (nurture_max_minutes BETWEEN 1 AND $max)',
+    };
+  }();
+
+  /// Older versions kept a simulated Local IP per configuration. WebRTC is
+  /// always blocked, so it was never used: erase it, and drop the column
+  /// where this SQLite supports DROP COLUMN (3.35+).
+  static Future<void> _removeLocalIps(DatabaseExecutor db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(configurations)');
+    if (!columns.any((column) => column['name'] == 'local_ip')) return;
+    await db.execute("UPDATE configurations SET local_ip = ''");
+    try {
+      await db.execute('ALTER TABLE configurations DROP COLUMN local_ip');
+    } on DatabaseException {
+      // Older Android SQLite: the column stays, empty and unused.
+    }
+  }
+
+  /// Give every configuration without a known phone GPU a random one.
+  static Future<void> _fillGpuProfiles(DatabaseExecutor db) async {
+    final rows = await db.query(
+      'configurations',
+      columns: ['id', 'gpu_profile'],
+    );
+    for (final row in rows) {
+      if (GpuProfile.isKnown(row['gpu_profile'] as String? ?? '')) continue;
+      await db.update(
+        'configurations',
+        {'gpu_profile': GpuProfile.random().id},
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+    }
+  }
+
+  static String get _nurtureSettingsColumns => [
+    for (final entry in _nurtureSettingsColumnDefinitions.entries)
+      '${entry.key} ${entry.value}',
+  ].join(',\n      ');
 
   static Future<void> _createSignupFailureSchema(DatabaseExecutor db) async {
     await db.execute('''CREATE TABLE IF NOT EXISTS signup_failures (
@@ -169,7 +250,7 @@ class ProxyStore {
       db = await factory.openDatabase(
         filename,
         options: OpenDatabaseOptions(
-          version: 13,
+          version: 19,
           onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
           onOpen: (db) async {
             await db.update('nurture_sessions', {
@@ -219,6 +300,12 @@ class ProxyStore {
                 'INTEGER NOT NULL DEFAULT 0 CHECK (signup_failed IN (0, 1))',
               );
             }
+            if (!columns.any((column) => column['name'] == 'registered_at')) {
+              // Accounts registered before this column have no known time.
+              await db.execute(
+                'ALTER TABLE configurations ADD COLUMN registered_at INTEGER',
+              );
+            }
             await _createSignupFailureSchema(db);
             final rows = await db.query(
               'configurations',
@@ -237,6 +324,22 @@ class ProxyStore {
               }
             }
             if (oldVersion < 10) await SqliteNurtureRepository.createSchema(db);
+            final nurtureColumns = await db.rawQuery(
+              'PRAGMA table_info(configurations)',
+            );
+            for (final entry in _nurtureSettingsColumnDefinitions.entries) {
+              if (!nurtureColumns.any(
+                (column) => column['name'] == entry.key,
+              )) {
+                await db.execute(
+                  'ALTER TABLE configurations ADD COLUMN '
+                  '${entry.key} ${entry.value}',
+                );
+              }
+            }
+            // A development build kept one shared row; settings are now
+            // stored per configuration.
+            await db.execute('DROP TABLE IF EXISTS nurture_settings');
             final sessions = await db.rawQuery(
               'PRAGMA table_info(nurture_sessions)',
             );
@@ -246,6 +349,16 @@ class ProxyStore {
                 'INTEGER NOT NULL DEFAULT 0 CHECK (likes >= 0)',
               );
             }
+            await _removeLocalIps(db);
+            final gpuColumns = await db.rawQuery(
+              'PRAGMA table_info(configurations)',
+            );
+            if (!gpuColumns.any((column) => column['name'] == 'gpu_profile')) {
+              await db.execute(
+                "ALTER TABLE configurations ADD COLUMN gpu_profile TEXT NOT NULL DEFAULT ''",
+              );
+            }
+            await _fillGpuProfiles(db);
           },
         ),
       );
@@ -360,6 +473,8 @@ class ProxyStore {
     configurationId: row['id'] as int,
     timeZoneId: row['time_zone_id'] as String? ?? '',
     nurtureAfterSignup: row['nurture_after_signup'] == 1,
+    nurtureSettings: NurtureSettings.fromMap(row),
+    gpuProfileId: row['gpu_profile'] as String? ?? '',
     signupFailed: row['signup_failed'] == 1,
   );
 
@@ -443,6 +558,7 @@ class ProxyStore {
         'user_agent': normalizeDesktopUserAgentForPlatform(
           await _selectUserAgent(),
         ),
+        'gpu_profile': GpuProfile.random().id,
         'listed': 0,
       });
       await _applyCurrent(txn, id);
@@ -507,8 +623,41 @@ class ProxyStore {
     statusAccount: _readStatus(row),
     hasBeenUsed: row['has_been_used'] == 1,
     nurtureAfterSignup: row['nurture_after_signup'] == 1,
+    nurtureSettings: NurtureSettings.fromMap(row),
+    gpuProfileId: row['gpu_profile'] as String? ?? '',
     signupFailed: row['signup_failed'] == 1,
   );
+
+  /// Give each unregistered configuration whose phone GPU was never sold
+  /// with this device's RAM ([deviceMemoryGb]) a phone that was. Registered
+  /// accounts keep theirs, so TikTok never sees their phone change. Returns
+  /// the new GPU id of each changed configuration.
+  Future<Map<int, String>> fitGpuProfilesToDevice([double? memory]) async {
+    memory ??= deviceMemoryGb;
+    if (memory == null) return const {};
+    final db = await _database;
+    final rows = await db.query(
+      'configurations',
+      columns: ['id', 'gpu_profile', 'statusAccount'],
+    );
+    final changed = <int, String>{};
+    for (final row in rows) {
+      if (row['statusAccount'] == 'registered') continue;
+      if (GpuProfile.byId(row['gpu_profile'] as String? ?? '').fits(memory)) {
+        continue;
+      }
+      final id = row['id'] as int;
+      final gpu = GpuProfile.random(null, memory).id;
+      await db.update(
+        'configurations',
+        {'gpu_profile': gpu},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      changed[id] = gpu;
+    }
+    return changed;
+  }
 
   Future<List<SavedProxy>> list() async {
     final rows = await (await _database).query(
@@ -528,6 +677,8 @@ class ProxyStore {
     AccountStatus? statusAccount,
     String? timeZoneId,
     bool? nurtureAfterSignup,
+    NurtureSettings? nurtureSettings,
+    String? gpuProfileId,
   }) async {
     final db = await _database;
     return db.transaction(
@@ -541,6 +692,8 @@ class ProxyStore {
         statusAccount: statusAccount,
         timeZoneId: timeZoneId,
         nurtureAfterSignup: nurtureAfterSignup,
+        nurtureSettings: nurtureSettings,
+        gpuProfileId: gpuProfileId,
       ),
     );
   }
@@ -560,6 +713,8 @@ class ProxyStore {
             statusAccount: draft.statusAccount,
             timeZoneId: draft.timeZoneId,
             nurtureAfterSignup: draft.nurtureAfterSignup,
+            nurtureSettings: draft.nurtureSettings,
+            gpuProfileId: draft.gpuProfileId,
           ),
         );
       }
@@ -577,8 +732,15 @@ class ProxyStore {
     AccountStatus? statusAccount,
     String? timeZoneId,
     bool? nurtureAfterSignup,
+    NurtureSettings? nurtureSettings,
+    String? gpuProfileId,
   }) async {
     account?.validate();
+    if (gpuProfileId != null && !GpuProfile.isKnown(gpuProfileId)) {
+      throw const FormatException('Thiết bị GPU không có trong danh sách.');
+    }
+    final nurtureError = nurtureSettings?.error;
+    if (nurtureError != null) throw FormatException(nurtureError);
     final requestedTimeZone = timeZoneId == null
         ? null
         : normalizeProxyTimeZone(timeZoneId);
@@ -612,8 +774,15 @@ class ProxyStore {
       if (requestedAgent != null) 'user_agent': requestedAgent,
       if (account != null) ..._accountValues(account),
       if (statusAccount != null) 'statusAccount': statusAccount.name,
+      // When the account became registered; cleared if it is unregistered.
+      if (statusAccount == AccountStatus.registered &&
+          existing?['statusAccount'] != AccountStatus.registered.name)
+        'registered_at': DateTime.now().millisecondsSinceEpoch,
+      if (statusAccount == AccountStatus.unregistered) 'registered_at': null,
       if (nurtureAfterSignup != null)
         'nurture_after_signup': nurtureAfterSignup ? 1 : 0,
+      ...?nurtureSettings?.toMap(),
+      if (gpuProfileId != null) 'gpu_profile': gpuProfileId.trim(),
       if (account != null &&
           existing != null &&
           existing['account_email'] != account.email.trim())
@@ -661,7 +830,11 @@ class ProxyStore {
         (current.isNotEmpty && sameProxy(_readProxy(current.single), proxy)
             ? current.single['user_agent'] as String
             : normalizeDesktopUserAgentForPlatform(await _selectUserAgent()));
-    return txn.insert('configurations', {...values, 'user_agent': agent});
+    return txn.insert('configurations', {
+      ...values,
+      'user_agent': agent,
+      'gpu_profile': values['gpu_profile'] ?? GpuProfile.random().id,
+    });
   }
 
   /// Fill an old active configuration after lookup without changing selection.
@@ -716,11 +889,16 @@ class ProxyStore {
   /// overwriting any other configuration fields.
   Future<bool> markRegistered(int id, String email) async {
     if (email.trim().isEmpty) return false;
-    return await (await _database).update(
-          'configurations',
-          {'statusAccount': AccountStatus.registered.name, 'signup_failed': 0},
-          where: 'id = ? AND account_email = ?',
-          whereArgs: [id, email.trim()],
+    return await (await _database).rawUpdate(
+          '''UPDATE configurations SET statusAccount = ?, signup_failed = 0,
+          registered_at = COALESCE(registered_at, ?)
+          WHERE id = ? AND account_email = ?''',
+          [
+            AccountStatus.registered.name,
+            DateTime.now().millisecondsSinceEpoch,
+            id,
+            email.trim(),
+          ],
         ) ==
         1;
   }

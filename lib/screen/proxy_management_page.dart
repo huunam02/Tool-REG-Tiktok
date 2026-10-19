@@ -10,29 +10,41 @@ import 'widgets/controller_scope.dart';
 import 'widgets/proxy_form.dart';
 import 'widgets/proxy_widgets.dart';
 
-enum _ProxyMenuAction { edit, delete }
+enum _ProxyMenuAction { checkIp, edit, delete }
 
 class ProxyManagementPage extends StatelessWidget {
   const ProxyManagementPage({
     super.key,
     required this.store,
     this.detectTimeZone,
+    this.onCheckIp,
   });
   final ProxyStore store;
   final Future<String> Function(WebViewProxy, String)? detectTimeZone;
+
+  /// Kiểm tra IP: load the configuration, then open WhatIsMyBrowser.
+  final Future<void> Function(SavedProxy entry)? onCheckIp;
 
   @override
   Widget build(BuildContext context) =>
       ControllerScope<ProxyManagementController>(
         controller: ProxyManagementController(store: store),
-        builder: (logic) => _ProxyManagementView(logic, detectTimeZone),
+        builder: (logic) =>
+            _ProxyManagementView(logic, detectTimeZone, onCheckIp),
       );
 }
 
 class _ProxyManagementView extends StatelessWidget {
-  const _ProxyManagementView(this.logic, this.detectTimeZone);
+  const _ProxyManagementView(this.logic, this.detectTimeZone, this.onCheckIp);
   final ProxyManagementController logic;
   final Future<String> Function(WebViewProxy, String)? detectTimeZone;
+  final Future<void> Function(SavedProxy entry)? onCheckIp;
+
+  Future<void> _checkIp(SavedProxy entry) async {
+    await onCheckIp!(entry);
+    // The check selected this configuration; show the list as stored.
+    await logic.reload();
+  }
 
   Future<void> _create(BuildContext context) async {
     final drafts = await Navigator.of(context).push<List<ProxyDraft>>(
@@ -64,10 +76,7 @@ class _ProxyManagementView extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Xóa cấu hình?'),
-        content: Text(
-          'Xóa “${entry.name}” khỏi danh sách?'
-          '${logic.isActive(entry) ? '\nCấu hình đang sử dụng vẫn được giữ lại.' : ''}',
-        ),
+        content: Text('Xóa “${entry.name}” khỏi danh sách?'),
         actions: [
           OutlinedButton(
             onPressed: () => Navigator.pop(context, false),
@@ -81,11 +90,6 @@ class _ProxyManagementView extends StatelessWidget {
       ),
     );
     if (confirmed == true && context.mounted) await logic.delete(entry);
-  }
-
-  Future<void> _use(BuildContext context, SavedProxy? entry) async {
-    final applied = await logic.use(entry);
-    if (applied && context.mounted) Navigator.pop(context);
   }
 
   Widget _filters() {
@@ -129,220 +133,103 @@ class _ProxyManagementView extends StatelessWidget {
   }
 
   Widget _proxyCard(BuildContext context, SavedProxy entry) {
-    final selected = entry.id == logic.selectedId;
-    final active = logic.isActive(entry);
+    // Configurations are not chosen here: each run picks its own. A card
+    // offers Kiểm tra IP, Sửa and Xóa.
     return Container(
+      key: Key('savedProxy-${entry.id}'),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: ProxyColors.surface,
-        border: Border.all(
-          color: selected ? ProxyColors.cyan : ProxyColors.border,
-          width: selected ? 1.4 : 1,
-        ),
+        border: Border.all(color: ProxyColors.border),
         borderRadius: BorderRadius.circular(18),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              key: Key('savedProxy-${entry.id}'),
-              onTap: logic.busy
-                  ? null
-                  : () {
-                      FocusManager.instance.primaryFocus?.unfocus();
-                      logic.select(entry);
-                    },
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Icon(
-                        selected
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_unchecked,
-                        color: selected ? ProxyColors.cyan : ProxyColors.muted,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            logic.displayName(entry),
-                            style: const TextStyle(
-                              fontSize: 15,
-                              height: 1.4,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            proxyLabel(entry.proxy),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              height: 1.5,
-                              color: ProxyColors.muted,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: [
-                              ProxyUsageBadge(used: entry.hasBeenUsed),
-                              ProxyBadge(
-                                label: entry.statusAccount.label,
-                                color: ProxyColors.cyan,
-                              ),
-                              if (entry.signupFailed &&
-                                  entry.statusAccount ==
-                                      AccountStatus.unregistered)
-                                const ProxyBadge(
-                                  label: 'Lỗi đăng ký',
-                                  color: ProxyColors.red,
-                                ),
-                              if (active)
-                                const ProxyBadge(
-                                  label: 'Đang dùng',
-                                  color: ProxyColors.cyan,
-                                ),
-                              ProxyBadge(
-                                label:
-                                    entry.proxy?.uri.scheme.toUpperCase() ??
-                                    'MẶC ĐỊNH',
-                                color: ProxyColors.muted,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    PopupMenuButton<_ProxyMenuAction>(
-                      enabled: !logic.busy,
-                      tooltip: 'Tùy chọn cấu hình',
-                      onSelected: (action) => switch (action) {
-                        _ProxyMenuAction.edit => _edit(context, entry),
-                        _ProxyMenuAction.delete => _delete(context, entry),
-                      },
-                      itemBuilder: (_) => [
-                        const PopupMenuItem(
-                          value: _ProxyMenuAction.edit,
-                          child: Text('Sửa'),
-                        ),
-                        const PopupMenuItem(
-                          value: _ProxyMenuAction.delete,
-                          child: Text('Xóa'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (selected) ...[
-            const Divider(height: 1, color: ProxyColors.border),
-            Padding(
-              padding: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'PROXY VÀ TÀI KHOẢN',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: ProxyColors.muted,
-                      letterSpacing: 1,
+                  Text(
+                    logic.displayName(entry),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      height: 1.4,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  ProxyDetails(
-                    profile: entry,
-                    keyPrefix: 'selectedProxy',
-                    showName: false,
-                    userAgentKey: const Key('selectedProxyUserAgent'),
+                  const SizedBox(height: 6),
+                  Text(
+                    proxyLabel(entry.proxy),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      height: 1.5,
+                      color: ProxyColors.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ProxyUsageBadge(used: entry.hasBeenUsed),
+                      ProxyBadge(
+                        label: entry.statusAccount.label,
+                        color: ProxyColors.cyan,
+                      ),
+                      if (entry.signupFailed &&
+                          entry.statusAccount == AccountStatus.unregistered)
+                        const ProxyBadge(
+                          label: 'Lỗi đăng ký',
+                          color: ProxyColors.red,
+                        ),
+                      ProxyBadge(
+                        label:
+                            entry.proxy?.uri.scheme.toUpperCase() ?? 'MẶC ĐỊNH',
+                        color: ProxyColors.muted,
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
+            PopupMenuButton<_ProxyMenuAction>(
+              enabled: !logic.busy,
+              tooltip: 'Tùy chọn cấu hình',
+              onSelected: (action) => switch (action) {
+                _ProxyMenuAction.checkIp => _checkIp(entry),
+                _ProxyMenuAction.edit => _edit(context, entry),
+                _ProxyMenuAction.delete => _delete(context, entry),
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: _ProxyMenuAction.edit,
+                  child: Text('Sửa'),
+                ),
+                const PopupMenuItem(
+                  value: _ProxyMenuAction.delete,
+                  child: Text('Xóa'),
+                ),
+                if (onCheckIp != null)
+                  PopupMenuItem(
+                    key: Key('checkIp-${entry.id}'),
+                    value: _ProxyMenuAction.checkIp,
+                    child: const Text('Kiểm tra IP'),
+                  ),
+              ],
+            ),
           ],
-        ],
+        ),
       ),
     );
   }
 
-  Widget _actionBar(BuildContext context, SavedProxy? selected) => Container(
-    decoration: const BoxDecoration(
-      color: ProxyColors.background,
-      border: Border(top: BorderSide(color: ProxyColors.border)),
-    ),
-    child: SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-        child: Center(
-          heightFactor: 1,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 980),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  selected == null
-                      ? 'Chọn một cấu hình để áp dụng.'
-                      : 'Đã chọn: ${logic.displayName(selected)}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: ProxyColors.muted,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                FilledButton(
-                  key: const Key('setSelectedProxy'),
-                  onPressed: logic.busy || selected == null || logic.loadFailed
-                      ? null
-                      : () => _use(context, selected),
-                  child: Text(
-                    logic.resettingSession
-                        ? 'Đang xóa phiên…'
-                        : 'Sử dụng cấu hình này',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                OutlinedButton(
-                  key: const Key('disableProxy'),
-                  onPressed: logic.busy || logic.loadFailed
-                      ? null
-                      : () => _use(context, null),
-                  child: const Text('Bỏ chọn cấu hình'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-
   @override
   Widget build(BuildContext context) {
     final visible = logic.visibleProxies;
-    final selection = logic.proxies.where(
-      (entry) => entry.id == logic.selectedId,
-    );
-    final selected = selection.isEmpty ? null : selection.single;
     return Theme(
       data: ProxyColors.theme(context),
       child: Scaffold(
@@ -458,7 +345,6 @@ class _ProxyManagementView extends StatelessWidget {
             );
           },
         ),
-        bottomNavigationBar: _actionBar(context, selected),
       ),
     );
   }

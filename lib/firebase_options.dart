@@ -51,18 +51,17 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyDQd3DV-uTGQAQVsCjgAht06TmhIFfVkPk',
-    appId: '1:79609310344:android:fea98d599854946159433d',
+    appId: '1:79609310344:android:5989e07da383a20a59433d',
     messagingSenderId: '79609310344',
     projectId: 'tool-tiktok-d7aee',
     storageBucket: 'tool-tiktok-d7aee.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBwV8hZ8XmKVu5wTgJGUFy9l7qDrGGhO4s',
-    appId: '1:79609310344:ios:272b03556d7bb99b59433d',
+    appId: '1:79609310344:ios:9777ada20fb34e7859433d',
     messagingSenderId: '79609310344',
     projectId: 'tool-tiktok-d7aee',
     storageBucket: 'tool-tiktok-d7aee.firebasestorage.app',
-    iosBundleId: 'com.stalliondz.tool.tiktok',
+    iosBundleId: 'com.brisklane.browser',
   );
 }

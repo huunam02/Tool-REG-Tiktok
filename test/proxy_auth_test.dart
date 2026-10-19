@@ -78,7 +78,8 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('test_tiktok/webview_identity'),
-          (call) async => 'test-agent',
+          (call) async =>
+              call.method == 'configureSignupViewport' ? true : 'test-agent',
         );
     final previousPlatform = InAppWebViewPlatform.instance;
     InAppWebViewPlatform.instance = _Platform();
@@ -134,18 +135,16 @@ void main() {
         final gpuScripts = params.initialUserScripts!.where(
           (script) => script.source == pixelGpuInfoScript,
         );
-        if (platform == TargetPlatform.android) {
-          expect(gpuScripts, isEmpty);
-        } else {
-          final gpuScript = gpuScripts.single;
-          expect(
-            gpuScript.injectionTime,
-            UserScriptInjectionTime.AT_DOCUMENT_START,
-          );
-          expect(gpuScript.forMainFrameOnly, isFalse);
-          expect(gpuScript.contentWorld, ContentWorld.PAGE);
-          expect(gpuScript.allowedOriginRules, {'*'});
-        }
+        // Both platforms report the configuration's phone GPU (the default
+        // configuration's is the Pixel 9 Pro XL).
+        final gpuScript = gpuScripts.single;
+        expect(
+          gpuScript.injectionTime,
+          UserScriptInjectionTime.AT_DOCUMENT_START,
+        );
+        expect(gpuScript.forMainFrameOnly, isFalse);
+        expect(gpuScript.contentWorld, ContentWorld.PAGE);
+        expect(gpuScript.allowedOriginRules, {'*'});
         final scripts = params.initialUserScripts!.where(
           (script) => script.source == disableWebRtcScript,
         );

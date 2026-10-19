@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controller/settings_controller.dart';
 import '../core/accessibility_permission.dart';
 import '../core/proxy_store.dart';
+import 'data_export_preview_page.dart';
 import 'usage_guide_page.dart';
 import 'widgets/controller_scope.dart';
 import 'widgets/settings_style.dart';
@@ -11,14 +12,10 @@ class SettingsPage extends StatelessWidget {
   const SettingsPage({
     super.key,
     this.accessibilityPermission,
-    this.onOpenBrowserCheck,
-    this.onOpenIpCheck,
     this.proxyStore,
   });
 
   final AccessibilityPermissionService? accessibilityPermission;
-  final VoidCallback? onOpenBrowserCheck;
-  final VoidCallback? onOpenIpCheck;
   final ProxyStore? proxyStore;
 
   @override
@@ -27,25 +24,35 @@ class SettingsPage extends StatelessWidget {
       accessibilityPermission: accessibilityPermission,
       proxyStore: proxyStore,
     ),
-    builder: (controller) =>
-        _SettingsView(controller, onOpenBrowserCheck, onOpenIpCheck),
+    builder: (controller) => _SettingsView(controller),
   );
 }
 
 class _SettingsView extends StatelessWidget {
-  const _SettingsView(
-    this.controller,
-    this.onOpenBrowserCheck,
-    this.onOpenIpCheck,
-  );
+  const _SettingsView(this.controller);
 
   final SettingsController controller;
-  final VoidCallback? onOpenBrowserCheck;
-  final VoidCallback? onOpenIpCheck;
 
   Future<void> _openGuide(BuildContext context) => Navigator.of(
     context,
   ).push<void>(MaterialPageRoute(builder: (_) => const UsageGuidePage()));
+
+  Future<void> _preview(BuildContext context) async {
+    final preview = await controller.loadPreview();
+    if (preview == null || !context.mounted) return;
+    final export = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => DataExportPreviewPage(preview: preview),
+      ),
+    );
+    if (export == true) await controller.exportExcel();
+  }
+
+  static const _progress = SizedBox(
+    width: 20,
+    height: 20,
+    child: CircularProgressIndicator(strokeWidth: 2),
+  );
 
   @override
   Widget build(BuildContext context) => Theme(
@@ -66,79 +73,7 @@ class _SettingsView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            SettingsPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Xuất dữ liệu Excel',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Lưu cấu hình và thống kê nuôi Account chung một sheet Excel, mỗi cấu hình một hàng.',
-                    style: TextStyle(
-                      color: SettingsStyle.muted,
-                      fontSize: 12,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  FilledButton.icon(
-                    key: const Key('exportExcel'),
-                    onPressed: controller.exporting
-                        ? null
-                        : controller.exportExcel,
-                    icon: controller.exporting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.file_download_outlined),
-                    label: Text(
-                      controller.exporting ? 'Đang xuất…' : 'Xuất Excel data',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            SettingsPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Kiểm tra IP / User-Agent',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Mở WhatIsMyBrowser bằng WebView với cấu hình proxy đang chọn để xem IP và trình duyệt website nhận được.',
-                    style: TextStyle(
-                      color: SettingsStyle.muted,
-                      fontSize: 12,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  FilledButton.icon(
-                    key: const Key('openBrowserCheckSettings'),
-                    onPressed: onOpenBrowserCheck,
-                    icon: const Icon(Icons.fact_check_outlined),
-                    label: const Text('Kiểm tra IP / User-Agent'),
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    key: const Key('openIpCheckSettings'),
-                    onPressed: onOpenIpCheck,
-                    icon: const Icon(Icons.public_outlined),
-                    label: const Text('Kiểm tra IP với WhatIsMyIP'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
+            // Automation needs it first, so it leads the page.
             if (controller.accessibilityPermission.supported) ...[
               SettingsPanel(
                 child: SwitchListTile(
@@ -174,6 +109,61 @@ class _SettingsView extends StatelessWidget {
               ),
               const SizedBox(height: 14),
             ],
+            SettingsPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Xuất dữ liệu Excel',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Lưu cấu hình và thống kê nuôi Account chung một sheet Excel, mỗi cấu hình một hàng.',
+                    style: TextStyle(
+                      color: SettingsStyle.muted,
+                      fontSize: 12,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const Key('previewExcel'),
+                          onPressed: controller.dataBusy
+                              ? null
+                              : () => _preview(context),
+                          icon: controller.previewing
+                              ? _progress
+                              : const Icon(Icons.visibility_outlined),
+                          label: Text(
+                            controller.previewing ? 'Đang tải…' : 'Xem trước',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.icon(
+                          key: const Key('exportExcel'),
+                          onPressed: controller.dataBusy
+                              ? null
+                              : controller.exportExcel,
+                          icon: controller.exporting
+                              ? _progress
+                              : const Icon(Icons.file_download_outlined),
+                          label: Text(
+                            controller.exporting ? 'Đang xuất…' : 'Xuất Excel',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
             SettingsPanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,

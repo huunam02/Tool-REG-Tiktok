@@ -91,17 +91,17 @@ void main() {
       )..onInit();
       var home = createHome();
       await tester.pump();
-      expect(home.accountActionLabel, 'Đăng nhập và nuôi Account');
+      expect(home.accountAction, TikTokLaunchAction.login);
       platform.cookies = [Cookie(name: 'sid_tt', value: 'retained-session')];
       await store.setCurrentAccountLoggedIn(id, 'current@example.com', true);
       await home.restoreProxy();
-      expect(home.accountActionLabel, 'Nuôi tiếp Account');
+      expect(home.accountAction, TikTokLaunchAction.browse);
       expect(home.accountAction, TikTokLaunchAction.browse);
       home.onDelete();
       home = createHome();
       addTearDown(() => home.onDelete());
       await home.restoreProxy();
-      expect(home.accountActionLabel, 'Nuôi tiếp Account');
+      expect(home.accountAction, TikTokLaunchAction.browse);
       final otherId = await store.save(
         name: 'Other account',
         proxy: null,
@@ -117,7 +117,7 @@ void main() {
       await store.useSaved(otherId);
       await home.restoreProxy();
       expect(home.hasCurrentAccountSession, isFalse);
-      expect(home.accountActionLabel, 'Đăng nhập và nuôi Account');
+      expect(home.accountAction, TikTokLaunchAction.login);
       await home.refreshCurrentAccountSession();
       expect(home.hasCurrentAccountSession, isFalse);
       home.onDelete();
@@ -132,11 +132,11 @@ void main() {
       expect(home.hasCurrentAccountSession, isFalse);
       await store.setCurrentAccountLoggedIn(otherId, 'other@example.com', true);
       await home.refreshCurrentAccountSession();
-      expect(home.accountActionLabel, 'Nuôi tiếp Account');
+      expect(home.accountAction, TikTokLaunchAction.browse);
       platform.cookies.clear();
       home.didChangeAppLifecycleState(AppLifecycleState.resumed);
       await tester.pump();
-      expect(home.accountActionLabel, 'Đăng nhập và nuôi Account');
+      expect(home.accountAction, TikTokLaunchAction.login);
       expect(home.accountAction, TikTokLaunchAction.login);
       await store.setCurrent(null);
       platform.cookies = [Cookie(name: 'sid_tt', value: 'unbound-session')];

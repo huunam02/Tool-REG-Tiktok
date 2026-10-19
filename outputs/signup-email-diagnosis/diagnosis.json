@@ -1,0 +1,127 @@
+{
+  "app": "com.brisklane.browser",
+  "device": "emulator-5554",
+  "webViewVersion": "155.0.8059.43",
+  "reproduced": true,
+  "cause": "Visible signup email input is type=text with empty accessibility hint; runner required hint containing email. Native paste validation also rejected this input.",
+  "domInput": {
+    "type": "text",
+    "name": "email",
+    "placeholder": "Email address",
+    "visible": true,
+    "valueLength": 0
+  },
+  "accessibility": {
+    "webBounds": [
+      6,
+      289,
+      1073,
+      2423
+    ],
+    "nodes": [
+      {
+        "className": "android.widget.TextView",
+        "text": "Enter your email",
+        "hint": "",
+        "editable": false,
+        "enabled": true,
+        "password": false,
+        "inputType": 0,
+        "length": 0,
+        "bounds": [
+          349,
+          1311,
+          483,
+          1333
+        ]
+      },
+      {
+        "className": "android.widget.EditText",
+        "text": "",
+        "hint": "",
+        "editable": true,
+        "enabled": true,
+        "password": false,
+        "inputType": 1,
+        "length": 0,
+        "bounds": [
+          349,
+          1343,
+          729,
+          1397
+        ]
+      },
+      {
+        "className": "android.widget.TextView",
+        "text": "Use phone",
+        "hint": "",
+        "editable": false,
+        "enabled": true,
+        "password": false,
+        "inputType": 0,
+        "length": 0,
+        "bounds": [
+          357,
+          1405,
+          436,
+          1424
+        ]
+      },
+      {
+        "className": "android.widget.Button",
+        "text": "Send code",
+        "hint": "",
+        "editable": false,
+        "enabled": false,
+        "password": false,
+        "inputType": 0,
+        "length": 0,
+        "bounds": [
+          349,
+          1501,
+          729,
+          1553
+        ]
+      }
+    ]
+  },
+  "otpRequestedDuringDiagnosis": false,
+  "fix": "Infer the fixed Email address label only from a visible Enter your email prompt immediately above one text editor and the Use phone switch; use the same checks before native paste.",
+  "dartTestsPassed": 47,
+  "additionalFailure": "Selected birthday year loses its Year accessibility hint, so the runner cannot confirm the chosen year.",
+  "androidRegressionTestsPassed": 3,
+  "emailFallback": "If ACTION_PASTE inserts nothing, use Accessibility ACTION_SET_TEXT only on the same verified, focused, still-empty signup email editor.",
+  "androidRegressionTests": [
+    "recognizesSignupEmailWithoutHintAndPreservesDraft",
+    "missingHintDoesNotTurnPhoneOrAmbiguousFieldsIntoEmail",
+    "labelsSelectedBirthdaySpinnersWithoutHints"
+  ],
+  "liveRetest": {
+    "device": "emulator-5554",
+    "webViewVersion": "155.0.8059.43",
+    "birthdayReadback": [
+      {
+        "field": "Month",
+        "value": "July"
+      },
+      {
+        "field": "Day",
+        "value": "6"
+      },
+      {
+        "field": "Year",
+        "value": "1981"
+      }
+    ],
+    "emailEditor": [
+      {
+        "hint": "Email address",
+        "length": 26,
+        "focused": true
+      }
+    ],
+    "passedEmailAndBirthdaySteps": true,
+    "stoppedBeforeSendCode": true,
+    "fullSignupVerified": false
+  }
+}

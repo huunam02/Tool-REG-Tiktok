@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../controller/home_controller.dart';
 import '../../core/nurture_data.dart';
+import '../../core/signup_failure.dart';
+import '../widgets/proxy_widgets.dart';
 import 'home_style.dart';
 
 /// Nuôi Account tab: nurture statistics of every registered account.
@@ -18,6 +20,11 @@ class NurtureTab extends StatelessWidget {
       Text(
         'Tài khoản đã đăng ký số lượng: ${logic.nurtureAccounts.length}',
         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+      ),
+      const SizedBox(height: 6),
+      const Text(
+        'Chạm vào một tài khoản để nuôi nó trước.',
+        style: TextStyle(fontSize: 12, color: HomeStyle.muted),
       ),
       const SizedBox(height: 16),
       if (logic.loadingAccounts) const LinearProgressIndicator(),
@@ -42,14 +49,24 @@ class NurtureTab extends StatelessWidget {
           icon: Icons.person_add_alt,
           children: [
             OutlinedButton(
-              onPressed: () => logic.tabs.animateTo(0),
+              onPressed: () =>
+                  logic.tabs.animateTo(HomeController.configurationTab),
               child: const Text('Đi đến Cấu hình'),
             ),
           ],
         )
       else
         for (final account in logic.nurtureAccounts) ...[
-          _NurtureAccountCard(account: account),
+          _NurtureAccountCard(
+            account: account,
+            first:
+                account.configurationId != null &&
+                account.configurationId ==
+                    logic.nurturePriority?.configurationId,
+            onTap: logic.busy || account.configurationId == null
+                ? null
+                : () => logic.selectNurturePriority(account.configurationId!),
+          ),
           const SizedBox(height: 12),
         ],
     ],
@@ -78,7 +95,10 @@ class NurtureActionBar extends StatelessWidget {
                 logic.registeredAccountCount == 0
             ? null
             : onNurtureAll,
-        child: Text('Chạy nuôi toàn bộ tài khoản', textAlign: TextAlign.center),
+        child: Text(
+          'Chạy nuôi lần lượt các tài khoản',
+          textAlign: TextAlign.center,
+        ),
       ),
       const SizedBox(height: 6),
     ],
@@ -86,72 +106,126 @@ class NurtureActionBar extends StatelessWidget {
 }
 
 class _NurtureAccountCard extends StatelessWidget {
-  const _NurtureAccountCard({required this.account});
+  const _NurtureAccountCard({
+    required this.account,
+    required this.first,
+    required this.onTap,
+  });
 
   final NurtureAccount account;
 
+  /// Nurtured first by Chạy nuôi lần lượt.
+  final bool first;
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) => Material(
-    color: HomeStyle.surface,
+    key: Key('nurtureAccount-${account.key}'),
+    color: first ? HomeStyle.selectedSurface : HomeStyle.surface,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(20),
-      side: const BorderSide(color: HomeStyle.border),
+      side: BorderSide(
+        color: first ? HomeStyle.cyan : HomeStyle.border,
+        width: first ? 1.5 : 1,
+      ),
     ),
-    child: Padding(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const CircleAvatar(
-                backgroundColor: Color(0xFF123136),
-                foregroundColor: HomeStyle.cyan,
-                child: Icon(Icons.person_outline),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  first ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: first ? HomeStyle.cyan : HomeStyle.muted,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Plain text: a tap anywhere on the card selects it.
+                      Text(
+                        account.email,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        account.configurationName.isEmpty
+                            ? 'Cấu hình đã xóa'
+                            : account.configurationName,
+                        style: const TextStyle(
+                          color: HomeStyle.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    SelectableText(
-                      account.email,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 4),
                     Text(
-                      account.configurationName.isEmpty
-                          ? 'Cấu hình đã xóa'
-                          : account.configurationName,
+                      account.phaseLabel,
                       style: const TextStyle(
-                        color: HomeStyle.muted,
+                        color: HomeStyle.cyan,
                         fontSize: 12,
                       ),
                     ),
+                    if (first) ...[
+                      const SizedBox(height: 8),
+                      const ProxyBadge(
+                        label: 'Chạy trước',
+                        color: HomeStyle.cyan,
+                      ),
+                    ],
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                account.phaseLabel,
-                style: const TextStyle(color: HomeStyle.cyan, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              _Stat(
-                value: '${account.totals.minutes.toStringAsFixed(1)} phút',
-                label: 'Xem video',
-              ),
-              _Stat(value: '${account.totals.videos}', label: 'Video đã xem'),
-              _Stat(value: '${account.totals.likes}', label: 'Thả tim'),
-              _Stat(value: '${account.totals.comments}', label: 'Bình luận'),
-            ],
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 14),
+            _Info(
+              key: const Key('nurtureRegisteredAt'),
+              icon: Icons.event_available_outlined,
+              label: 'Tạo tài khoản',
+              value: account.registeredAt == null
+                  ? 'Chưa ghi nhận'
+                  : formatFailureTime(account.registeredAt!),
+            ),
+            _Info(
+              key: const Key('nurtureCount'),
+              icon: Icons.repeat,
+              label: 'Số lần nuôi',
+              value: '${account.nurtureCount} lần',
+            ),
+            _Info(
+              key: const Key('nurtureLastAt'),
+              icon: Icons.history,
+              label: 'Nuôi lần cuối',
+              value: account.lastNurturedAt == null
+                  ? 'Chưa nuôi'
+                  : formatFailureTime(account.lastNurturedAt!),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                _Stat(
+                  value: '${account.totals.minutes.toStringAsFixed(1)} phút',
+                  label: 'Xem video',
+                ),
+                _Stat(value: '${account.totals.videos}', label: 'Video đã xem'),
+                _Stat(value: '${account.totals.likes}', label: 'Thả tim'),
+                _Stat(value: '${account.totals.comments}', label: 'Bình luận'),
+              ],
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -176,6 +250,40 @@ class _Stat extends StatelessWidget {
           label,
           style: const TextStyle(fontSize: 11, color: HomeStyle.muted),
           textAlign: TextAlign.center,
+        ),
+      ],
+    ),
+  );
+}
+
+class _Info extends StatelessWidget {
+  const _Info({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      children: [
+        Icon(icon, size: 16, color: HomeStyle.muted),
+        const SizedBox(width: 8),
+        Text(
+          '$label: ',
+          style: const TextStyle(fontSize: 13, color: HomeStyle.muted),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
         ),
       ],
     ),

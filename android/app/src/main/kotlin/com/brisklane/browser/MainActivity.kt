@@ -1,5 +1,6 @@
-package com.stalliondz.tool.tiktok
+package com.brisklane.browser
 
+import android.app.ActivityManager
 import android.view.View
 import android.view.ViewGroup
 import android.content.Intent
@@ -11,6 +12,10 @@ import android.os.Build
 import android.webkit.WebView
 import org.json.JSONObject
 import com.pichillilorenzo.flutter_inappwebview_android.InAppWebViewFlutterPlugin
+import com.stalliondz.tool.tiktok.DesktopChromeIdentity
+import com.stalliondz.tool.tiktok.NativeClipboardPaste
+import com.stalliondz.tool.tiktok.NativeKeyboardInput
+import com.stalliondz.tool.tiktok.NativeSendCodeTarget
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -66,6 +71,17 @@ class MainActivity: FlutterActivity() {
                 registerReceiver(calibrationReceiver, filter, "android.permission.DUMP", null, Context.RECEIVER_EXPORTED)
             } else registerReceiver(calibrationReceiver, filter, "android.permission.DUMP", null)
         }
+        // Physical RAM, from which Dart derives the phone's navigator.deviceMemory.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/device")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "totalMemory") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val memory = ActivityManager.MemoryInfo()
+                (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(memory)
+                result.success(memory.totalMem)
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/send_code_target")
             .setMethodCallHandler { call, result ->
                 if (call.method != "getTarget" && call.method != "invalidateTarget") {

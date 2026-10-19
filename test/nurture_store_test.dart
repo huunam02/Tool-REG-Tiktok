@@ -60,7 +60,7 @@ void main() {
       expect((await store.nurture.listAccounts()).single.email, account.email);
       await store.close();
       final migrated = await databaseFactoryFfi.openDatabase(filename);
-      expect(await migrated.getVersion(), 13);
+      expect(await migrated.getVersion(), 19);
       expect(await migrated.query('configurations'), before);
       expect(await migrated.rawQuery('PRAGMA foreign_key_check'), isEmpty);
       await migrated.close();
@@ -210,4 +210,178 @@ void main() {
       expect(NurturePlan.choose([' ', '']).mode, NurtureMode.feed);
     },
   );
+
+  test('registration time follows the account status', () async {
+    final before = DateTime.now().subtract(const Duration(seconds: 1));
+    final id = await store.save(
+      name: 'Account',
+      proxy: null,
+      account: account,
+      statusAccount: AccountStatus.registered,
+    );
+    final registered = (await store.nurture.listAccounts()).single.registeredAt;
+    expect(registered!.isAfter(before), isTrue);
+    // Saving again as registered keeps the original time.
+    await store.save(
+      id: id,
+      name: 'Renamed',
+      proxy: null,
+      account: account,
+      statusAccount: AccountStatus.registered,
+    );
+    await store.markRegistered(id, account.email);
+    expect(
+      (await store.nurture.listAccounts()).single.registeredAt,
+      registered,
+    );
+    await store.save(
+      id: id,
+      name: 'Renamed',
+      proxy: null,
+      account: account,
+      statusAccount: AccountStatus.unregistered,
+    );
+    expect((await store.nurture.listAccounts()).single.registeredAt, isNull);
+    await store.markRegistered(id, account.email);
+    expect((await store.nurture.listAccounts()).single.registeredAt, isNotNull);
+  });
+
+  test('only sessions that watched count as nurtures', () async {
+    await store.save(
+      name: 'Account',
+      proxy: null,
+      account: account,
+      statusAccount: AccountStatus.registered,
+    );
+    var entry = (await store.nurture.listAccounts()).single;
+    expect(entry.nurtureCount, 0);
+    expect(entry.lastNurturedAt, isNull);
+    for (final (id, watched) in [('a', 30000), ('b', 0), ('c', 45000)]) {
+      await store.nurture.beginSession(
+        id: id,
+        email: account.email,
+        plan: const NurturePlan(NurtureMode.feed),
+        phase: 'running',
+      );
+      await store.nurture.saveProgress(
+        id,
+        1,
+        NurtureTotals(watchMilliseconds: watched),
+      );
+    }
+    entry = (await store.nurture.listAccounts()).single;
+    expect(entry.nurtureCount, 2);
+    expect(entry.lastNurturedAt, isNotNull);
+  });
+
+  test('v14 databases gain the registration time column', () async {
+    await store.save(
+      name: 'Old',
+      proxy: null,
+      account: account,
+      statusAccount: AccountStatus.registered,
+    );
+    await store.close();
+    final old = await databaseFactoryFfi.openDatabase(filename);
+    await old.execute('ALTER TABLE configurations DROP COLUMN registered_at');
+    await old.setVersion(14);
+    await old.close();
+    store = openStore();
+    // Registered before the column existed: the time is unknown.
+    final entry = (await store.nurture.listAccounts()).single;
+    expect(entry.email, account.email);
+    expect(entry.registeredAt, isNull);
+  });
+
+  test('each configuration keeps its own nurture settings', () async {
+    const custom = NurtureSettings(
+      likePercent: 45,
+      commentPercent: 5,
+      longWatchPercent: 70,
+      minMinutes: 10,
+      maxMinutes: 20,
+    );
+    final first = await store.save(
+      name: 'First',
+      proxy: null,
+      account: account,
+    );
+    await store.save(
+      name: 'Second',
+      proxy: null,
+      account: const AccountCredentials(
+        email: 'second@example.com',
+        password: 'secret',
+        mailboxPassword: 'mail',
+      ),
+      nurtureSettings: custom,
+    );
+    await store.close();
+    store = openStore();
+    final saved = {
+      for (final entry in await store.list()) entry.name: entry.nurtureSettings,
+    };
+    expect(saved, {'First': NurtureSettings.defaults, 'Second': custom});
+    // Saving without settings keeps them; invalid values are rejected.
+    await store.save(id: first, name: 'First', proxy: null, account: account);
+    await expectLater(
+      store.save(
+        id: first,
+        name: 'First',
+        proxy: null,
+        nurtureSettings: const NurtureSettings(minMinutes: 5, maxMinutes: 4),
+      ),
+      throwsFormatException,
+    );
+    await store.useSaved(first);
+    expect(
+      (await store.getCurrentProfile())!.nurtureSettings,
+      NurtureSettings.defaults,
+    );
+    // The selected configuration is what Home hands to TikTok.
+    final second = (await store.list()).singleWhere((e) => e.name == 'Second');
+    await store.useSaved(second.id);
+    expect((await store.getCurrentProfile())!.nurtureSettings, custom);
+    // Editing only the settings of the selected configuration applies them.
+    const edited = NurtureSettings(likePercent: 0, commentPercent: 100);
+    await store.save(
+      id: second.id,
+      name: 'Second',
+      proxy: null,
+      nurtureSettings: edited,
+    );
+    final current = (await store.getCurrentProfile())!;
+    expect(current.configurationId, second.id);
+    expect(current.nurtureSettings, edited);
+  });
+
+  test('v16 databases gain per-configuration nurture settings', () async {
+    await store.save(name: 'Old', proxy: null, account: account);
+    await store.close();
+    final old = await databaseFactoryFfi.openDatabase(filename);
+    for (final column in [
+      'nurture_like_percent',
+      'nurture_comment_percent',
+      'nurture_long_watch_percent',
+      'nurture_min_minutes',
+      'nurture_max_minutes',
+    ]) {
+      await old.execute('ALTER TABLE configurations DROP COLUMN $column');
+    }
+    await old.execute('CREATE TABLE nurture_settings (id INTEGER PRIMARY KEY)');
+    await old.setVersion(16);
+    await old.close();
+    store = openStore();
+    final entry = (await store.list()).single;
+    expect(entry.name, 'Old');
+    expect(entry.nurtureSettings, NurtureSettings.defaults);
+    await store.close();
+    final migrated = await databaseFactoryFfi.openDatabase(filename);
+    final tables = await migrated.query(
+      'sqlite_master',
+      where: "type = 'table' AND name = 'nurture_settings'",
+    );
+    expect(tables, isEmpty);
+    await migrated.close();
+  });
 }

@@ -101,9 +101,9 @@ for (const type of ['WebGLRenderingContext', 'WebGL2RenderingContext']) {
     assert.equal(gl.getParameter(0x1F00), 'WebKit');
     assert.equal(gl.getParameter(0x1F01), 'WebKit WebGL');
     assert.equal(gl.getParameter(String(0x1F01)), 'WebKit WebGL');
-    assert.equal(gl.getParameter(debug.UNMASKED_VENDOR_WEBGL), 'ARM');
-    assert.equal(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL), 'Mali-G715');
-    assert.equal(gl.getParameter(String(0x9246)), 'Mali-G715');
+    assert.equal(gl.getParameter(debug.UNMASKED_VENDOR_WEBGL), 'Google Inc. (ARM)');
+    assert.equal(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL), 'ANGLE (ARM, Mali-G715, OpenGL ES 3.2)');
+    assert.equal(gl.getParameter(String(0x9246)), 'ANGLE (ARM, Mali-G715, OpenGL ES 3.2)');
     assert.equal(gl.getError(), 0);
     assert.equal(gl.getParameter(0xDEAD), null);
     assert.equal(gl.getError(), 0x0500);
@@ -120,7 +120,7 @@ for (const type of ['WebGLRenderingContext', 'WebGL2RenderingContext']) {
       { value: () => 'Android Emulator' }), TypeError);
     runInNewContext(gpuScript, { window, console: { warn() {} } });
     gl.getExtension('WEBGL_debug_renderer_info');
-    assert.equal(gl.getParameter(0x9246), 'Mali-G715');
+    assert.equal(gl.getParameter(0x9246), 'ANGLE (ARM, Mali-G715, OpenGL ES 3.2)');
   });
 }
 

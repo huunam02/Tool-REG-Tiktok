@@ -40,7 +40,9 @@ public class SignupAccessibilityBridgeTest {
         UiAutomation automation = instrumentation().getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES);
         automation.executeShellCommand("settings put secure enabled_accessibility_services ''").close();
         Thread.sleep(300);
-        automation.executeShellCommand("settings put secure enabled_accessibility_services com.stalliondz.tool.tiktok/slayer.accessibility.service.flutter_accessibility_service.AccessibilityListener").close();
+        automation.executeShellCommand("settings put secure enabled_accessibility_services " +
+            instrumentation().getTargetContext().getPackageName() +
+            "/slayer.accessibility.service.flutter_accessibility_service.AccessibilityListener").close();
         CountDownLatch loaded = new CountDownLatch(1);
         instrumentation().runOnMainSync(() -> {
             web = new WebView(activity.getActivity());
@@ -107,6 +109,120 @@ public class SignupAccessibilityBridgeTest {
         }));
         assertTrue(done.await(3, TimeUnit.SECONDS));
         assertEquals(Boolean.TRUE, value.get());
+    }
+
+    private void emailForm(String prompt, String switchLabel, boolean extraEditor) throws Exception {
+        instrumentation().runOnMainSync(() -> web.requestFocus());
+        evaluate("document.body.innerHTML=\"<h1>Sign up</h1><div>" + prompt +
+            "</div><input id='missingHintEmail' type='text'>" +
+            (extraEditor ? "<input id='unrelated' type='text'>" : "") +
+            "<button>" + switchLabel + "</button><button>Send code</button>\";" +
+            "missingHintEmail.focus();true");
+        Thread.sleep(500);
+        tapFocusedEditor();
+        Thread.sleep(500);
+    }
+
+    @Test public void recognizesSignupEmailWithoutHintAndPreservesDraft() throws Exception {
+        emailForm("Enter your email", "Use phone", false);
+        AtomicReference<Map<String,Object>> snapshot = new AtomicReference<>();
+        instrumentation().runOnMainSync(() -> snapshot.set(SignupAccessibilityBridge.snapshot()));
+        List<Map<String,Object>> nodes = (List<Map<String,Object>>) snapshot.get().get("nodes");
+        Map<String,Object> editor = nodes.stream().filter(n -> Boolean.TRUE.equals(n.get("editable"))).findFirst().get();
+        assertEquals(snapshot.get().toString(), "Email address", editor.get("hint"));
+        assertEquals(0, editor.get("length"));
+        Map<String,Object> pasted = paste("fixture@example.org", "email");
+        assertEquals(pasted.toString() + " DOM=" + evaluate("missingHintEmail.value.length"), Boolean.TRUE, pasted.get("ok"));
+        assertEquals("\"fixture@example.org\"", evaluate("missingHintEmail.value"));
+        assertEquals("draft-exists", paste("replacement@example.org", "email").get("reason"));
+        instrumentation().runOnMainSync(() -> snapshot.set(SignupAccessibilityBridge.snapshot()));
+        assertFalse("Inferred hint must not contain field values", snapshot.get().toString().contains("fixture@example.org"));
+    }
+
+    @Test public void missingHintDoesNotTurnPhoneOrAmbiguousFieldsIntoEmail() throws Exception {
+        for (String[] scenario : new String[][] {
+                {"Enter your phone", "Use email", "false"},
+                {"Enter your email", "Use email", "false"},
+                {"Enter your email", "Use phone", "true"}}) {
+            emailForm(scenario[0], scenario[1], Boolean.parseBoolean(scenario[2]));
+            AtomicReference<Map<String,Object>> snapshot = new AtomicReference<>();
+            instrumentation().runOnMainSync(() -> snapshot.set(SignupAccessibilityBridge.snapshot()));
+            List<Map<String,Object>> nodes = (List<Map<String,Object>>) snapshot.get().get("nodes");
+            assertFalse(nodes.stream().anyMatch(n -> Boolean.TRUE.equals(n.get("editable")) &&
+                "Email address".equals(n.get("hint"))));
+            assertEquals("wrong-email-field", paste("fixture@example.org", "email").get("reason"));
+            assertEquals("\"\"", evaluate("missingHintEmail.value"));
+        }
+    }
+
+    private void loginForm(boolean extraEditor, boolean phone) throws Exception {
+        instrumentation().runOnMainSync(() -> web.requestFocus());
+        evaluate("document.body.innerHTML=\"<div role='dialog' aria-modal='true' style='position:fixed;top:25%;left:10%;width:80%'><div>Log in</div>" +
+            "<button>Phone</button><button>Username or email</button>" +
+            "<div style='margin-top:20px'><input style='font-size:18px' id='missingHintLogin' type='" + (phone ? "tel" : "text") + "'></div>" +
+            "<div style='margin-top:20px'><input style='font-size:18px' type='password'></div>" +
+            (extraEditor ? "<input type='text'>" : "") +
+            "<button>Continue</button></div>\";missingHintLogin.focus();true");
+        Thread.sleep(500);
+        tapFocusedEditor();
+        Thread.sleep(500);
+    }
+
+    @Test public void recognizesLoginUsernameWithoutHintAndPreservesDraft() throws Exception {
+        loginForm(false, false);
+        AtomicReference<Map<String,Object>> snapshot = new AtomicReference<>();
+        instrumentation().runOnMainSync(() -> snapshot.set(SignupAccessibilityBridge.snapshot()));
+        List<Map<String,Object>> nodes = (List<Map<String,Object>>) snapshot.get().get("nodes");
+        assertEquals(snapshot.get().toString(), 1, nodes.stream().filter(n -> Boolean.TRUE.equals(n.get("editable")) &&
+            "Username or email".equals(n.get("hint"))).count());
+        Map<String,Object> pasted = paste("fixture@example.org", "email");
+        assertEquals(pasted.toString(), Boolean.TRUE, pasted.get("ok"));
+        assertEquals("\"fixture@example.org\"", evaluate("missingHintLogin.value"));
+        assertEquals("draft-exists", paste("replacement@example.org", "email").get("reason"));
+        instrumentation().runOnMainSync(() -> snapshot.set(SignupAccessibilityBridge.snapshot()));
+        assertFalse(snapshot.get().toString().contains("fixture@example.org"));
+    }
+
+    @Test public void missingLoginHintRejectsAmbiguousAndPhoneFields() throws Exception {
+        for (boolean phone : new boolean[] {false, true}) {
+            loginForm(!phone, phone);
+            AtomicReference<Map<String,Object>> snapshot = new AtomicReference<>();
+            instrumentation().runOnMainSync(() -> snapshot.set(SignupAccessibilityBridge.snapshot()));
+            List<Map<String,Object>> nodes = (List<Map<String,Object>>) snapshot.get().get("nodes");
+            assertFalse(nodes.stream().anyMatch(n -> Boolean.TRUE.equals(n.get("editable")) &&
+                "Username or email".equals(n.get("hint"))));
+            assertEquals("wrong-email-field", paste("fixture@example.org", "email").get("reason"));
+            assertEquals("\"\"", evaluate("missingHintLogin.value"));
+        }
+    }
+
+    @Test public void labelsSelectedBirthdaySpinnersWithoutHints() throws Exception {
+        // Actual WebView 155 Accessibility recording: selected year has no hint.
+        String json;
+        try (java.io.InputStream input = instrumentation().getContext().getAssets().open("signup-birthday-missing-hints.json")) {
+            json = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        org.json.JSONArray raw = new org.json.JSONObject(json).getJSONArray("nodes");
+        List<Map<String,Object>> nodes = new java.util.ArrayList<>();
+        for (int i = 0; i < raw.length(); i++) {
+            org.json.JSONObject node = raw.getJSONObject(i);
+            Map<String,Object> values = new java.util.HashMap<>();
+            values.put("text", node.optString("text"));
+            values.put("hint", node.optString("hint"));
+            values.put("className", node.optString("className"));
+            org.json.JSONArray bounds = node.getJSONArray("bounds");
+            values.put("bounds", java.util.Arrays.asList(bounds.getInt(0), bounds.getInt(1), bounds.getInt(2), bounds.getInt(3)));
+            nodes.add(values);
+        }
+        SignupAccessibilityBridge.labelSignupBirthdayFields(nodes);
+        for (String[] field : new String[][] {{"Month", "Month"}, {"Day", "Day"}, {"Year", "1991"}}) {
+            assertTrue(nodes.toString(), nodes.stream().anyMatch(n ->
+                "android.widget.Spinner".equals(n.get("className")) && field[0].equals(n.get("hint")) && field[1].equals(n.get("text"))));
+        }
+        nodes.removeIf(n -> "When’s your birthday?*".equals(n.get("text")));
+        for (Map<String,Object> node : nodes) node.put("hint", "");
+        SignupAccessibilityBridge.labelSignupBirthdayFields(nodes);
+        assertFalse("Unrelated dropdowns must not be relabeled", nodes.stream().anyMatch(n -> !"".equals(n.get("hint"))));
     }
 
     @Test public void treatsOnlyCommentEdgeFillersAsEmpty() {

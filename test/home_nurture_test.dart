@@ -145,7 +145,7 @@ void main() {
       await tester.tap(find.byKey(const Key('nurtureTab')));
       await tester.pumpAndSettle();
       expect(find.text('1.5 phút'), findsOneWidget);
-      expect(find.text('Tài khoản số lượng: 1'), findsOneWidget);
+      expect(find.text('Tài khoản đã đăng ký số lượng: 1'), findsOneWidget);
       expect(find.text('person@example.com'), findsWidgets);
       expect(find.text('new@example.com'), findsNothing);
       expect(find.text('Video đã xem'), findsOneWidget);
@@ -157,7 +157,7 @@ void main() {
       expect(find.byKey(const Key('openTikTok')), findsNothing);
       await tester.tap(find.byKey(const Key('configurationTab')));
       await tester.pumpAndSettle();
-      expect(find.text('old-password'), findsOneWidget);
+      expect(find.byKey(const Key('manageProxies')), findsOneWidget);
       expect(find.byKey(const Key('comments')), findsNothing);
       expect(find.byKey(const Key('nurtureKeywords')), findsNothing);
       expect(tester.takeException(), isNull);
@@ -188,7 +188,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Đi đến Cấu hình'));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('openTikTok')), findsOneWidget);
+      expect(find.byKey(const Key('manageProxies')), findsOneWidget);
       expect(find.byKey(const Key('comments')), findsNothing);
       expect(find.byKey(const Key('nurtureKeywords')), findsNothing);
       expect(tester.takeException(), isNull);

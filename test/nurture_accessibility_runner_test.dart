@@ -10,6 +10,8 @@ import 'package:test_tiktok/core/nurture_coordinate_profile.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/signup_accessibility.dart';
 
+/// Draws every rate (0 < any rate). `full: false` runs pair it with
+/// `longWatchRate: 0` and `commentRate: 0` so the post is swiped early.
 class _Random implements Random {
   _Random(this.full);
   final bool full;
@@ -626,6 +628,8 @@ void main() {
         totals = t;
         if (t.videos > 0) active = false;
       },
+      longWatchRate: 0,
+      commentRate: 0,
       random: _Random(false),
       now: () => service.clock,
       delay: service.delay,
@@ -636,6 +640,60 @@ void main() {
     expect(totals!.fullVideos, 0);
     expect(totals!.watchMilliseconds, greaterThanOrEqualTo(2000));
     expect(service.posts, 0);
+  });
+
+  test('0% rates neither like, comment nor watch long', () async {
+    final service = _Service();
+    var active = true;
+    NurtureTotals? totals;
+    await NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: ['Configured comment'],
+      isActive: () => active,
+      isTikTok: () async => true,
+      onProgress: (t, _) async {
+        totals = t;
+        if (t.videos > 0) active = false;
+      },
+      likeRate: 0,
+      commentRate: 0,
+      longWatchRate: 0,
+      // nextDouble 0 would draw every rate above 0.
+      random: _Random(true),
+      now: () => service.clock,
+      delay: service.delay,
+    ).start();
+    expect(totals!.skippedVideos, 1);
+    expect(totals!.fullVideos, 0);
+    expect(service.likeTaps, 0);
+    expect(service.posts, 0);
+  });
+
+  test('100% comment rate comments and watches the post in full', () async {
+    final service = _Service();
+    var active = true;
+    NurtureTotals? totals;
+    await NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: ['Configured comment'],
+      isActive: () => active,
+      isTikTok: () async => true,
+      onProgress: (t, _) async {
+        totals = t;
+        if (t.videos > 0) active = false;
+      },
+      likeRate: 0,
+      commentRate: 1,
+      longWatchRate: 0,
+      random: _LatestRandom(),
+      now: () => service.clock,
+      delay: service.delay,
+    ).start();
+    expect(service.posts, 1);
+    expect(service.likeTaps, 0);
+    expect(totals!.fullVideos, 1);
   });
 
   group('like', () {
@@ -658,7 +716,9 @@ void main() {
         },
         onLikeSkipped: skipped.add,
         likeRate: likeRate,
-        // nextDouble 0 draws a like; nextBool false would skip the post.
+        // nextDouble 0 draws a like; without it the post would be skipped.
+        longWatchRate: 0,
+        commentRate: 0,
         random: _Random(false),
         now: () => service.clock,
         delay: service.delay,
@@ -762,6 +822,8 @@ void main() {
           totals = t;
           if (t.videos > 0) active = false;
         },
+        longWatchRate: 0,
+        commentRate: 0,
         random: _Random(false),
         now: () => service.clock,
         delay: service.delay,
@@ -788,6 +850,8 @@ void main() {
         totals = t;
         if (t.videos > 0) active = false;
       },
+      longWatchRate: 0,
+      commentRate: 0,
       random: _Random(false),
       now: () => service.clock,
       delay: service.delay,
@@ -811,6 +875,8 @@ void main() {
         totals = t;
         if (t.videos > 0) active = false;
       },
+      longWatchRate: 0,
+      commentRate: 0,
       random: _Random(false),
       now: () => service.clock,
       delay: service.delay,
@@ -830,6 +896,8 @@ void main() {
         isActive: () => true,
         isTikTok: () async => true,
         onProgress: (_, _) async {},
+        longWatchRate: 0,
+        commentRate: 0,
         random: _Random(false),
         now: () => service.clock,
         delay: service.delay,
@@ -855,6 +923,8 @@ void main() {
         isActive: () => true,
         isTikTok: () async => true,
         onProgress: (_, _) async {},
+        longWatchRate: 0,
+        commentRate: 0,
         random: _Random(false),
         now: () => service.clock,
         delay: service.delay,
@@ -875,6 +945,8 @@ void main() {
       isActive: () => service.clock.isBefore(until),
       isTikTok: () async => true,
       onProgress: (t, _) async => totals = t,
+      longWatchRate: 0,
+      commentRate: 0,
       random: _Random(false),
       now: () => service.clock,
       delay: service.delay,
@@ -896,6 +968,8 @@ void main() {
         onProgress: (t, _) async {
           if (t.videos > 0) active = false;
         },
+        longWatchRate: 0,
+        commentRate: 0,
         random: _Random(false),
         now: () => service.clock,
         delay: service.delay,
@@ -920,6 +994,8 @@ void main() {
       isActive: () => true,
       isTikTok: () async => true,
       onProgress: (_, _) async {},
+      longWatchRate: 0,
+      commentRate: 0,
       random: _Random(false),
       now: () => service.clock,
       delay: service.delay,
@@ -982,6 +1058,7 @@ void main() {
       onProgress: (t, _) async {
         if (t.fullVideos > 0) active = false;
       },
+      commentRate: 1,
       random: _LatestRandom(),
       now: () => service.clock,
       delay: service.delay,
@@ -1246,6 +1323,8 @@ void main() {
           totals = t;
           if (t.videos > 0) active = false;
         },
+        longWatchRate: 0,
+        commentRate: 0,
         random: _Random(false),
         now: () => service.clock,
         delay: service.delay,

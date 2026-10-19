@@ -26,7 +26,6 @@ class WebViewProxyIpChecker {
   Future<String?> check({
     required String userAgent,
     bool useInstalledEngine = true,
-    String localIp = '192.168.1.10',
     required Future<HttpAuthResponse?> Function(
       InAppWebViewController,
       URLAuthenticationChallenge,
@@ -56,7 +55,7 @@ class WebViewProxyIpChecker {
         initialUserScripts: UnmodifiableListView([
           if (!needsAndroidDesktopIdentity || !useInstalledEngine)
             pixelGpuInfoUserScript(),
-          disableWebRtcUserScript(localIp: localIp),
+          disableWebRtcUserScript(),
         ]),
         onWebViewCreated: (controller) async {
           if (!needsAndroidDesktopIdentity) return;

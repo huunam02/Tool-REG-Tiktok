@@ -10,6 +10,8 @@ import '../core/proxy_store.dart';
 import '../core/proxy_draft.dart';
 import '../core/configuration_data.dart';
 import '../core/configuration_file_import.dart';
+import '../core/gpu_profile.dart';
+import '../core/nurture_data.dart';
 import '../core/proxy_time_zone.dart';
 import '../core/proxy_time_zone_detector.dart';
 import '../core/webview_user_agent.dart';
@@ -250,22 +252,8 @@ class ProxyFormController extends AppController {
 
   void clearImportError(String _) => mutate(() => importError = null);
 
-  /// True/false when every configuration agrees, otherwise null (mixed).
-  bool? get nurtureAfterSignupForAll {
-    final values = configurations.map((fields) => fields.nurtureAfterSignup);
-    if (values.every((value) => value)) return true;
-    if (values.every((value) => !value)) return false;
-    return null;
-  }
-
   void setNurtureAfterSignup(ConfigurationFormFields fields, bool value) =>
       mutate(() => fields.nurtureAfterSignup = value);
-
-  void setNurtureAfterSignupForAll(bool value) => mutate(() {
-    for (final fields in configurations) {
-      fields.nurtureAfterSignup = value;
-    }
-  });
 
   Future<void> detectTimeZoneFor(ConfigurationFormFields fields) async {
     if (!active ||
@@ -357,7 +345,11 @@ class ConfigurationFormFields {
         text: entry?.account?.mailboxPassword,
       ),
       statusAccount = entry?.statusAccount ?? AccountStatus.unregistered,
+      gpuProfileId = GpuProfile.isKnown(entry?.gpuProfileId ?? '')
+          ? entry!.gpuProfileId
+          : GpuProfile.random().id,
       nurtureAfterSignup = entry?.nurtureAfterSignup ?? false {
+    showNurtureSettings(entry?.nurtureSettings ?? NurtureSettings.defaults);
     for (final field in [url, username, password]) {
       field.addListener(() {
         revision++;
@@ -381,6 +373,19 @@ class ConfigurationFormFields {
   final TextEditingController mailboxPassword;
   AccountStatus statusAccount;
   bool nurtureAfterSignup;
+
+  /// The phone GPU pages see over WebGL; shown read-only, only Đổi or a
+  /// backup changes it.
+  String gpuProfileId;
+  GpuProfile get gpuProfile => GpuProfile.byId(gpuProfileId);
+  void changeGpuProfile() => gpuProfileId = GpuProfile.other(gpuProfileId).id;
+
+  /// Cấu hình nuôi of this configuration.
+  final nurtureLikePercent = TextEditingController();
+  final nurtureCommentPercent = TextEditingController();
+  final nurtureLongWatchPercent = TextEditingController();
+  final nurtureMinMinutes = TextEditingController();
+  final nurtureMaxMinutes = TextEditingController();
   bool generating = false;
   bool generationFailed = false;
   bool disposed = false;
@@ -397,6 +402,30 @@ class ConfigurationFormFields {
         : data.account.password;
     mailboxPassword.text = data.account.mailboxPassword;
     statusAccount = data.statusAccount;
+    final settings = data.nurtureSettings;
+    if (settings != null) showNurtureSettings(settings);
+    final gpu = data.gpuProfileId;
+    if (gpu != null) gpuProfileId = gpu;
+  }
+
+  void showNurtureSettings(NurtureSettings settings) {
+    nurtureLikePercent.text = '${settings.likePercent}';
+    nurtureCommentPercent.text = '${settings.commentPercent}';
+    nurtureLongWatchPercent.text = '${settings.longWatchPercent}';
+    nurtureMinMinutes.text = '${settings.minMinutes}';
+    nurtureMaxMinutes.text = '${settings.maxMinutes}';
+  }
+
+  /// The form validators reject non-numbers before a draft is built.
+  NurtureSettings get nurtureSettings {
+    int read(TextEditingController input) => int.parse(input.text.trim());
+    return NurtureSettings(
+      likePercent: read(nurtureLikePercent),
+      commentPercent: read(nurtureCommentPercent),
+      longWatchPercent: read(nurtureLongWatchPercent),
+      minMinutes: read(nurtureMinMinutes),
+      maxMinutes: read(nurtureMaxMinutes),
+    );
   }
 
   ProxyDraft toDraft() => ProxyDraft(
@@ -415,6 +444,8 @@ class ConfigurationFormFields {
     statusAccount: statusAccount,
     timeZoneId: normalizeProxyTimeZone(timeZoneId.text),
     nurtureAfterSignup: nurtureAfterSignup,
+    nurtureSettings: nurtureSettings,
+    gpuProfileId: gpuProfileId,
   );
 
   void dispose() {
@@ -428,6 +459,11 @@ class ConfigurationFormFields {
       accountEmail,
       accountPassword,
       mailboxPassword,
+      nurtureLikePercent,
+      nurtureCommentPercent,
+      nurtureLongWatchPercent,
+      nurtureMinMinutes,
+      nurtureMaxMinutes,
     ]) {
       field.dispose();
     }

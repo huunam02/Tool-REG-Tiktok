@@ -9,6 +9,7 @@ import 'home/configuration_tab.dart';
 import 'home/failed_configurations_tab.dart';
 import 'home/home_style.dart';
 import 'home/nurture_tab.dart';
+import 'home/signup_tab.dart';
 import 'proxy_management_page.dart';
 import 'settings_page.dart';
 import 'tiktok_page.dart';
@@ -53,80 +54,11 @@ class _HomeView extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => Theme(
           data: HomeStyle.theme(context),
-          child: ProxyManagementPage(store: logic.proxyStore),
-        ),
-      ),
-    ),
-  );
-
-  Future<void> _openTikTok(
-    BuildContext context,
-    TikTokLaunchAction action, {
-    bool startWithNurture = false,
-  }) async {
-    TikTokFlowResult? result;
-    await logic.openTikTok(action, (configuration, action) async {
-      result = await Navigator.of(context).push<TikTokFlowResult>(
-        MaterialPageRoute<TikTokFlowResult>(
-          builder: (_) => TikTokPage(
-            configuration: configuration,
-            launchAction: action,
-            startWithNurture: startWithNurture,
-            proxyStore: logic.proxyStore,
-          ),
-        ),
-      );
-    });
-    if (!context.mounted || !logic.active) return;
-    if (result == TikTokFlowResult.nurtureCompleted && context.mounted) {
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.clearSnackBars();
-      messenger.removeCurrentSnackBar();
-      logic.notify('Đã nuôi xong. Tài khoản vẫn đang đăng nhập.');
-    }
-  }
-
-  /// Signup continues through every unregistered configuration; nurture
-  /// logs in to every registered one, then logs out.
-  Future<void> _startAutoRun(BuildContext context, AutoRunMode mode) =>
-      logic.startAutoRun(mode, (configuration, action) async {
-        if (!context.mounted) return null;
-        final result = await Navigator.of(context).push<TikTokFlowResult>(
-          MaterialPageRoute<TikTokFlowResult>(
-            builder: (_) => TikTokPage(
-              configuration: configuration,
-              launchAction: action,
-              proxyStore: logic.proxyStore,
-              autoAdvance: true,
-              logoutAfterNurture: mode == AutoRunMode.nurture,
-            ),
-          ),
-        );
-        // Notices from the closed TikTok screen no longer apply on Home.
-        if (context.mounted) ScaffoldMessenger.of(context).clearSnackBars();
-        return result;
-      });
-
-  void _runAccountAction(BuildContext context) {
-    if (logic.accountAction == TikTokLaunchAction.signup) {
-      _startAutoRun(context, AutoRunMode.signup);
-    } else {
-      _openTikTok(
-        context,
-        logic.accountAction,
-        startWithNurture: logic.hasCurrentAccountSession,
-      );
-    }
-  }
-
-  Future<void> _openSettings(BuildContext context) =>
-      Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => SettingsPage(
-            proxyStore: logic.proxyStore,
-            onOpenBrowserCheck: () => logic.openTikTok(
-              TikTokLaunchAction.browse,
-              (configuration, _) => Navigator.of(context).push<void>(
+          child: ProxyManagementPage(
+            store: logic.proxyStore,
+            onCheckIp: (entry) => logic.checkConfiguration(
+              entry,
+              (configuration) => Navigator.of(context).push<void>(
                 MaterialPageRoute(
                   builder: (_) => TikTokPage(
                     configuration: configuration,
@@ -135,18 +67,44 @@ class _HomeView extends StatelessWidget {
                 ),
               ),
             ),
-            onOpenIpCheck: () => logic.openTikTok(
-              TikTokLaunchAction.browse,
-              (configuration, _) => Navigator.of(context).push<void>(
-                MaterialPageRoute(
-                  builder: (_) => TikTokPage(
-                    configuration: configuration,
-                    startWithIpCheck: true,
-                  ),
-                ),
-              ),
-            ),
           ),
+        ),
+      ),
+    ),
+  );
+
+  /// Signup continues through every unregistered configuration; nurture
+  /// logs in to every registered one, then logs out.
+  Future<void> _startAutoRun(
+    BuildContext context,
+    AutoRunMode mode, {
+    int? firstId,
+    List<int> order = const [],
+  }) => logic.startAutoRun(mode, firstId: firstId, order: order, (
+    configuration,
+    action,
+  ) async {
+    if (!context.mounted) return null;
+    final result = await Navigator.of(context).push<TikTokFlowResult>(
+      MaterialPageRoute<TikTokFlowResult>(
+        builder: (_) => TikTokPage(
+          configuration: configuration,
+          launchAction: action,
+          proxyStore: logic.proxyStore,
+          autoAdvance: true,
+          logoutAfterNurture: mode == AutoRunMode.nurture,
+        ),
+      ),
+    );
+    // Notices from the closed TikTok screen no longer apply on Home.
+    if (context.mounted) ScaffoldMessenger.of(context).clearSnackBars();
+    return result;
+  });
+
+  Future<void> _openSettings(BuildContext context) =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => SettingsPage(proxyStore: logic.proxyStore),
         ),
       );
 
@@ -196,11 +154,13 @@ class _HomeView extends StatelessWidget {
           labelColor: HomeStyle.cyan,
           unselectedLabelColor: HomeStyle.muted,
           indicatorColor: HomeStyle.cyan,
+          indicatorSize: TabBarIndicatorSize.tab,
           dividerColor: HomeStyle.border,
-          labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+          labelPadding: const EdgeInsets.symmetric(horizontal: 4),
           tabs: const [
             Tab(key: Key('configurationTab'), text: 'Cấu hình'),
-            Tab(key: Key('nurtureTab'), text: 'Nuôi Account'),
+            Tab(key: Key('signupTab'), text: 'Đăng ký'),
+            Tab(key: Key('nurtureTab'), text: 'Nuôi'),
             Tab(key: Key('failedTab'), text: 'Cấu hình lỗi'),
           ],
         ),
@@ -220,6 +180,7 @@ class _HomeView extends StatelessWidget {
                       logic: logic,
                       onManageProxies: () => _manageProxies(context),
                     ),
+                    SignupTab(logic: logic),
                     NurtureTab(logic: logic),
                     FailedConfigurationsTab(logic: logic),
                   ],
@@ -230,18 +191,41 @@ class _HomeView extends StatelessWidget {
         ),
       ),
       bottomNavigationBar: switch (logic.tabIndex) {
-        0 => ConfigurationActionBar(
+        // Cấu hình has no actions of its own beyond Quản lý cấu hình.
+        HomeController.configurationTab => null,
+        // Each list runs from its chosen item, then in the order it shows.
+        HomeController.signupTab => SignupActionBar(
           logic: logic,
-          onRunAccountAction: () => _runAccountAction(context),
-          onOpenTikTok: () => _openTikTok(context, TikTokLaunchAction.browse),
+          onStartSignup: () => _startAutoRun(
+            context,
+            AutoRunMode.signup,
+            firstId: logic.signupPriority?.id,
+            order: [for (final entry in logic.signupConfigurations) entry.id],
+          ),
         ),
-        1 => NurtureActionBar(
+        HomeController.nurtureTab => NurtureActionBar(
           logic: logic,
-          onNurtureAll: () => _startAutoRun(context, AutoRunMode.nurture),
+          onNurtureAll: () => _startAutoRun(
+            context,
+            AutoRunMode.nurture,
+            firstId: logic.nurturePriority?.configurationId,
+            order: [
+              for (final account in logic.nurtureAccounts)
+                ?account.configurationId,
+            ],
+          ),
         ),
         _ => FailedConfigurationsActionBar(
           logic: logic,
-          onRetryAll: () => _startAutoRun(context, AutoRunMode.retryFailed),
+          onRetryAll: () => _startAutoRun(
+            context,
+            AutoRunMode.retryFailed,
+            firstId: logic.failedPriority?.configuration.id,
+            order: [
+              for (final failed in logic.failedConfigurations)
+                failed.configuration.id,
+            ],
+          ),
         ),
       },
     ),

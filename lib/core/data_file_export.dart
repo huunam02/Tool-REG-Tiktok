@@ -27,6 +27,53 @@ Uint8List encodeDataExport({
   workbook.rename('Sheet1', dataExcelSheetName);
   final sheet = workbook[dataExcelSheetName];
   _addHeaders(sheet, dataExcelHeaders);
+  for (final row in dataExportRows(
+    configurations: configurations,
+    accounts: accounts,
+  )) {
+    sheet.appendRow(row);
+  }
+  return Uint8List.fromList(workbook.encode()!);
+}
+
+/// What the export would contain, for Xem trước.
+class DataExportPreview {
+  DataExportPreview({
+    required List<SavedProxy> configurations,
+    required List<NurtureAccount> accounts,
+  }) : configurationCount = configurations.length,
+       accountCount = accounts.length,
+       rows = [
+         for (final row in dataExportRows(
+           configurations: configurations,
+           accounts: accounts,
+         ))
+           [
+             for (var i = 0; i < headers.length; i++)
+               dataExportCellText(i < row.length ? row[i] : null),
+           ],
+       ];
+
+  static const headers = dataExcelHeaders;
+  final int configurationCount;
+  final int accountCount;
+  final List<List<String>> rows;
+}
+
+/// A cell as the preview shows it.
+String dataExportCellText(CellValue? cell) => switch (cell) {
+  null => '',
+  DoubleCellValue(:final value) => value.toStringAsFixed(2),
+  _ => cell.toString(),
+};
+
+/// The Data sheet rows below the header, one per configuration, then
+/// accounts whose configuration was deleted.
+List<List<CellValue?>> dataExportRows({
+  required List<SavedProxy> configurations,
+  required List<NurtureAccount> accounts,
+}) {
+  final rows = <List<CellValue?>>[];
   final accountsByEmail = {
     for (final account in accounts)
       if (nurtureAccountKey(account.email).isNotEmpty)
@@ -40,7 +87,7 @@ Uint8List encodeDataExport({
     final proxy = configuration.proxy;
     final host = proxy?.uri.host ?? '';
     final proxyHost = host.contains(':') ? '[$host]' : host;
-    sheet.appendRow([
+    rows.add([
       TextCellValue(
         proxy == null
             ? ''
@@ -55,6 +102,8 @@ Uint8List encodeDataExport({
       TextCellValue(configuration.userAgent),
       TextCellValue(configuration.timeZoneId),
       IntCellValue(configuration.hasBeenUsed ? 1 : 0),
+      TextCellValue(configuration.gpuProfile.id),
+      ..._settingsCells(configuration.nurtureSettings),
       ..._nurtureCells(account),
     ]);
   }
@@ -62,7 +111,7 @@ Uint8List encodeDataExport({
   // Keep historical accounts even when their saved configuration was deleted.
   for (final account in accounts) {
     if (exportedEmails.contains(nurtureAccountKey(account.email))) continue;
-    sheet.appendRow([
+    rows.add([
       null,
       TextCellValue(account.email),
       null,
@@ -71,11 +120,21 @@ Uint8List encodeDataExport({
       null,
       null,
       null,
+      null,
+      for (var i = 0; i < nurtureSettingsExcelHeaders.length; i++) null,
       ..._nurtureCells(account),
     ]);
   }
-  return Uint8List.fromList(workbook.encode()!);
+  return rows;
 }
+
+List<CellValue> _settingsCells(NurtureSettings settings) => [
+  IntCellValue(settings.likePercent),
+  IntCellValue(settings.commentPercent),
+  IntCellValue(settings.longWatchPercent),
+  IntCellValue(settings.minMinutes),
+  IntCellValue(settings.maxMinutes),
+];
 
 List<CellValue> _nurtureCells(NurtureAccount? account) {
   final totals = account?.totals ?? const NurtureTotals();
@@ -86,8 +145,6 @@ List<CellValue> _nurtureCells(NurtureAccount? account) {
     IntCellValue(totals.fullVideos),
     IntCellValue(totals.skippedVideos),
     IntCellValue(totals.comments),
-    TextCellValue(account?.mode.label ?? ''),
-    TextCellValue(account?.keyword ?? ''),
   ];
 }
 

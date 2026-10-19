@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/proxy_store.dart';
 import '../../core/webview_user_agent.dart';
@@ -7,6 +8,7 @@ import '../../core/account_password.dart';
 import '../../core/otp_api.dart';
 import '../../core/configuration_data.dart';
 import '../../core/configuration_file_import.dart';
+import '../../core/nurture_data.dart';
 import '../../core/proxy_time_zone.dart';
 import '../../controller/proxy_form_controller.dart';
 import 'controller_scope.dart';
@@ -226,6 +228,125 @@ class _ProxyFormView extends StatelessWidget {
     ),
   );
 
+  /// Cấu hình nuôi of one configuration, prefilled with the defaults.
+  List<Widget> _nurtureSettingsFields(
+    ConfigurationFormFields fields,
+    int index,
+  ) {
+    const d = NurtureSettings.defaults;
+    const maxMinutes = NurtureSettings.maxSessionMinutes;
+    String? number(String? value, int min, int max, String unit) {
+      final parsed = int.tryParse(value?.trim() ?? '');
+      if (parsed == null || parsed < min || parsed > max) {
+        return 'Từ $min đến $max$unit.';
+      }
+      return null;
+    }
+
+    Widget field(
+      String name,
+      TextEditingController controller,
+      String label,
+      String unit,
+      int fallback,
+      String? Function(String?) validator,
+    ) => TextFormField(
+      key: _configurationKey(name, index),
+      controller: controller,
+      keyboardType: TextInputType.number,
+      textInputAction: TextInputAction.next,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(3),
+      ],
+      decoration: InputDecoration(
+        labelText: label,
+        suffixText: unit.trim(),
+        helperText: 'Mặc định: $fallback$unit',
+        errorMaxLines: 2,
+      ),
+      validator: validator,
+    );
+
+    String? rate(String? value) => number(value, 0, 100, '%');
+    Widget pair(Widget first, Widget second) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: first),
+        const SizedBox(width: 12),
+        Expanded(child: second),
+      ],
+    );
+
+    return [
+      _fieldLabel(
+        'Cấu hình nuôi',
+        action: TextButton(
+          key: _configurationKey('resetNurtureSettings', index),
+          onPressed: () => logic.mutate(() => fields.showNurtureSettings(d)),
+          child: const Text('Mặc định'),
+        ),
+      ),
+      pair(
+        field(
+          'nurtureLikePercent',
+          fields.nurtureLikePercent,
+          'Thả tim',
+          '%',
+          d.likePercent,
+          rate,
+        ),
+        field(
+          'nurtureCommentPercent',
+          fields.nurtureCommentPercent,
+          'Bình luận',
+          '%',
+          d.commentPercent,
+          rate,
+        ),
+      ),
+      const SizedBox(height: 12),
+      field(
+        'nurtureLongWatchPercent',
+        fields.nurtureLongWatchPercent,
+        'Tỷ lệ xem lâu (không vuốt ngay)',
+        '%',
+        d.longWatchPercent,
+        rate,
+      ),
+      const SizedBox(height: 12),
+      pair(
+        field(
+          'nurtureMinMinutes',
+          fields.nurtureMinMinutes,
+          'Nuôi tối thiểu',
+          ' phút',
+          d.minMinutes,
+          (value) => number(value, 1, maxMinutes, ' phút'),
+        ),
+        field(
+          'nurtureMaxMinutes',
+          fields.nurtureMaxMinutes,
+          'Nuôi tối đa',
+          ' phút',
+          d.maxMinutes,
+          (value) =>
+              number(value, 1, maxMinutes, ' phút') ??
+              ((int.tryParse(fields.nurtureMinMinutes.text.trim()) ?? 0) >
+                      int.parse(value!.trim())
+                  ? 'Phải ≥ thời gian tối thiểu.'
+                  : null),
+        ),
+      ),
+      const SizedBox(height: 6),
+      const Text(
+        'Video được thả tim hoặc bình luận luôn xem hết; video còn lại xem '
+        'lâu theo tỷ lệ trên, nếu không thì vuốt sau vài giây.',
+        style: TextStyle(fontSize: 12, height: 1.4, color: ProxyColors.muted),
+      ),
+    ];
+  }
+
   Key _configurationKey(String name, int index) =>
       Key(index == 0 ? name : '$name-$index');
 
@@ -355,18 +476,6 @@ class _ProxyFormView extends StatelessWidget {
               label: const Text('Dùng Miui Browser 14 (Desktop)'),
             ),
           ),
-        if (needsAndroidDesktopIdentity)
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              key: _configurationKey('useWindowsUserAgent', index),
-              onPressed: fields.generating
-                  ? null
-                  : () => logic.useWindowsUserAgentFor(fields),
-              icon: const Icon(Icons.desktop_windows, size: 16),
-              label: const Text('Dùng Chrome Windows (Desktop)'),
-            ),
-          ),
         if (fields.generationFailed)
           const Padding(
             padding: EdgeInsets.only(top: 10),
@@ -425,27 +534,37 @@ class _ProxyFormView extends StatelessWidget {
               style: const TextStyle(color: ProxyColors.amber, fontSize: 12),
             ),
           ),
-        const SizedBox(height: 20),
-        SwitchListTile(
-          key: _configurationKey('savedAccountStatus', index),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Đã đăng ký', style: _fieldLabelStyle),
-          value: fields.statusAccount == AccountStatus.registered,
-          onChanged: (value) => logic.mutate(
-            () => fields.statusAccount = value
-                ? AccountStatus.registered
-                : AccountStatus.unregistered,
+        const SizedBox(height: 16),
+        _fieldLabel(
+          'Thiết bị (GPU)',
+          action: TextButton.icon(
+            key: _configurationKey('changeGpuProfile', index),
+            onPressed: () => logic.mutate(fields.changeGpuProfile),
+            icon: const Icon(Icons.refresh, size: 16),
+            label: const Text('Đổi'),
           ),
         ),
-        CheckboxListTile(
+        // Read-only: chosen at random, only Đổi or a backup changes it.
+        InputDecorator(
+          decoration: const InputDecoration(
+            helperText: 'GPU điện thoại mà trang web thấy qua WebGL.',
+            prefixIcon: Icon(Icons.smartphone, size: 20),
+          ),
+          child: Text(
+            fields.gpuProfile.label,
+            key: _configurationKey('savedGpuProfile', index),
+          ),
+        ),
+        const SizedBox(height: 20),
+        SwitchListTile(
           key: _configurationKey('savedNurtureAfterSignup', index),
           contentPadding: EdgeInsets.zero,
-          controlAffinity: ListTileControlAffinity.leading,
           title: const Text('Nuôi sau khi đăng ký', style: _fieldLabelStyle),
           value: fields.nurtureAfterSignup,
-          onChanged: (value) =>
-              logic.setNurtureAfterSignup(fields, value ?? false),
+          onChanged: (value) => logic.setNurtureAfterSignup(fields, value),
         ),
+        const SizedBox(height: 8),
+        ..._nurtureSettingsFields(fields, index),
         const SizedBox(height: 16),
         _fieldLabel('Email đăng ký'),
         TextFormField(
@@ -500,6 +619,18 @@ class _ProxyFormView extends StatelessWidget {
           validator: (value) => value == null || value.trim().isEmpty
               ? 'Nhập mật khẩu email lấy OTP.'
               : null,
+        ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          key: _configurationKey('savedAccountStatus', index),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Đã đăng ký', style: _fieldLabelStyle),
+          value: fields.statusAccount == AccountStatus.registered,
+          onChanged: (value) => logic.mutate(
+            () => fields.statusAccount = value
+                ? AccountStatus.registered
+                : AccountStatus.unregistered,
+          ),
         ),
       ],
     ),
@@ -600,20 +731,6 @@ class _ProxyFormView extends StatelessWidget {
                             ? null
                             : logic.clearImportedConfigurations,
                         child: const Text('Bỏ danh sách'),
-                      ),
-                    ),
-                    CheckboxListTile(
-                      key: const Key('nurtureAfterSignupForAll'),
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      tristate: true,
-                      title: const Text(
-                        'Nuôi sau khi đăng ký (tất cả cấu hình)',
-                        style: _fieldLabelStyle,
-                      ),
-                      value: logic.nurtureAfterSignupForAll,
-                      onChanged: (_) => logic.setNurtureAfterSignupForAll(
-                        logic.nurtureAfterSignupForAll != true,
                       ),
                     ),
                     const SizedBox(height: 8),

@@ -1,6 +1,7 @@
 import 'app_configuration.dart';
 import 'otp_api.dart';
 import 'account_password.dart';
+import 'nurture_data.dart';
 
 enum AccountStatus {
   unregistered('Chưa đăng ký'),
@@ -60,11 +61,30 @@ class ImportedConfiguration {
     required this.proxy,
     required this.account,
     this.statusAccount = AccountStatus.unregistered,
+    this.nurtureSettings,
+    this.gpuProfileId,
   });
 
   final WebViewProxy proxy;
   final AccountCredentials account;
   final AccountStatus statusAccount;
+
+  /// Cấu hình nuôi from an exported workbook; null keeps the form's values.
+  final NurtureSettings? nurtureSettings;
+
+  /// Thiết bị GPU from an exported workbook; null keeps the form's choice.
+  final String? gpuProfileId;
+
+  ImportedConfiguration copyWith({
+    NurtureSettings? nurtureSettings,
+    String? gpuProfileId,
+  }) => ImportedConfiguration(
+    proxy: proxy,
+    account: account,
+    statusAccount: statusAccount,
+    nurtureSettings: nurtureSettings ?? this.nurtureSettings,
+    gpuProfileId: gpuProfileId ?? this.gpuProfileId,
+  );
 
   static List<ImportedConfiguration> parseMany(String input) {
     if (RegExp(

@@ -1,5 +1,7 @@
 package com.stalliondz.tool.tiktok;
 
+import com.brisklane.browser.MainActivity;
+
 import android.app.Instrumentation;
 import android.webkit.WebView;
 import android.webkit.WebSettings;
@@ -172,6 +174,10 @@ public class DesktopChromeIdentityTest {
             assertEquals(isWindows ? "\"Windows\"" : "\"Linux\"", request.get("sec-ch-ua-platform"));
             assertTrue(request.get("sec-ch-ua").contains(isMiui ? "\"Miui Browser\"" : "\"Google Chrome\""));
             assertFalse(request.get("sec-ch-ua").contains("Android WebView"));
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.CUSTOM_REQUEST_HEADERS)
+                    && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+                assertEquals("Package is replaced, but the header remains present", "XMLHttpRequest", request.get("x-requested-with"));
+            }
             Matcher major = Pattern.compile("Chrome/(\\d+)\\.").matcher(userAgent.get());
             assertTrue(major.find());
             assertTrue(request.get("sec-ch-ua").contains("v=\"" + major.group(1) + "\""));
@@ -184,7 +190,7 @@ public class DesktopChromeIdentityTest {
             assertTrue(evaluated.await(5, TimeUnit.SECONDS));
             JSONObject identity = new JSONObject(new JSONArray("[" + snapshot.get() + "]").getString(0));
             assertEquals(userAgent.get(), identity.getString("ua"));
-            assertEquals(isWindows ? "Win32" : "Linux x86_64", identity.getString("platform"));
+            assertEquals(isWindows ? "Win32" : "Linux armv8l", identity.getString("platform"));
             assertEquals(isWindows ? "Windows" : "Linux", identity.getJSONObject("data").getString("platform"));
             assertFalse(identity.getJSONObject("data").getBoolean("mobile"));
             if (emulateHardware) {

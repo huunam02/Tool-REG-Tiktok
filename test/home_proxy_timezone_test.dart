@@ -6,9 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_tiktok/controller/home_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
+import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/otp_settings_store.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/webview_privacy.dart';
+import 'package:test_tiktok/core/tiktok_flow_result.dart';
 import 'package:test_tiktok/core/tiktok_launch_action.dart';
 
 import 'support/memory_proxy_store.dart';
@@ -16,13 +18,17 @@ import 'support/test_proxy_ip_platform.dart';
 
 class _Platform extends TestProxyIpPlatform {
   static bool proxyApplied = false;
+  static final appliedProxies = <String>[];
   @override
   PlatformWebViewFeature createPlatformWebViewFeatureStatic() =>
       _Features(const PlatformWebViewFeatureCreationParams());
   @override
   PlatformProxyController createPlatformProxyController(
     PlatformProxyControllerCreationParams params,
-  ) => _Proxy(params, () => proxyApplied = true);
+  ) => _Proxy(params, (settings) {
+    proxyApplied = true;
+    appliedProxies.add(settings.proxyRules.single.url);
+  });
 }
 
 class _Features extends PlatformWebViewFeature {
@@ -33,12 +39,14 @@ class _Features extends PlatformWebViewFeature {
 
 class _Proxy extends PlatformProxyController {
   _Proxy(super.params, this.applied) : super.implementation();
-  final void Function() applied;
+  final void Function(ProxySettings) applied;
   @override
   Future<void> setProxyOverride({required ProxySettings settings}) async =>
-      applied();
+      applied(settings);
   @override
-  Future<void> clearProxyOverride() async {}
+  // Going back to the device's own network is recorded as `direct`.
+  Future<void> clearProxyOverride() async =>
+      _Platform.appliedProxies.add('direct');
 }
 
 void main() {
@@ -51,10 +59,12 @@ void main() {
       '{"success":true,"ip":"82.23.203.216","timezone":{"id":"America/New_York"}}';
   late _Platform platform;
   late HomeController home;
+  var sessionClears = 0;
   setUp(() async {
     final previous = InAppWebViewPlatform.instance;
     platform = _Platform();
     _Platform.proxyApplied = false;
+    _Platform.appliedProxies.clear();
     InAppWebViewPlatform.instance = platform;
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     messenger.setMockMethodCallHandler(identityChannel, (_) async => 'agent');
@@ -66,6 +76,8 @@ void main() {
         mailboxPassword: 'test',
       );
     home = HomeController(
+      // Auto runs clear the WebView session; there is none in these tests.
+      clearSession: () async => sessionClears++,
       initialUserAgent: 'agent',
       initialOtpSettings: const OtpApiSettings(
         url: 'https://otp.example/api',
@@ -110,6 +122,170 @@ void main() {
     },
   );
 
+  test('signup and nurture use the selected configuration\'s nurture '
+      'settings', () async {
+    const custom = NurtureSettings(
+      likePercent: 45,
+      commentPercent: 5,
+      longWatchPercent: 70,
+      minMinutes: 10,
+      maxMinutes: 20,
+    );
+    Future<int> save(String email, NurtureSettings? settings) =>
+        home.store.save(
+          name: email,
+          proxy: null,
+          account: AccountCredentials(
+            email: email,
+            password: 'password',
+            mailboxPassword: 'mail',
+          ),
+          nurtureSettings: settings,
+        );
+    final plain = await save('plain@example.com', null);
+    final tuned = await save('tuned@example.com', custom);
+    final seen = <String, NurtureSettings>{};
+    for (final (id, action) in [
+      (tuned, TikTokLaunchAction.signup),
+      (tuned, TikTokLaunchAction.login),
+      (plain, TikTokLaunchAction.login),
+    ]) {
+      await home.store.useSaved(id);
+      await home.restoreProxy();
+      await home.openTikTok(action, (configuration, _) async {
+        seen['${configuration.loginUsername} $action'] =
+            configuration.nurtureSettings;
+      });
+    }
+    expect(seen, {
+      'tuned@example.com ${TikTokLaunchAction.signup}': custom,
+      'tuned@example.com ${TikTokLaunchAction.login}': custom,
+      'plain@example.com ${TikTokLaunchAction.login}': NurtureSettings.defaults,
+    });
+  });
+
+  test('Kiểm tra IP loads the configuration in a fresh session and keeps '
+      'it unused', () async {
+    final other = await home.store.save(
+      name: 'Other',
+      proxy: null,
+      account: const AccountCredentials(
+        email: 'other@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      ),
+    );
+    await home.store.useSaved(other);
+    await home.restoreProxy();
+    final id = await home.store.save(
+      name: 'Checked',
+      proxy: WebViewProxy.parse('checked.example:8080'),
+      // Known zone: no lookup through the (unreachable) test proxy.
+      timeZoneId: 'Europe/Berlin',
+      account: const AccountCredentials(
+        email: 'checked@example.com',
+        password: 'password',
+        mailboxPassword: 'mail',
+      ),
+      gpuProfileId: 'galaxy-s23',
+    );
+    final entry = (await home.store.list()).singleWhere((e) => e.id == id);
+    expect(entry.hasBeenUsed, isFalse);
+    final clearsBefore = sessionClears;
+    AppConfiguration? opened;
+    await home.checkConfiguration(entry, (configuration) async {
+      opened = configuration;
+    });
+    expect(sessionClears, clearsBefore + 1);
+    expect(opened!.configurationId, id);
+    expect(opened!.proxy!.uri.host, 'checked.example');
+    expect(opened!.gpuProfile.id, 'galaxy-s23');
+    expect(opened!.webViewTimeZone, 'Europe/Berlin');
+    expect(_Platform.appliedProxies.last, contains('checked.example'));
+    expect(home.currentProxy!.configurationId, id);
+    final saved = (await home.store.list()).singleWhere((e) => e.id == id);
+    expect(saved.hasBeenUsed, isFalse);
+    // Quản lý cấu hình is open meanwhile; the check still runs.
+    home.managingProxies = true;
+    opened = null;
+    await home.checkConfiguration(saved, (configuration) async {
+      opened = configuration;
+    });
+    expect(opened, isNotNull);
+    home.managingProxies = false;
+  });
+
+  test('opening TikTok uses the selected configuration\'s phone GPU', () async {
+    final seen = <String>[];
+    for (final gpu in ['galaxy-s23', 'pixel-7']) {
+      final id = await home.store.save(
+        name: gpu,
+        proxy: null,
+        account: AccountCredentials(
+          email: '$gpu@example.com',
+          password: 'password',
+          mailboxPassword: 'mail',
+        ),
+        gpuProfileId: gpu,
+      );
+      await home.store.useSaved(id);
+      await home.restoreProxy();
+      await home.openTikTok(TikTokLaunchAction.login, (configuration, _) async {
+        seen.add(configuration.gpuProfile.id);
+      });
+    }
+    expect(seen, ['galaxy-s23', 'pixel-7']);
+  });
+
+  test('Đăng ký, Nuôi toàn bộ and Đăng ký lại (Cấu hình lỗi) all run with '
+      'each configuration\'s nurture settings', () async {
+    const custom = NurtureSettings(
+      likePercent: 45,
+      commentPercent: 5,
+      longWatchPercent: 70,
+      minMinutes: 10,
+      maxMinutes: 20,
+    );
+    Future<int> save(String email, AccountStatus status) => home.store.save(
+      name: email,
+      proxy: null,
+      account: AccountCredentials(
+        email: email,
+        password: 'password',
+        mailboxPassword: 'mail',
+      ),
+      statusAccount: status,
+      nurtureAfterSignup: true,
+      nurtureSettings: custom,
+    );
+    await save('new@example.com', AccountStatus.unregistered);
+    await save('registered@example.com', AccountStatus.registered);
+    final failed = await save('failed@example.com', AccountStatus.unregistered);
+    await home.store.recordSignupFailure(
+      failed,
+      'failed@example.com',
+      message: 'CAPTCHA',
+    );
+    final seen = <AutoRunMode, List<String>>{};
+    for (final mode in AutoRunMode.values) {
+      await home.startAutoRun(mode, (configuration, action) async {
+        expect(configuration.nurtureSettings, custom);
+        expect(configuration.nurtureAfterSignup, isTrue);
+        (seen[mode] ??= []).add('${configuration.loginUsername} $action');
+        return TikTokFlowResult.failed;
+      });
+    }
+    expect(seen, {
+      AutoRunMode.signup: ['new@example.com ${TikTokLaunchAction.signup}'],
+      AutoRunMode.nurture: [
+        'registered@example.com ${TikTokLaunchAction.login}',
+      ],
+      AutoRunMode.retryFailed: [
+        'failed@example.com ${TikTokLaunchAction.signup}',
+      ],
+    });
+  });
+
   for (final action in TikTokLaunchAction.values) {
     test(
       '$action passes proxy timezone to WebView before navigation',
@@ -140,6 +316,89 @@ void main() {
         await opening;
         expect(navigated, isTrue);
         expect(home.opening, isFalse);
+      },
+    );
+  }
+
+  // Đăng ký, Nuôi and Đăng ký lại share one run loop; each is checked.
+  for (final mode in AutoRunMode.values) {
+    test(
+      '$mode clears the session and loads each configuration before its account',
+      () async {
+        final store = MemoryProxyStore();
+        Future<int> save(String name, String? proxy, String zone) => store.save(
+          name: name,
+          proxy: proxy == null ? null : WebViewProxy.parse(proxy),
+          account: AccountCredentials(
+            email: '$name@example.com',
+            password: 'password',
+            mailboxPassword: 'mail',
+          ),
+          statusAccount: mode == AutoRunMode.nurture
+              ? AccountStatus.registered
+              : AccountStatus.unregistered,
+          timeZoneId: zone,
+        );
+        final a = await save('a', 'a.example:1111', 'Europe/Warsaw');
+        final b = await save('b', 'b.example:2222', 'America/Chicago');
+        // No proxy: the device's own network and time zone.
+        final c = await save('c', null, '');
+        if (mode == AutoRunMode.retryFailed) {
+          for (final (id, name) in [(a, 'a'), (b, 'b'), (c, 'c')]) {
+            await store.recordSignupFailure(
+              id,
+              '$name@example.com',
+              message: 'x',
+            );
+          }
+        }
+        await store.useSaved(a);
+        // Each read jumps a minute, so the pause between accounts is skipped.
+        var clock = DateTime(2026);
+        // Proxies applied so far, sampled when a session is cleared.
+        final clearedAt = <int>[];
+        final run = HomeController(
+          initialUserAgent: 'agent',
+          initialOtpSettings: const OtpApiSettings(
+            url: 'https://otp.example/api',
+            token: 'test',
+          ),
+          store: store,
+          now: () => clock = clock.add(const Duration(minutes: 1)),
+          readLoginSession: () async => false,
+          clearSession: () async =>
+              clearedAt.add(_Platform.appliedProxies.length),
+        );
+        run.onInit();
+        addTearDown(run.onClose);
+        await run.restoreProxy();
+        final opened = <(int?, String, String?, String)>[];
+        final openedAt = <int>[];
+        await run.startAutoRun(mode, (configuration, _) async {
+          openedAt.add(_Platform.appliedProxies.length);
+          opened.add((
+            configuration.configurationId,
+            configuration.loginUsername,
+            configuration.webViewTimeZone,
+            // The proxy in force when this account's page opens.
+            _Platform.appliedProxies.last,
+          ));
+          return TikTokFlowResult.failed;
+        });
+        expect(opened, [
+          (a, 'a@example.com', 'Europe/Warsaw', 'http://a.example:1111'),
+          // Right after a proxied account, the override is cleared.
+          (c, 'c@example.com', null, 'direct'),
+          (b, 'b@example.com', 'America/Chicago', 'http://b.example:2222'),
+        ]);
+        // Every account: clear the session, then apply its proxy, then open.
+        expect(clearedAt, hasLength(3));
+        for (var i = 0; i < 3; i++) {
+          expect(clearedAt[i], lessThan(openedAt[i]));
+          if (i > 0) {
+            expect(clearedAt[i], greaterThanOrEqualTo(openedAt[i - 1]));
+          }
+        }
       },
     );
   }

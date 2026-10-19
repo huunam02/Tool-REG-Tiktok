@@ -25,6 +25,11 @@ class FailedConfigurationsTab extends StatelessWidget {
           'Cấu hình lỗi: ${failed.length}',
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
+        const SizedBox(height: 6),
+        const Text(
+          'Chạm vào một cấu hình để đăng ký lại nó trước.',
+          style: TextStyle(fontSize: 12, color: ProxyColors.muted),
+        ),
         const SizedBox(height: 16),
         if (loading) const LinearProgressIndicator(),
         if (logic.failuresLoadFailed)
@@ -47,6 +52,12 @@ class FailedConfigurationsTab extends StatelessWidget {
           for (final entry in failed) ...[
             _FailedConfigurationCard(
               entry: entry,
+              first:
+                  entry.configuration.id ==
+                  logic.failedPriority?.configuration.id,
+              onTap: logic.busy
+                  ? null
+                  : () => logic.selectFailedPriority(entry.configuration.id),
               busy: logic.busy || logic.proxyLoadFailed,
               onDismiss: () => logic.dismissFailure(entry.configuration.id),
             ),
@@ -79,7 +90,7 @@ class FailedConfigurationsActionBar extends StatelessWidget {
               ? null
               : onRetryAll,
           child: Text(
-            'Chạy đăng ký lại tài khoản',
+            'Chạy đăng ký lần lượt lại tài khoản',
             textAlign: TextAlign.center,
           ),
         ),
@@ -129,11 +140,17 @@ class _Message extends StatelessWidget {
 class _FailedConfigurationCard extends StatelessWidget {
   const _FailedConfigurationCard({
     required this.entry,
+    required this.first,
+    required this.onTap,
     required this.busy,
     required this.onDismiss,
   });
 
   final FailedConfiguration entry;
+
+  /// Signed up again first by Chạy đăng ký lại.
+  final bool first;
+  final VoidCallback? onTap;
   final bool busy;
   final VoidCallback onDismiss;
 
@@ -145,94 +162,112 @@ class _FailedConfigurationCard extends StatelessWidget {
     final older = entry.failures.skip(1).toList();
     return Material(
       key: Key('failedConfiguration-${configuration.id}'),
-      color: ProxyColors.surface,
+      color: first ? HomeStyle.selectedSurface : ProxyColors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: ProxyColors.red.withValues(alpha: 0.25)),
+        side: first
+            ? const BorderSide(color: ProxyColors.cyan, width: 1.5)
+            : BorderSide(color: ProxyColors.red.withValues(alpha: 0.25)),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SelectableText(
-                        configuration.account?.email ?? configuration.name,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        proxyLabel(configuration.proxy),
-                        style: const TextStyle(
-                          color: ProxyColors.muted,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ProxyBadge(
-                        label: 'Lỗi ${entry.failureCount} lần',
-                        color: ProxyColors.red,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            if (latest != null)
-              _FailureEntry(
-                key: Key('latestFailure-${configuration.id}'),
-                failure: latest,
-                latest: true,
-              ),
-            if (older.isNotEmpty)
-              _Expandable(
-                key: Key('failureLog-${configuration.id}'),
-                color: ProxyColors.red,
-                title: 'Nhật ký lỗi các lần trước (${entry.failureCount - 1})',
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final failure in older) ...[
-                    _FailureEntry(failure: failure),
-                    const SizedBox(height: 8),
-                  ],
-                  if (entry.failureCount > entry.failures.length)
-                    Text(
-                      'Chỉ hiện ${entry.failures.length} lần gần nhất.',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: ProxyColors.muted,
-                      ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Plain text: a tap anywhere on the card selects it.
+                        Text(
+                          configuration.account?.email ?? configuration.name,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          proxyLabel(configuration.proxy),
+                          style: const TextStyle(
+                            color: ProxyColors.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ProxyBadge(
+                              label: 'Lỗi ${entry.failureCount} lần',
+                              color: ProxyColors.red,
+                            ),
+                            if (first)
+                              const ProxyBadge(
+                                label: 'Chạy trước',
+                                color: ProxyColors.cyan,
+                              ),
+                          ],
+                        ),
+                      ],
                     ),
+                  ),
                 ],
               ),
-            _Expandable(
-              key: Key('failedDetails-${configuration.id}'),
-              color: ProxyColors.cyan,
-              title: 'Thông tin cấu hình',
-              children: [
-                ProxyDetails(
-                  profile: configuration,
-                  keyPrefix: 'failed${configuration.id}',
-                  showName: true,
+              const SizedBox(height: 14),
+              if (latest != null)
+                _FailureEntry(
+                  key: Key('latestFailure-${configuration.id}'),
+                  failure: latest,
+                  latest: true,
                 ),
-              ],
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                key: Key('dismissFailure-${configuration.id}'),
-                onPressed: busy ? null : onDismiss,
-                child: const Text('Bỏ khỏi danh sách lỗi'),
+              if (older.isNotEmpty)
+                _Expandable(
+                  key: Key('failureLog-${configuration.id}'),
+                  color: ProxyColors.red,
+                  title:
+                      'Nhật ký lỗi các lần trước (${entry.failureCount - 1})',
+                  children: [
+                    for (final failure in older) ...[
+                      _FailureEntry(failure: failure),
+                      const SizedBox(height: 8),
+                    ],
+                    if (entry.failureCount > entry.failures.length)
+                      Text(
+                        'Chỉ hiện ${entry.failures.length} lần gần nhất.',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: ProxyColors.muted,
+                        ),
+                      ),
+                  ],
+                ),
+              _Expandable(
+                key: Key('failedDetails-${configuration.id}'),
+                color: ProxyColors.cyan,
+                title: 'Thông tin cấu hình',
+                children: [
+                  ProxyDetails(
+                    profile: configuration,
+                    keyPrefix: 'failed${configuration.id}',
+                    showName: true,
+                  ),
+                ],
               ),
-            ),
-          ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  key: Key('dismissFailure-${configuration.id}'),
+                  onPressed: busy ? null : onDismiss,
+                  child: const Text('Bỏ khỏi danh sách lỗi'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

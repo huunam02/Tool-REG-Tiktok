@@ -6,6 +6,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
+import 'package:test_tiktok/core/gpu_profile.dart';
 import 'package:test_tiktok/core/webview_privacy.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/screen/tiktok_page.dart';
@@ -207,6 +208,7 @@ void main() {
     );
     expect(view.initialUrlRequest, isNull);
     expect(view.initialUserScripts!.map((s) => s.source), [
+      pixelGpuInfoScript,
       disableWebRtcScript,
     ]);
     expect(find.byKey(const Key('autoWatch')), findsNothing);
@@ -257,6 +259,35 @@ void main() {
     },
   );
   for (final action in TikTokLaunchAction.values) {
+    testWidgets('$action reports the configuration\'s phone GPU', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TikTokPage(
+            configuration: AppConfiguration(
+              userAgent: 'Chrome/155.0.0.0',
+              signupEmail: 'person@example.com',
+              signupPassword: 'password',
+              loginUsername: 'person@example.com',
+              loginPassword: 'password',
+              comments: const [],
+              gpuProfile: GpuProfile.byId('galaxy-s23'),
+            ),
+            launchAction: action,
+          ),
+        ),
+      );
+      final scripts = platform.webViewParams!.initialUserScripts!
+          .map((script) => script.source)
+          .toList();
+      expect(scripts, contains(gpuInfoScript(GpuProfile.byId('galaxy-s23'))));
+      expect(scripts, isNot(contains(pixelGpuInfoScript)));
+      expect(scripts, contains(disableWebRtcScript));
+      await tester.pumpWidget(const SizedBox.shrink());
+      debugDefaultTargetPlatformOverride = null;
+    });
+
     testWidgets(
       '$action defaults to the engine profile and retains automation UI',
       (tester) async {
@@ -275,7 +306,7 @@ void main() {
           view.initialUserScripts!.any(
             (script) => script.source == pixelGpuInfoScript,
           ),
-          isFalse,
+          isTrue,
         );
         expect(
           view.initialUserScripts!.any(
@@ -371,7 +402,7 @@ void main() {
           view.initialUserScripts!.any(
             (script) => script.source == pixelGpuInfoScript,
           ),
-          isFalse,
+          isTrue,
         );
         await tester.pumpWidget(const SizedBox.shrink());
         debugDefaultTargetPlatformOverride = null;

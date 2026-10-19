@@ -8,6 +8,8 @@ import 'package:test_tiktok/core/otp_api.dart';
 import 'package:test_tiktok/core/scripts/auto_login_script.dart';
 import 'package:test_tiktok/core/scripts/auto_watch_script.dart';
 
+import 'support/memory_nurture_store.dart';
+
 void main() {
   for (final submittedAt in [42, 119]) {
     testWidgets(
@@ -21,6 +23,7 @@ void main() {
         final logic = TikTokController(
           configuration: _configuration(),
           otpReaderFactory: (_) => reader,
+          nurtureRepository: MemoryNurtureRepository(() async => []),
           now: () => now,
         )..onInit();
         logic.webViewController = InAppWebViewController.fromPlatform(

@@ -102,6 +102,14 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   final bool autoAdvance;
   static const autoFailureDelay = Duration(seconds: 15);
   static const autoFlowTimeout = Duration(minutes: 15);
+
+  /// A long configured nurture session extends the watchdog accordingly.
+  Duration get _autoFlowTimeout {
+    final needed =
+        configuration.nurtureSettings.maxDuration + const Duration(minutes: 12);
+    return needed > autoFlowTimeout ? needed : autoFlowTimeout;
+  }
+
   Timer? _autoFailTimer;
   Timer? _autoFlowWatchdog;
   bool _stoppedByUser = false;
@@ -132,13 +140,18 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
   }
 
-  /// Warm up the new account for 2–3 minutes in the session that created it.
+  /// Warm up the new account for the configured time in the session that
+  /// created it.
   Future<void> _nurtureAfterSignup() async {
     mutate(() => loginConfirmed = true);
     await _persistCurrentAccountLoginState(true);
     if (!active || pageFailure != null || accountFailure != null) return;
+    final settings = configuration.nurtureSettings;
+    final minutes = settings.minMinutes == settings.maxMinutes
+        ? '${settings.minMinutes}'
+        : '${settings.minMinutes}–${settings.maxMinutes}';
     notify(
-      'Đăng ký xong. Đang nuôi tài khoản mới 2–3 phút.',
+      'Đăng ký xong. Đang nuôi tài khoản mới $minutes phút.',
       duration: const Duration(seconds: 3),
     );
     await _startTimedAutoWatch();
@@ -837,9 +850,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   bool autoWatchEnabled = false;
   bool autoWatchBusy = false;
 
-  /// Each nurture session lasts a random 2–3 minutes.
-  static const minNurtureDuration = Duration(minutes: 2);
-  static const maxNurtureDuration = Duration(minutes: 3);
+  /// Each nurture session lasts a random time within the configured range
+  /// (2–3 minutes by default).
+  Duration get minNurtureDuration => configuration.nurtureSettings.minDuration;
+  Duration get maxNurtureDuration => configuration.nurtureSettings.maxDuration;
   Timer? _autoWatchStopTimer;
   DateTime? _autoWatchStopsAt;
   bool appActive = true;
@@ -870,9 +884,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       );
     }
     if (autoAdvance && onFlowFinished != null) {
-      _autoFlowWatchdog = Timer(autoFlowTimeout, () {
+      final timeout = _autoFlowTimeout;
+      _autoFlowWatchdog = Timer(timeout, () {
         if (!active || _flowFinished || _stoppedByUser) return;
-        notify('Quá 15 phút chưa xong cấu hình này.');
+        notify('Quá ${timeout.inMinutes} phút chưa xong cấu hình này.');
         _failAutoFlow();
       });
     }
@@ -981,6 +996,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             accessibility: signupAccessibility,
             profile: profile,
             comments: comments,
+            likeRate: configuration.nurtureSettings.likeRate,
+            commentRate: configuration.nurtureSettings.commentRate,
+            longWatchRate: configuration.nurtureSettings.longWatchRate,
             isActive: () =>
                 active &&
                 appActive &&
@@ -3015,7 +3033,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       final ip = await checker.check(
         userAgent: effectiveUserAgent,
         useInstalledEngine: usesEngineIdentity,
-        localIp: configuration.webViewLocalIp,
         onAuth: (controller, challenge) async {
           if (!active || checkNavigationId != navigationId) {
             return HttpAuthResponse(action: HttpAuthResponseAction.CANCEL);

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
+import 'package:test_tiktok/core/data_file_export.dart';
 import 'package:test_tiktok/core/data_excel_layout.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/screen/home_page.dart';
@@ -57,7 +58,8 @@ void main() {
     expect(find.byKey(const Key('exportExcel')), findsNothing);
     await tester.tap(find.byKey(const Key('openSettings')));
     await tester.pumpAndSettle();
-    expect(find.text('Xuất Excel data'), findsOneWidget);
+    expect(find.text('Xem trước'), findsOneWidget);
+    expect(find.text('Xuất Excel'), findsOneWidget);
   }
 
   testWidgets(
@@ -106,7 +108,7 @@ void main() {
       final workbook = Excel.decodeBytes(arguments!['bytes'] as Uint8List);
       expect(workbook.tables.keys, [dataExcelSheetName]);
       expect(workbook[dataExcelSheetName].rows, hasLength(2));
-      expect(workbook[dataExcelSheetName].rows[1][10]!.displayText, '7');
+      expect(workbook[dataExcelSheetName].rows[1][16]!.displayText, '7');
       saving.complete('/exports/data.xlsx');
       await tester.pumpAndSettle();
       expect(
@@ -183,6 +185,77 @@ void main() {
     expect(saves, 0);
     expect(
       find.text('Chưa có dữ liệu cấu hình hoặc nuôi Account để xuất.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Xem trước shows the export rows and can export from there', (
+    tester,
+  ) async {
+    var saves = 0;
+    Map<dynamic, dynamic>? arguments;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      saves++;
+      arguments = call.arguments as Map<dynamic, dynamic>;
+      return '/exports/data.xlsx';
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    // Phone width: both buttons and the wide table must fit without overflow.
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = await seed();
+    await pumpHome(tester, store);
+    await openExportSettings(tester);
+    await tester.tap(find.byKey(const Key('previewExcel')));
+    await tester.pumpAndSettle();
+    expect(find.text('Xem trước Excel'), findsOneWidget);
+    expect(
+      find.text(
+        '1 cấu hình · 1 tài khoản nuôi · 1 hàng. Kéo ngang để xem đủ cột.',
+      ),
+      findsOneWidget,
+    );
+    for (final header in DataExportPreview.headers) {
+      expect(find.text(header), findsOneWidget);
+    }
+    expect(find.text('person@example.com'), findsOneWidget);
+    expect(find.text('secret'), findsOneWidget);
+    // Cấu hình nuôi defaults, then 2 watched videos.
+    expect(find.text('30'), findsOneWidget);
+    expect(find.text('2'), findsWidgets);
+    expect(saves, 0);
+
+    await tester.tap(find.byKey(const Key('exportFromPreview')));
+    await tester.pumpAndSettle();
+    expect(find.text('Xem trước Excel'), findsNothing);
+    expect(saves, 1);
+    final workbook = Excel.decodeBytes(arguments!['bytes'] as Uint8List);
+    expect(workbook[dataExcelSheetName].rows, hasLength(2));
+    expect(
+      find.text('Đã xuất 1 cấu hình và 1 tài khoản nuôi.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Xem trước with an empty database stays on Cài đặt', (
+    tester,
+  ) async {
+    await pumpHome(tester, MemoryProxyStore());
+    await openExportSettings(tester);
+    await tester.tap(find.byKey(const Key('previewExcel')));
+    await tester.pumpAndSettle();
+    expect(find.text('Xem trước Excel'), findsNothing);
+    expect(
+      find.text('Chưa có dữ liệu cấu hình hoặc nuôi Account để xem trước.'),
       findsOneWidget,
     );
   });

@@ -444,6 +444,53 @@ void main() {
     },
   );
 
+  for (final html in [false, true]) {
+    for (final missedSwipes in [1, 2]) {
+      testWidgets('recovers $missedSwipes missed birthday swipes, HTML=$html', (
+        tester,
+      ) async {
+        final accessibility = _RecordedAccessibility(profile, recording)
+          ..state = 'email-birthday'
+          ..picker = 'Year'
+          ..hideNativeOptions = html
+          ..ignoredSwipes = missedSwipes;
+        final runner = SignupCoordinateRunner(
+          profile: profile,
+          accessibility: accessibility,
+          configuration: AppConfiguration(
+            userAgent: '',
+            comments: [],
+            signupEmail: '',
+            signupPassword: '',
+            loginUsername: '',
+            loginPassword: '',
+            birthday: DateTime(1971, 7, 6),
+          ),
+          isActive: () => true,
+          isTikTok: () async => true,
+          getOtp: () async => throw StateError('Must not fetch OTP'),
+          onStatus: (_) {},
+          readBirthdayMenu: accessibility.readBirthdayMenu,
+          now: tester.binding.clock.now,
+        );
+        var finished = false;
+        final run = runner.selectBirthday().whenComplete(() => finished = true);
+        for (var i = 0; i < 350 && !finished; i++) {
+          await tester.pump(const Duration(seconds: 1));
+        }
+        expect(finished, isTrue);
+        await run;
+        expect(accessibility.selected, {
+          'Year': '1971',
+          'Month': 'July',
+          'Day': '6',
+        });
+        expect(accessibility.actions, isNot(contains('send-code')));
+        expect(accessibility.pastes, isEmpty);
+      });
+    }
+  }
+
   testWidgets(
     'already authenticated recording does not send code or paste data',
     (tester) async {
@@ -474,7 +521,8 @@ void main() {
 
   for (final maximum in [false, true]) {
     testWidgets(
-      'signup actions wait ${maximum ? 7 : 2}s while post-OTP wait stays 650ms',
+      'birthday actions wait ${maximum ? 3 : 1}s, other signup actions '
+      '${maximum ? 7 : 2}s and post-OTP 650ms',
       (tester) async {
         final accessibility = _RecordedAccessibility(profile, recording);
         final actions = <({String name, DateTime at})>[];
@@ -520,6 +568,10 @@ void main() {
             next.at.difference(previous.at),
             previous.name == 'paste-otp'
                 ? const Duration(milliseconds: 650)
+                : RegExp(
+                    r'^(open|select)-(year|month|day)$|^(year|month|day)-swipe$',
+                  ).hasMatch(previous.name)
+                ? Duration(seconds: maximum ? 3 : 1)
                 : Duration(seconds: maximum ? 7 : 2),
             reason: '${previous.name} → ${next.name}',
           );
@@ -728,6 +780,7 @@ class _RecordedAccessibility extends SignupAccessibility {
   bool failBirthdayReadback = false;
   bool freezeDropdown = false;
   bool hideNativeOptions = false;
+  int ignoredSwipes = 0;
   String? picker;
   int optionStart = 0;
   final selected = <String, String>{};
@@ -980,6 +1033,10 @@ class _RecordedAccessibility extends SignupAccessibility {
   Future<void> swipe(SignupViewport viewport, Offset from, Offset to) async {
     actions.add('${picker!.toLowerCase()}-swipe');
     onAction?.call('${picker!.toLowerCase()}-swipe');
+    if (ignoredSwipes > 0) {
+      ignoredSwipes--;
+      return;
+    }
     if (freezeDropdown) return;
     optionStart = (optionStart + (from.dy > to.dy ? 4 : -4)).clamp(
       0,

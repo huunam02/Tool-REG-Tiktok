@@ -507,10 +507,7 @@ void main() {
         expect(session.logic.autoWatchEnabled, isFalse);
         await tester.pump(const Duration(minutes: 11));
         expect(session.view.starts, 0);
-        expect(
-          session.notices.contains('Đã nuôi xong.'),
-          isFalse,
-        );
+        expect(session.notices.contains('Đã nuôi xong.'), isFalse);
       } finally {
         session.logic.onDelete();
       }

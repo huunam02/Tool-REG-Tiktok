@@ -1,3 +1,7 @@
+# Tool TikTok
+
+Tài liệu dành cho người dùng: [Hướng dẫn sử dụng Tool TikTok](docs/huong-dan-su-dung.md).
+
 ## Quản lý state
 
 App dùng GetX 4.7.3 (`GetMaterialApp`, `GetxController`, `GetBuilder`).
@@ -109,6 +113,18 @@ Nếu WebView không hỗ trợ `USER_AGENT_METADATA`, `USER_AGENT_METADATA_FORM
 hoặc `DOCUMENT_START_SCRIPT`, app báo lỗi và dừng trước khi tải trang ngoài.
 Android dùng AndroidX WebKit 1.16.0 và yêu cầu Android 7.0 (API 24) trở lên.
 Cần build/chạy lại khi sửa phần native; hot reload không cập nhật MethodChannel.
+
+Android thay tên package trong `X-Requested-With` bằng `XMLHttpRequest` qua
+`Profile.addCustomHeader`, trước lần điều hướng đầu tiên của WebView chính và
+các WebView nền. Header vẫn hiện diện; đây không phải xóa hoàn toàn header.
+Trên WebView 155 đã kiểm tra GET, POST, iframe, redirect và service worker;
+body POST và cookie vẫn đi qua network stack của WebView. Giới hạn đã xác minh:
+CORS preflight (`OPTIONS`) bỏ qua custom headers và vẫn có thể gửi package.
+Header do trang tự đặt được ưu tiên; service worker đã chạy trước khi cấu hình
+không nhận thay đổi này cho đến khi được khởi động lại. WebView không hỗ trợ
+`CUSTOM_REQUEST_HEADERS`/`MULTI_PROFILE` giữ hành vi cũ và ghi cảnh báo trong
+`adb logcat -s BrowserIdentity`. API allowlist cũ đã mất tác dụng trong AndroidX
+hiện tại, nên không dùng nó để kết luận header đã được ẩn.
 
 Form **Tạo cấu hình** và màn sửa vẫn lưu mẫu User-Agent cùng proxy bằng SQLite.
 Các nút đổi mẫu, **Dùng Miui Browser 14 (Desktop)** và **Dùng Chrome Windows (Desktop)**
@@ -312,7 +328,12 @@ muốn bật lại toàn bộ cần khôi phục cả cấu hình locale native.
 **Đăng ký Android hiện tại:** toàn bộ thao tác UI dùng
 `flutter_accessibility_service` và profile tọa độ đã ghi, gồm điều hướng,
 chọn ngày sinh, dán email/OTP/mật khẩu và gửi biểu mẫu. Email/mật khẩu dùng
-`ACTION_PASTE`; OTP dùng nhấn giữ → menu Paste bằng gesture vì paste trực tiếp
+`ACTION_PASTE`; nếu WebView nhận lệnh nhưng ô email đã xác minh vẫn rỗng,
+app dùng `ACTION_SET_TEXT` qua Accessibility và đọc lại kết quả, không ghi đè
+nội dung đang nhập. WebView 155 có thể bỏ hint của ô email và các ô ngày sinh:
+app nhận diện email bằng nhãn biểu mẫu, và phục hồi nhãn Month/Day/Year khi
+đúng ba dropdown nằm cùng hàng trong biểu mẫu ngày sinh.
+OTP dùng nhấn giữ → menu Paste bằng gesture vì paste trực tiếp
 không điền được sáu ô ở lượt thử. App tự chọn năm → tháng → ngày theo cấu hình
 hoặc ngày ngẫu nhiên 1960–2004. Với dropdown HTML không lộ các mục qua
 Accessibility, app chỉ đọc nhãn/vị trí từ DOM rồi bấm/cuộn bằng Accessibility.

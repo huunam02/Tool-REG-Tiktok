@@ -273,6 +273,14 @@ class ProxyDetails extends StatelessWidget {
           Icons.schedule,
           valueKey: Key('${keyPrefix}TimeZone'),
         ),
+        const SizedBox(height: 10),
+        _field(
+          context,
+          'Thiết bị (GPU)',
+          profile.gpuProfile.label,
+          Icons.smartphone,
+          valueKey: Key('${keyPrefix}GpuProfile'),
+        ),
         if (profile.account != null) ...[
           const SizedBox(height: 10),
           _field(
@@ -289,6 +297,14 @@ class ProxyDetails extends StatelessWidget {
             profile.nurtureAfterSignup ? 'Bật' : 'Tắt (chỉ đăng ký)',
             Icons.spa_outlined,
             valueKey: Key('${keyPrefix}NurtureAfterSignup'),
+          ),
+          const SizedBox(height: 10),
+          _field(
+            context,
+            'Cấu hình nuôi',
+            profile.nurtureSettings.summary,
+            Icons.tune,
+            valueKey: Key('${keyPrefix}NurtureSettings'),
           ),
           const SizedBox(height: 10),
           _field(

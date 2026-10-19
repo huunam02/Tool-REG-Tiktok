@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'gpu_profile.dart';
+import 'nurture_data.dart';
 import 'otp_api.dart';
 import 'services/remote_config_service.dart';
 
@@ -20,9 +22,10 @@ class AppConfiguration {
     this.birthday,
     this.proxy,
     this.webViewTimeZone,
-    this.webViewLocalIp = '192.168.1.10',
     this.configurationId,
     this.nurtureAfterSignup = false,
+    this.nurtureSettings = NurtureSettings.defaults,
+    this.gpuProfile = GpuProfile.fallback,
     List<String> searchKeywords = const [],
   }) : comments = List.unmodifiable(comments),
        searchKeywords = List.unmodifiable(searchKeywords);
@@ -54,11 +57,16 @@ class AppConfiguration {
   final DateTime? birthday;
   final WebViewProxy? proxy;
   final String? webViewTimeZone;
-  final String webViewLocalIp;
   final int? configurationId;
 
   /// Nurture the new account in the signup session before logging out.
   final bool nurtureAfterSignup;
+
+  /// Like/comment/long-watch rates and session length for nurture.
+  final NurtureSettings nurtureSettings;
+
+  /// The phone GPU this configuration reports over WebGL.
+  final GpuProfile gpuProfile;
 
   static List<String> parseComments(String value) => value
       .split('\n')

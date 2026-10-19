@@ -8,9 +8,10 @@ import 'package:get/get.dart';
 import '../core/app_configuration.dart';
 import '../core/services/remote_config_service.dart';
 import '../core/app_session.dart';
+import '../core/device_memory.dart';
+import '../core/gpu_profile.dart';
 import '../core/nurture_data.dart';
 import '../core/proxy_geolocation.dart';
-import '../core/proxy_local_ip.dart';
 import '../core/configuration_data.dart';
 import '../core/desktop_user_agents.dart';
 import '../core/otp_api.dart';
@@ -90,18 +91,23 @@ class HomeController extends AppController
   /// Run every eligible configuration in turn: signup runs the unregistered
   /// ones, nurture logs in to each registered one. Each screen returns a
   /// [TikTokFlowResult]; closing a screen (no result) stops the run.
+  /// [firstId] runs first when eligible; otherwise the selected
+  /// configuration. The rest follow [order] (the list a tab shows), then
+  /// the Quản lý cấu hình order.
   Future<void> startAutoRun(
     AutoRunMode mode,
     Future<TikTokFlowResult?> Function(
       AppConfiguration configuration,
       TikTokLaunchAction action,
     )
-    navigate,
-  ) async {
+    navigate, {
+    int? firstId,
+    List<int> order = const [],
+  }) async {
     if (busy || proxyLoadFailed) return;
     final generation = ++_autoRunGeneration;
     final visited = <int>{};
-    final preferredId = currentProxy?.configurationId;
+    final preferredId = firstId ?? currentProxy?.configurationId;
     mutate(() {
       autoRun = mode;
       autoRunTotal = 0;
@@ -117,7 +123,10 @@ class HomeController extends AppController
       mutate(() => autoRunTotal = eligible.length);
       var first = true;
       while (_autoRunCurrent(generation)) {
-        final candidates = await _autoRunCandidates(mode, visited);
+        final candidates = _inOrder(
+          await _autoRunCandidates(mode, visited),
+          order,
+        );
         if (!_autoRunCurrent(generation)) return;
         if (candidates.isEmpty) break;
         final next = first
@@ -171,6 +180,7 @@ class HomeController extends AppController
         await restoreProxy();
         if (_autoRunCurrent(generation)) await loadNurtureAccounts();
         if (_autoRunCurrent(generation)) await loadFailedConfigurations();
+        if (_autoRunCurrent(generation)) await loadSignupConfigurations();
       }
     } catch (_) {
       if (_autoRunCurrent(generation)) {
@@ -209,6 +219,7 @@ class HomeController extends AppController
         await restoreProxy();
         if (active) await loadNurtureAccounts();
         if (active) await loadFailedConfigurations();
+        if (active) await loadSignupConfigurations();
       }
     }
   }
@@ -246,6 +257,22 @@ class HomeController extends AppController
         )
         .toList()
       ..sort((first, second) => second.id.compareTo(first.id));
+  }
+
+  /// Stable: configurations missing from [order] keep their place after it.
+  static List<SavedProxy> _inOrder(List<SavedProxy> entries, List<int> order) {
+    if (order.isEmpty) return entries;
+    int rank(SavedProxy entry) {
+      final index = order.indexOf(entry.id);
+      return index < 0 ? order.length : index;
+    }
+
+    final ranked = [for (var i = 0; i < entries.length; i++) (i, entries[i])]
+      ..sort((a, b) {
+        final byRank = rank(a.$2).compareTo(rank(b.$2));
+        return byRank != 0 ? byRank : a.$1.compareTo(b.$1);
+      });
+    return [for (final (_, entry) in ranked) entry];
   }
 
   Future<bool> _pauseBeforeNextConfiguration(int generation) async {
@@ -325,6 +352,72 @@ class HomeController extends AppController
     }
   }
 
+  /// Đăng ký tab: unregistered configurations with an account and no failed
+  /// signup, in the order an automatic signup run walks them.
+  List<SavedProxy> signupConfigurations = [];
+  bool loadingSignups = false;
+  bool signupsLoadFailed = false;
+  int? _signupPriorityId;
+
+  /// The configuration the signup run starts with: the one tapped, else the
+  /// top of the list.
+  SavedProxy? get signupPriority =>
+      signupConfigurations
+          .where((entry) => entry.id == _signupPriorityId)
+          .firstOrNull ??
+      signupConfigurations.firstOrNull;
+
+  void selectSignupPriority(int id) {
+    if (busy) return;
+    mutate(() => _signupPriorityId = id);
+  }
+
+  int? _nurturePriorityId, _failedPriorityId;
+
+  /// Nuôi tab: the account nurtured first, the tapped one or the top one.
+  NurtureAccount? get nurturePriority {
+    final runnable = nurtureAccounts.where((a) => a.configurationId != null);
+    return runnable
+            .where((a) => a.configurationId == _nurturePriorityId)
+            .firstOrNull ??
+        runnable.firstOrNull;
+  }
+
+  void selectNurturePriority(int configurationId) {
+    if (busy) return;
+    mutate(() => _nurturePriorityId = configurationId);
+  }
+
+  /// Cấu hình lỗi tab: the configuration signed up again first.
+  FailedConfiguration? get failedPriority =>
+      failedConfigurations
+          .where((f) => f.configuration.id == _failedPriorityId)
+          .firstOrNull ??
+      failedConfigurations.firstOrNull;
+
+  void selectFailedPriority(int configurationId) {
+    if (busy) return;
+    mutate(() => _failedPriorityId = configurationId);
+  }
+
+  Future<void> loadSignupConfigurations() async {
+    if (loadingSignups) return;
+    mutate(() => loadingSignups = true);
+    try {
+      final pending = await _autoRunCandidates(AutoRunMode.signup, const {});
+      if (active) {
+        mutate(() {
+          signupConfigurations = pending;
+          signupsLoadFailed = false;
+        });
+      }
+    } catch (_) {
+      if (active) mutate(() => signupsLoadFailed = true);
+    } finally {
+      if (active) mutate(() => loadingSignups = false);
+    }
+  }
+
   List<FailedConfiguration> failedConfigurations = [];
   bool loadingFailures = false;
   bool failuresLoadFailed = false;
@@ -356,6 +449,8 @@ class HomeController extends AppController
       if (active) notify('Không thể cập nhật cấu hình lỗi. Hãy thử lại.');
     }
     if (active) await loadFailedConfigurations();
+    // A dismissed failure is eligible for the normal signup run again.
+    if (active) await loadSignupConfigurations();
   }
 
   @override
@@ -372,6 +467,8 @@ class HomeController extends AppController
   ProxyProfile? currentProxy;
   late final TabController tabs;
   int tabIndex = 0;
+  static const configurationTab = 0, signupTab = 1, nurtureTab = 2;
+  static const failedTab = 3;
   List<NurtureAccount> nurtureAccounts = [];
   int registeredAccountCount = 0;
   bool loadingAccounts = false;
@@ -389,11 +486,6 @@ class HomeController extends AppController
       : currentProxy?.statusAccount == AccountStatus.registered
       ? TikTokLaunchAction.login
       : TikTokLaunchAction.signup;
-  String get accountActionLabel => hasCurrentAccountSession
-      ? 'Nuôi tiếp Account'
-      : accountAction == TikTokLaunchAction.login
-      ? 'Đăng nhập và nuôi Account'
-      : 'Đăng ký tự động';
 
   @override
   void onInit() {
@@ -402,17 +494,51 @@ class HomeController extends AppController
     userAgent = initialUserAgent;
     directUserAgent = initialUserAgent;
     otpSettings = initialOtpSettings;
-    tabs = TabController(length: 3, vsync: this);
+    tabs = TabController(length: 4, vsync: this);
     tabs.addListener(() {
       if (tabIndex == tabs.index) return;
       mutate(() => tabIndex = tabs.index);
-      if (tabIndex == 1) unawaited(loadNurtureAccounts());
-      if (tabIndex == 2) unawaited(loadFailedConfigurations());
+      if (tabIndex == signupTab) unawaited(loadSignupConfigurations());
+      if (tabIndex == nurtureTab) unawaited(loadNurtureAccounts());
+      if (tabIndex == failedTab) unawaited(loadFailedConfigurations());
     });
     proxyStore = store;
+    unawaited(_fitGpuProfilesToDevice());
     unawaited(restoreProxy());
     unawaited(loadNurtureAccounts());
     unawaited(loadFailedConfigurations());
+    unawaited(loadSignupConfigurations());
+  }
+
+  /// Keep each unregistered configuration's phone GPU consistent with this
+  /// device's RAM; see [ProxyStore.fitGpuProfilesToDevice].
+  Future<void> _fitGpuProfilesToDevice() async {
+    try {
+      final changed = await store.fitGpuProfilesToDevice();
+      final profile = currentProxy;
+      final gpu = changed[profile?.configurationId];
+      if (active && profile != null && gpu != null) {
+        mutate(() => currentProxy = profile.copyWith(gpuProfileId: gpu));
+      }
+    } catch (_) {
+      // Each run checks again before it starts.
+    }
+  }
+
+  /// The phone GPU a run reports: the configuration's, refitted first when
+  /// it could not have this device's RAM and the account is unregistered.
+  Future<GpuProfile> _runGpuProfile() async {
+    final profile = currentProxy;
+    if (profile?.gpuProfile.fits(deviceMemoryGb) == true) {
+      return profile!.gpuProfile;
+    }
+    // Without a saved configuration: a fixed phone that fits.
+    if (profile?.configurationId == null) return GpuProfile.forDevice().first;
+    if (profile!.statusAccount == AccountStatus.registered) {
+      return profile.gpuProfile;
+    }
+    await _fitGpuProfilesToDevice();
+    return currentProxy?.gpuProfile ?? profile.gpuProfile;
   }
 
   Future<void> loadNurtureAccounts() async {
@@ -445,39 +571,6 @@ class HomeController extends AppController
     } finally {
       if (active) mutate(() => loadingAccounts = false);
     }
-  }
-
-  Future<void> openManualViewing(
-    NurtureAccount account,
-    Future<void> Function(AppConfiguration, NurturePlan) navigate,
-  ) async {
-    if (busy || account.configurationId == null) return;
-    mutate(() => managingProxies = true);
-    try {
-      final configurations = await store.list();
-      final selected = configurations
-          .where((row) => row.id == account.configurationId)
-          .firstOrNull;
-      if (selected == null) throw StateError('Configuration deleted');
-      final current = await store.getCurrentProfile();
-      if (!sameProfile(current, selected)) await clearAppSession();
-      if (!active) return;
-      await store.useSaved(selected.id);
-      await restoreProxy();
-    } catch (_) {
-      if (active) notify('Không thể chọn cấu hình của tài khoản. Hãy thử lại.');
-      return;
-    } finally {
-      if (active) mutate(() => managingProxies = false);
-    }
-    if (!active) {
-      return;
-    }
-    final plan = NurturePlan.choose(RemoteConfig.searchKeywords);
-    await openTikTok(
-      TikTokLaunchAction.browse,
-      (configuration, _) => navigate(configuration, plan),
-    );
   }
 
   Future<void> restoreProxy() async {
@@ -539,6 +632,7 @@ class HomeController extends AppController
       if (active) await restoreProxy();
       if (active) await loadNurtureAccounts();
       if (active) await loadFailedConfigurations();
+      if (active) await loadSignupConfigurations();
     } finally {
       if (active) mutate(() => managingProxies = false);
     }
@@ -553,6 +647,42 @@ class HomeController extends AppController
     super.onClose();
   }
 
+  /// Quản lý cấu hình > Kiểm tra IP: load [entry] in a fresh session (proxy,
+  /// User-Agent, time zone, GPU), then open WhatIsMyBrowser with it. A check
+  /// leaves the configuration's Đã dùng state unchanged.
+  Future<void> checkConfiguration(
+    SavedProxy entry,
+    Future<void> Function(AppConfiguration configuration) navigate,
+  ) async {
+    if (opening || loadingProxy || autoRunning || checkingConfiguration) {
+      return;
+    }
+    mutate(() => checkingConfiguration = true);
+    try {
+      await _clearSession();
+      await store.useSaved(entry.id);
+      if (!entry.hasBeenUsed) await store.setUsed(entry.id, false);
+      await restoreProxy();
+      if (!active) return;
+      if (proxyLoadFailed || currentProxy?.configurationId != entry.id) {
+        throw StateError('Configuration changed');
+      }
+      await openTikTok(
+        TikTokLaunchAction.browse,
+        (configuration, _) => navigate(configuration),
+        checking: true,
+      );
+    } catch (_) {
+      if (active) {
+        notify('Không thể nạp cấu hình ${entry.name}. Hãy thử lại.');
+      }
+    } finally {
+      if (active) mutate(() => checkingConfiguration = false);
+    }
+  }
+
+  bool checkingConfiguration = false;
+
   Future<void> openTikTok(
     TikTokLaunchAction action,
     Future<void> Function(
@@ -561,8 +691,15 @@ class HomeController extends AppController
     )
     navigate, {
     bool automatic = false,
+    bool checking = false,
   }) async {
-    if ((automatic ? _actionBusy : busy) || proxyLoadFailed) return;
+    // A check runs from Quản lý cấu hình, which keeps managingProxies set.
+    final blocked = checking
+        ? opening || loadingProxy || autoRunning
+        : automatic
+        ? _actionBusy
+        : busy;
+    if (blocked || proxyLoadFailed) return;
     final account = currentProxy?.account;
     if (action != TikTokLaunchAction.browse) {
       if (account == null) {
@@ -622,14 +759,12 @@ class HomeController extends AppController
           mutate(() => currentProxy = profile.copyWith(timeZoneId: timeZone));
         }
       }
-      // Stable per proxy endpoint; WebRTC stays disabled, so it never reaches pages.
-      final localIp = await loadProxyLocalIp(proxy);
+      final gpuProfile = await _runGpuProfile();
       if (!active) return;
       final configuration = AppConfiguration(
         configurationId: currentProxy?.configurationId,
         userAgent: browserUserAgent,
         proxy: proxy,
-        webViewLocalIp: localIp,
         webViewTimeZone:
             needsAndroidDesktopIdentity && proxy != null && timeZone.isNotEmpty
             ? timeZone
@@ -644,6 +779,9 @@ class HomeController extends AppController
         loginMailboxPassword: account?.mailboxPassword ?? '',
         otpApi: otpApi,
         nurtureAfterSignup: currentProxy?.nurtureAfterSignup ?? false,
+        nurtureSettings:
+            currentProxy?.nurtureSettings ?? NurtureSettings.defaults,
+        gpuProfile: gpuProfile,
         birthday: action == TikTokLaunchAction.signup
             ? AppConfiguration.randomSignupBirthday()
             : null,

@@ -146,6 +146,9 @@ class NurtureAccount {
     this.mode = NurtureMode.feed,
     this.keyword = '',
     this.updatedAt,
+    this.nurtureCount = 0,
+    this.lastNurturedAt,
+    this.registeredAt,
   });
   final String key;
   final String email;
@@ -156,6 +159,14 @@ class NurtureAccount {
   final NurtureMode mode;
   final String keyword;
   final DateTime? updatedAt;
+
+  /// Nurture sessions that watched at least one video.
+  final int nurtureCount;
+  final DateTime? lastNurturedAt;
+
+  /// When the account was registered; null for accounts registered before
+  /// this was recorded.
+  final DateTime? registeredAt;
   String get phaseLabel => switch (phase) {
     'waiting' => 'Đang chờ',
     'running' => 'Đang xem',
@@ -168,3 +179,106 @@ class NurtureAccount {
 }
 
 String nurtureAccountKey(String email) => email.trim().toLowerCase();
+
+/// Nurture behaviour of one configuration. Rates are whole percentages.
+class NurtureSettings {
+  const NurtureSettings({
+    this.likePercent = 30,
+    this.commentPercent = 20,
+    this.longWatchPercent = 50,
+    this.minMinutes = 2,
+    this.maxMinutes = 3,
+  });
+
+  static const defaults = NurtureSettings();
+
+  /// Longest nurture session that can be configured.
+  static const maxSessionMinutes = 120;
+
+  /// Share of posts that are liked; a liked post is watched in full.
+  final int likePercent;
+
+  /// Share of posts that get a comment; a commented post is watched in full.
+  final int commentPercent;
+
+  /// Share of the remaining posts watched for a long random time instead of
+  /// being swiped after a few seconds.
+  final int longWatchPercent;
+
+  /// Each session lasts a random time between these bounds.
+  final int minMinutes;
+  final int maxMinutes;
+
+  double get likeRate => likePercent / 100;
+  double get commentRate => commentPercent / 100;
+  double get longWatchRate => longWatchPercent / 100;
+  Duration get minDuration => Duration(minutes: minMinutes);
+  Duration get maxDuration => Duration(minutes: maxMinutes);
+
+  /// The first problem with these values, or null when they are valid.
+  String? get error {
+    for (final (name, value) in [
+      ('Tỷ lệ thả tim', likePercent),
+      ('Tỷ lệ bình luận', commentPercent),
+      ('Tỷ lệ xem lâu', longWatchPercent),
+    ]) {
+      if (value < 0 || value > 100) return '$name phải từ 0 đến 100%.';
+    }
+    if (minMinutes < 1 || maxMinutes > maxSessionMinutes) {
+      return 'Thời gian nuôi phải từ 1 đến $maxSessionMinutes phút.';
+    }
+    if (minMinutes > maxMinutes) {
+      return 'Thời gian nuôi tối thiểu không được lớn hơn tối đa.';
+    }
+    return null;
+  }
+
+  String get summary =>
+      'Tim $likePercent% · Bình luận $commentPercent% · '
+      'Xem lâu $longWatchPercent% · $minMinutes–$maxMinutes phút';
+
+  /// Read from a configurations row; invalid values fall back to the
+  /// defaults.
+  static NurtureSettings fromMap(Map<String, Object?> row) {
+    int read(String name, int fallback) =>
+        (row[name] as num?)?.toInt() ?? fallback;
+    final settings = NurtureSettings(
+      likePercent: read('nurture_like_percent', defaults.likePercent),
+      commentPercent: read('nurture_comment_percent', defaults.commentPercent),
+      longWatchPercent: read(
+        'nurture_long_watch_percent',
+        defaults.longWatchPercent,
+      ),
+      minMinutes: read('nurture_min_minutes', defaults.minMinutes),
+      maxMinutes: read('nurture_max_minutes', defaults.maxMinutes),
+    );
+    return settings.error == null ? settings : defaults;
+  }
+
+  /// Columns of the configurations table.
+  Map<String, Object?> toMap() => {
+    'nurture_like_percent': likePercent,
+    'nurture_comment_percent': commentPercent,
+    'nurture_long_watch_percent': longWatchPercent,
+    'nurture_min_minutes': minMinutes,
+    'nurture_max_minutes': maxMinutes,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is NurtureSettings &&
+      other.likePercent == likePercent &&
+      other.commentPercent == commentPercent &&
+      other.longWatchPercent == longWatchPercent &&
+      other.minMinutes == minMinutes &&
+      other.maxMinutes == maxMinutes;
+
+  @override
+  int get hashCode => Object.hash(
+    likePercent,
+    commentPercent,
+    longWatchPercent,
+    minMinutes,
+    maxMinutes,
+  );
+}

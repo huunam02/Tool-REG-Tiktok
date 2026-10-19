@@ -40,27 +40,22 @@ void main() {
 
   Future<void> flush() => Future<void>.delayed(Duration.zero);
 
-  test(
-    'IP probe uses the same simulated local IP as the main WebView',
-    () async {
-      const localIp = '192.168.22.34';
-      final result = WebViewProxyIpChecker().check(
-        userAgent: 'test-agent',
-        localIp: localIp,
-        onAuth: (controller, challenge) async => null,
-      );
-      await flush();
-      final view = platform.probes.single;
-      expect(
-        view.params.initialUserScripts!.any(
-          (script) => script.source == webRtcLocalIpScript(localIp),
-        ),
-        isTrue,
-      );
-      view.loaded('{"ip":"203.0.113.7"}');
-      expect(await result, '203.0.113.7');
-    },
-  );
+  test('IP probe blocks WebRTC like the main WebView', () async {
+    final result = WebViewProxyIpChecker().check(
+      userAgent: 'test-agent',
+      onAuth: (controller, challenge) async => null,
+    );
+    await flush();
+    final view = platform.probes.single;
+    expect(
+      view.params.initialUserScripts!.any(
+        (script) => script.source == disableWebRtcScript,
+      ),
+      isTrue,
+    );
+    view.loaded('{"ip":"203.0.113.7"}');
+    expect(await result, '203.0.113.7');
+  });
 
   for (final target in [TargetPlatform.android, TargetPlatform.iOS]) {
     test('$target reads IP without executing fetch in TikTok', () async {

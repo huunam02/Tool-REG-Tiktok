@@ -9,6 +9,7 @@ import 'package:test_tiktok/firebase_options.dart';
 
 import 'controller/startup_controller.dart';
 import 'core/app_action_theme.dart';
+import 'core/device_memory.dart';
 import 'core/otp_settings_store.dart';
 import 'core/proxy_store.dart';
 import 'screen/home_page.dart';
@@ -23,6 +24,8 @@ void main() async {
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await RemoteConfig.init();
+  // Before any configuration is created, so its phone GPU fits this RAM.
+  await loadDeviceMemory();
 
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
     await InAppWebViewController.setWebContentsDebuggingEnabled(kDebugMode);

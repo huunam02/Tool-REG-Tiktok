@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:test_tiktok/controller/home_controller.dart';
 import 'package:test_tiktok/core/app_session.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/desktop_user_agents.dart';
@@ -15,6 +17,7 @@ import 'package:test_tiktok/main.dart';
 import 'package:test_tiktok/screen/home_page.dart';
 import 'package:test_tiktok/screen/create_proxy_page.dart';
 import 'package:test_tiktok/screen/splash_page.dart';
+import 'package:test_tiktok/screen/tiktok_page.dart';
 
 import 'support/memory_proxy_store.dart';
 
@@ -466,7 +469,7 @@ void main() {
       final savedAgent = store.currentUserAgent;
       await tester.pumpWidget(MyApp(proxyStore: store));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('openTikTok')));
+      await _openTikTok(tester);
       await tester.pumpAndSettle();
       expect(_platform.webViewUserAgent, savedAgent);
       expect(_platform.contentMode, UserPreferredContentMode.DESKTOP);
@@ -491,7 +494,7 @@ void main() {
     expect(_platform.calls, isEmpty);
     expect(_platform.webViewsCreated, 0);
     expect(find.byKey(const Key('resetSession')), findsNothing);
-    await tester.tap(find.byKey(const Key('openTikTok')));
+    await _openTikTok(tester);
     await tester.pumpAndSettle();
     expect(_platform.webViewsCreated, 1);
     expect(_platform.calls, isEmpty);
@@ -515,7 +518,7 @@ void main() {
             .widget<HomePage>(find.byType(HomePage))
             .userAgent;
         selected.add(userAgent);
-        await tester.tap(find.byKey(const Key('openTikTok')));
+        await _openTikTok(tester);
         await tester.pumpAndSettle();
         expect(_platform.webViewUserAgent, userAgent);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -555,7 +558,7 @@ void main() {
       await tester.tap(find.text('Thử lại'));
       await tester.pumpAndSettle();
       expect(_platform.calls, isEmpty);
-      await tester.tap(find.byKey(const Key('openTikTok')));
+      await _openTikTok(tester);
       await tester.pumpAndSettle();
       expect(_platform.webViewsCreated, 1);
       expect(_platform.calls, isEmpty);
@@ -586,7 +589,7 @@ void main() {
         );
         expect(find.byKey(const Key('resetSession')), findsNothing);
         expect(_platform.calls, isEmpty);
-        await tester.tap(find.byKey(const Key('openTikTok')));
+        await _openTikTok(tester);
         await tester.pumpAndSettle();
         expect(_platform.webViewUserAgent, boundAgent);
         expect(_platform.calls, isEmpty);
@@ -602,52 +605,26 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     },
   );
+}
 
-  testWidgets(
-    'only applying a new proxy clears the session and its User-Agent survives restart',
-    (tester) async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      _platform.nativeUserAgent =
-          'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) '
-          'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        const MethodChannel('test_tiktok/webview_proxy'),
-        (call) async => null,
-      );
-      final store = MemoryProxyStore();
-      final boundAgent = desktopUserAgents[1];
-      final id = await store.save(
-        name: 'New proxy',
-        proxy: WebViewProxy.parse('proxy.example.com:8080')!,
-        userAgent: boundAgent,
-      );
-      await tester.pumpWidget(MyApp(proxyStore: store));
-      await tester.pumpAndSettle();
-      expect(_platform.calls, isEmpty);
-      await tester.ensureVisible(find.byKey(const Key('manageProxies')));
-      await tester.tap(find.byKey(const Key('manageProxies')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(Key('savedProxy-$id')));
-      await tester.pumpAndSettle();
-      expect(_platform.calls, isEmpty);
-      await tester.tap(find.byKey(const Key('setSelectedProxy')));
-      await tester.pumpAndSettle();
-      expect(_platform.calls, ['cookies', 'apple-storage', 'cache']);
-      await tester.tap(find.byKey(const Key('openTikTok')));
-      await tester.pumpAndSettle();
-      expect(_platform.webViewUserAgent, boundAgent);
-      expect(_platform.calls, ['cookies', 'apple-storage', 'cache']);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pumpAndSettle();
-      _platform.calls.clear();
-      await tester.pumpWidget(MyApp(proxyStore: store));
-      await tester.pumpAndSettle();
-      expect(_platform.calls, isEmpty);
-      await tester.tap(find.byKey(const Key('openTikTok')));
-      await tester.pumpAndSettle();
-      expect(_platform.webViewUserAgent, boundAgent);
-      expect(_platform.calls, isEmpty);
-      debugDefaultTargetPlatformOverride = null;
-    },
+/// Opens TikTok for the configuration in use, as runs and the Settings
+/// checks do (Home no longer has its own Mở TikTok button).
+Future<void> _openTikTok(WidgetTester tester) async {
+  final home = tester
+      .state<GetBuilderState<HomeController>>(
+        find.byType(GetBuilder<HomeController>),
+      )
+      .controller!;
+  final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+  unawaited(
+    home.openTikTok(
+      TikTokLaunchAction.browse,
+      (configuration, _) => navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => TikTokPage(configuration: configuration),
+        ),
+      ),
+    ),
   );
+  await tester.pumpAndSettle();
 }

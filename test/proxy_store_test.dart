@@ -34,6 +34,31 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  test('upgrading erases the unused Local IP column', () async {
+    await store.save(name: 'A', proxy: WebViewProxy.parse('192.0.2.7:8080')!);
+    await store.close();
+    final old = await databaseFactoryFfi.openDatabase(filename);
+    await old.execute(
+      "ALTER TABLE configurations ADD COLUMN local_ip TEXT NOT NULL DEFAULT ''",
+    );
+    await old.execute("UPDATE configurations SET local_ip = '192.168.22.34'");
+    await old.setVersion(17);
+    await old.close();
+    store = openStore();
+    expect((await store.list()).single.name, 'A');
+    await store.close();
+    final migrated = await databaseFactoryFfi.openDatabase(filename);
+    final columns = await migrated.rawQuery(
+      'PRAGMA table_info(configurations)',
+    );
+    expect(
+      columns.map((column) => column['name']),
+      isNot(contains('local_ip')),
+    );
+    await migrated.close();
+    store = openStore();
+  });
+
   test('persists Nuôi sau khi đăng ký per configuration', () async {
     const account = AccountCredentials(
       email: 'nurture@example.com',
@@ -469,7 +494,7 @@ void main() {
       expect(selected.timeZoneId, isEmpty);
       await store.close();
       final migrated = await databaseFactoryFfi.openDatabase(filename);
-      expect(await migrated.getVersion(), 13);
+      expect(await migrated.getVersion(), 19);
       expect(
         (await migrated.rawQuery(
           'PRAGMA table_info(configurations)',

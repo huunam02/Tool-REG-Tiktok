@@ -218,7 +218,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(UsageGuidePage), findsOneWidget);
     expect(find.text('Bắt đầu nhanh'), findsOneWidget);
-    expect(find.text('API OTP và CAPTCHA'), findsOneWidget);
+    expect(find.text('Bật quyền Trợ năng'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();

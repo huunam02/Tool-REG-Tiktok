@@ -1,5 +1,7 @@
 package com.stalliondz.tool.tiktok;
 
+import com.brisklane.browser.MainActivity;
+
 import android.app.Instrumentation;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;

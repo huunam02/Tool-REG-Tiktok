@@ -50,7 +50,9 @@ void main() {
         loginPassword: '',
       ),
     )..onInit();
-    logic.webViewController = InAppWebViewController.fromPlatform(platform: view);
+    logic.webViewController = InAppWebViewController.fromPlatform(
+      platform: view,
+    );
     logic.autoWatchEnabled = true;
     addTearDown(logic.onClose);
 

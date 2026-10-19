@@ -46,6 +46,9 @@ class MemoryNurtureRepository implements NurtureRepository {
       phase: last == null ? 'idle' : phases[last] ?? 'idle',
       mode: last == null ? NurtureMode.feed : sessions[last]!.plan.mode,
       keyword: last == null ? '' : sessions[last]!.plan.keyword,
+      nurtureCount: ids
+          .where((id) => (totals[id]?.watchMilliseconds ?? 0) > 0)
+          .length,
     );
   }
 

@@ -67,7 +67,7 @@ class SqliteNurtureRepository implements NurtureRepository {
       await syncAccounts(txn);
       final configurations = await txn.query(
         'configurations',
-        columns: ['id', 'name', 'account_email'],
+        columns: ['id', 'name', 'account_email', 'registered_at'],
         where: "trim(account_email) != '' AND listed = 1",
         orderBy: 'is_current DESC, id DESC',
       );
@@ -82,7 +82,9 @@ class SqliteNurtureRepository implements NurtureRepository {
         '''SELECT a.account_key,a.email,
         COALESCE(SUM(s.watch_ms),0) AS watch_ms, COALESCE(SUM(s.videos),0) AS videos,
         COALESCE(SUM(s.full_videos),0) AS full_videos, COALESCE(SUM(s.skipped_videos),0) AS skipped_videos,
-        COALESCE(SUM(s.comments),0) AS comments, COALESCE(SUM(s.likes),0) AS likes, MAX(s.updated_at) AS last_updated
+        COALESCE(SUM(s.comments),0) AS comments, COALESCE(SUM(s.likes),0) AS likes, MAX(s.updated_at) AS last_updated,
+        COUNT(CASE WHEN s.watch_ms > 0 THEN 1 END) AS nurture_count,
+        MAX(CASE WHEN s.watch_ms > 0 THEN s.updated_at END) AS last_nurtured
         FROM nurture_accounts a LEFT JOIN nurture_sessions s ON s.account_key = a.account_key
         GROUP BY a.account_key ORDER BY last_updated DESC, a.email COLLATE NOCASE''',
       );
@@ -120,10 +122,16 @@ class SqliteNurtureRepository implements NurtureRepository {
     phase: session?['phase'] as String? ?? 'idle',
     mode: session?['mode'] == 'search' ? NurtureMode.search : NurtureMode.feed,
     keyword: session?['keyword'] as String? ?? '',
-    updatedAt: row['last_updated'] is int
-        ? DateTime.fromMillisecondsSinceEpoch(row['last_updated'] as int)
-        : null,
+    updatedAt: _time(row['last_updated']),
+    // A session counts once it watched something; an open that was closed
+    // straight away is not a nurture.
+    nurtureCount: (row['nurture_count'] as num?)?.toInt() ?? 0,
+    lastNurturedAt: _time(row['last_nurtured']),
+    registeredAt: _time(config?['registered_at']),
   );
+
+  static DateTime? _time(Object? value) =>
+      value is int ? DateTime.fromMillisecondsSinceEpoch(value) : null;
 
   @override
   Future<Map<String, String>> preferences() async => {
@@ -227,11 +235,11 @@ class SqliteNurtureRepository implements NurtureRepository {
 
   @override
   Future<void> markRegistered(String email) async {
-    await (await _database()).update(
-      'configurations',
-      {'statusAccount': 'registered'},
-      where: 'lower(trim(account_email)) = ?',
-      whereArgs: [nurtureAccountKey(email)],
+    await (await _database()).rawUpdate(
+      '''UPDATE configurations SET statusAccount = 'registered',
+      registered_at = COALESCE(registered_at, ?)
+      WHERE lower(trim(account_email)) = ?''',
+      [DateTime.now().millisecondsSinceEpoch, nurtureAccountKey(email)],
     );
   }
 }

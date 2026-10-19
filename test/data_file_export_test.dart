@@ -42,14 +42,18 @@ void main() {
       'User-Agent',
       'Múi giờ',
       'Đã sử dụng',
+      'Thiết bị GPU',
+      'Tỷ lệ thả tim (%)',
+      'Tỷ lệ bình luận (%)',
+      'Tỷ lệ xem lâu (%)',
+      'Nuôi tối thiểu (phút)',
+      'Nuôi tối đa (phút)',
       'Thời gian xem (ms)',
       'Phút xem',
       'Video đã xem',
       'Video xem hết',
       'Video lướt sớm',
       'Bình luận',
-      'Chế độ',
-      'Từ khóa',
     ]);
     expect(
       rows[1]
@@ -69,8 +73,15 @@ void main() {
     expect(rows[1][2]!.value, isA<TextCellValue>());
     expect(rows[1][3]!.value, isA<TextCellValue>());
     expect(rows[1][4]!.value, isA<IntCellValue>());
-    expect(rows[1][8]!.value, IntCellValue(0));
-    expect(rows[1], hasLength(16));
+    expect(rows[1].skip(9).take(5).map((cell) => cell?.displayText), [
+      '30',
+      '20',
+      '50',
+      '2',
+      '3',
+    ]);
+    expect(rows[1][14]!.value, IntCellValue(0));
+    expect(rows[1], hasLength(20));
   });
 
   test(
@@ -136,25 +147,28 @@ void main() {
       expect(rows, hasLength(3));
       expect(rows.first.map((cell) => cell?.displayText), dataExcelHeaders);
       expect(rows[1][1]!.displayText, 'person@example.com');
-      expect(rows[1][8]!.value, IntCellValue(90001));
+      expect(rows[1][14]!.value, IntCellValue(90001));
       expect(
-        (rows[1][9]!.value as DoubleCellValue).value,
+        (rows[1][15]!.value as DoubleCellValue).value,
         closeTo(90001 / 60000, 1e-10),
       );
-      expect(rows[1].skip(10).take(4).map((cell) => cell?.displayText), [
+      expect(rows[1].skip(16).take(4).map((cell) => cell?.displayText), [
         '5',
         '2',
         '3',
         '4',
       ]);
-      expect(rows[1][14]!.displayText, NurtureMode.search.label);
-      expect(rows[1][15]!.value, isA<TextCellValue>());
-      expect(rows[1][15]!.displayText, '=Du lịch');
+      // Mode and keyword are random per session and not exported.
+      expect(rows[1], hasLength(20));
+      expect(
+        rows[1].map((cell) => cell?.displayText),
+        isNot(contains('=Du lịch')),
+      );
       expect(rows[2][1]!.displayText, 'deleted@example.com');
       for (final column in [0, 2, 3, 4, 5]) {
         expect(rows[2][column]?.displayText ?? '', '');
       }
-      expect(rows[2][8]!.value, IntCellValue(0));
+      expect(rows[2][14]!.value, IntCellValue(0));
     },
   );
 
@@ -217,10 +231,10 @@ void main() {
       expect(rows, hasLength(4));
       expect(rows[1][5]!.displayText, 'test-agent');
       expect(rows[2][5]!.displayText, 'second-agent');
-      expect(rows[1][10]!.displayText, '5');
-      expect(rows[2][10]!.displayText, '5');
+      expect(rows[1][16]!.displayText, '5');
+      expect(rows[2][16]!.displayText, '5');
       expect(rows[3][1]!.displayText, 'other@example.com');
-      expect(rows[3][10]!.displayText, '9');
+      expect(rows[3][16]!.displayText, '9');
     },
   );
 
@@ -273,6 +287,225 @@ void main() {
     expect(records, hasLength(1));
     expect(records.single.account.email, 'person@example.com');
     expect(records.single.statusAccount, AccountStatus.registered);
+  });
+
+  test('each configuration\'s Cấu hình nuôi survives export and import', () {
+    const custom = NurtureSettings(
+      likePercent: 45,
+      commentPercent: 5,
+      longWatchPercent: 70,
+      minMinutes: 10,
+      maxMinutes: 20,
+    );
+    final records = decodeConfigurationImportFile(
+      ConfigurationImportFile(
+        'backup.xlsx',
+        encodeDataExport(
+          configurations: [
+            configuration,
+            SavedProxy(
+              id: 13,
+              name: 'Second',
+              proxy: configuration.proxy,
+              userAgent: 'second-agent',
+              account: const AccountCredentials(
+                email: 'second@example.com',
+                password: 'secret',
+                mailboxPassword: 'mail',
+              ),
+              nurtureSettings: custom,
+            ),
+          ],
+          accounts: const [],
+        ),
+      ),
+    );
+    expect(records.map((record) => record.nurtureSettings), [
+      NurtureSettings.defaults,
+      custom,
+    ]);
+  });
+
+  test('an export with the old Chế độ/Từ khóa columns still imports', () {
+    final workbook = Excel.createExcel();
+    workbook.rename('Sheet1', dataExcelSheetName);
+    final sheet = workbook[dataExcelSheetName];
+    sheet.appendRow(
+      [
+        ...configurationExcelHeaders,
+        ...nurtureSettingsExcelHeaders,
+        ...legacyNurtureStatisticsExcelHeaders,
+      ].map(TextCellValue.new).toList(),
+    );
+    sheet.appendRow([
+      TextCellValue('192.0.2.7:8080:user:pass'),
+      TextCellValue('person@example.com'),
+      TextCellValue('secret'),
+      TextCellValue('mail'),
+      IntCellValue(1),
+      TextCellValue('agent'),
+      TextCellValue(''),
+      IntCellValue(0),
+      IntCellValue(45),
+      IntCellValue(5),
+      IntCellValue(70),
+      IntCellValue(10),
+      IntCellValue(20),
+      for (var i = 0; i < 6; i++) IntCellValue(0),
+      TextCellValue(NurtureMode.search.label),
+      TextCellValue('Du lịch'),
+    ]);
+    final record = decodeConfigurationImportFile(
+      ConfigurationImportFile(
+        'mode.xlsx',
+        Uint8List.fromList(workbook.encode()!),
+      ),
+    ).single;
+    expect(record.account.email, 'person@example.com');
+    expect(
+      record.nurtureSettings,
+      const NurtureSettings(
+        likePercent: 45,
+        commentPercent: 5,
+        longWatchPercent: 70,
+        minMinutes: 10,
+        maxMinutes: 20,
+      ),
+    );
+  });
+
+  test('a backup that still has a Local IP column imports without it', () {
+    final workbook = Excel.createExcel();
+    workbook.rename('Sheet1', dataExcelSheetName);
+    final sheet = workbook[dataExcelSheetName];
+    sheet.appendRow(
+      [
+        ...configurationExcelHeaders,
+        'Local IP',
+        ...nurtureSettingsExcelHeaders,
+        ...nurtureStatisticsExcelHeaders,
+      ].map(TextCellValue.new).toList(),
+    );
+    sheet.appendRow([
+      TextCellValue('192.0.2.7:8080:user:pass'),
+      TextCellValue('person@example.com'),
+      TextCellValue('secret'),
+      TextCellValue('mail'),
+      IntCellValue(1),
+      null,
+      null,
+      null,
+      TextCellValue('10.9.8.7'),
+      IntCellValue(45),
+    ]);
+    final record = decodeConfigurationImportFile(
+      ConfigurationImportFile(
+        'local-ip.xlsx',
+        Uint8List.fromList(workbook.encode()!),
+      ),
+    ).single;
+    expect(record.account.email, 'person@example.com');
+    expect(record.nurtureSettings!.likePercent, 45);
+  });
+
+  test('each configuration\'s phone GPU survives export and import', () {
+    final bytes = encodeDataExport(
+      configurations: [
+        SavedProxy(
+          id: 15,
+          name: 'GPU',
+          proxy: configuration.proxy,
+          userAgent: 'agent',
+          account: const AccountCredentials(
+            email: 'gpu@example.com',
+            password: 'secret',
+            mailboxPassword: 'mail',
+          ),
+          gpuProfileId: 'galaxy-s23',
+        ),
+      ],
+      accounts: const [],
+    );
+    final rows = Excel.decodeBytes(bytes)[dataExcelSheetName].rows;
+    expect(rows[1][8]!.displayText, 'galaxy-s23');
+    expect(
+      decodeConfigurationImportFile(
+        ConfigurationImportFile('gpu.xlsx', bytes),
+      ).single.gpuProfileId,
+      'galaxy-s23',
+    );
+  });
+
+  test('a Thiết bị GPU cell accepts a device name and rejects others', () {
+    List<ImportedConfiguration> decode(String gpu) {
+      final workbook = Excel.createExcel();
+      workbook.rename('Sheet1', dataExcelSheetName);
+      final sheet = workbook[dataExcelSheetName];
+      sheet.appendRow(dataExcelHeaders.map(TextCellValue.new).toList());
+      sheet.appendRow([
+        TextCellValue('192.0.2.7:8080:user:pass'),
+        TextCellValue('person@example.com'),
+        TextCellValue('secret'),
+        TextCellValue('mail'),
+        IntCellValue(1),
+        null,
+        null,
+        null,
+        TextCellValue(gpu),
+      ]);
+      return decodeConfigurationImportFile(
+        ConfigurationImportFile(
+          'gpu.xlsx',
+          Uint8List.fromList(workbook.encode()!),
+        ),
+      );
+    }
+
+    expect(decode('samsung galaxy s23').single.gpuProfileId, 'galaxy-s23');
+    expect(
+      () => decode('iPhone 15'),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('Thiết bị GPU'),
+        ),
+      ),
+    );
+  });
+
+  test('an invalid Cấu hình nuôi cell names the column', () {
+    final workbook = Excel.createExcel();
+    workbook.rename('Sheet1', dataExcelSheetName);
+    final sheet = workbook[dataExcelSheetName];
+    sheet.appendRow(dataExcelHeaders.map(TextCellValue.new).toList());
+    sheet.appendRow([
+      TextCellValue('192.0.2.7:8080:user:pass'),
+      TextCellValue('person@example.com'),
+      TextCellValue('secret'),
+      TextCellValue('mail'),
+      IntCellValue(1),
+      null,
+      null,
+      null,
+      null,
+      TextCellValue('nhiều'),
+    ]);
+    expect(
+      () => decodeConfigurationImportFile(
+        ConfigurationImportFile(
+          'invalid.xlsx',
+          Uint8List.fromList(workbook.encode()!),
+        ),
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('Tỷ lệ thả tim (%)'),
+        ),
+      ),
+    );
   });
 
   test(

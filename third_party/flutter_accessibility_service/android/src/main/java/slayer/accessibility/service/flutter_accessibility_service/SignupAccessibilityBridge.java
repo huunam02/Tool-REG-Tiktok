@@ -90,7 +90,8 @@ final class SignupAccessibilityBridge {
         // Nodes present but not visible (e.g. a video clock faded out with its
         // controls). Kept apart so callers reading "nodes" are unaffected.
         List<Map<String, Object>> hidden = new ArrayList<>();
-        collect(web, "0", nodes, hidden, 0);
+        collect(web, "0", nodes, hidden, 0, web);
+        labelSignupBirthdayFields(nodes);
         // HTML select opens a native list outside the WebView subtree.
         java.util.Set<Integer> windows = new java.util.HashSet<>();
         AccessibilityNodeInfo active = service.getRootInActiveWindow();
@@ -109,13 +110,36 @@ final class SignupAccessibilityBridge {
         return result;
     }
 
+    static void labelSignupBirthdayFields(List<Map<String, Object>> nodes) {
+        boolean birthdayForm = false;
+        List<Map<String, Object>> fields = new ArrayList<>();
+        for (Map<String, Object> node : nodes) {
+            String text = String.valueOf(node.get("text"));
+            if (text.equals("When’s your birthday?*") || text.equals("When's your birthday?*") ||
+                    text.equals("When’s your birthday?") || text.equals("When's your birthday?")) birthdayForm = true;
+            if ("android.widget.Spinner".equals(node.get("className"))) fields.add(node);
+        }
+        if (!birthdayForm || fields.size() != 3) return;
+        fields.sort((a, b) -> Integer.compare(((List<Integer>) a.get("bounds")).get(0),
+            ((List<Integer>) b.get("bounds")).get(0)));
+        String[] labels = {"Month", "Day", "Year"};
+        List<Integer> first = (List<Integer>) fields.get(0).get("bounds");
+        for (Map<String, Object> field : fields) {
+            List<Integer> rect = (List<Integer>) field.get("bounds");
+            if (rect.get(1) >= first.get(3) || first.get(1) >= rect.get(3)) return;
+        }
+        for (int i = 0; i < labels.length; i++) {
+            if ("".equals(fields.get(i).get("hint"))) fields.get(i).put("hint", labels[i]);
+        }
+    }
+
     private static void collectPickers(AccessibilityNodeInfo node, String pkg, String path,
             List<Map<String,Object>> nodes, int depth) {
         if (node == null || depth > 40 || !pkg.contentEquals(node.getPackageName() == null ? "" : node.getPackageName())) return;
         String type = String.valueOf(node.getClassName());
         if (node.isVisibleToUser() && (type.equals("android.widget.ListView") || type.equals("android.widget.NumberPicker"))) {
             int start = nodes.size();
-            collect(node, path, nodes, new ArrayList<>(), 0);
+            collect(node, path, nodes, new ArrayList<>(), 0, null);
             for (int i=start; i<nodes.size(); i++) nodes.get(i).put("picker", true);
             return;
         }
@@ -208,7 +232,7 @@ final class SignupAccessibilityBridge {
     }
 
     private static void collect(AccessibilityNodeInfo node, String path, List<Map<String, Object>> nodes,
-            List<Map<String, Object>> hidden, int depth) {
+            List<Map<String, Object>> hidden, int depth, AccessibilityNodeInfo web) {
         if (node == null || depth > 40 || nodes.size() >= 1200) return;
         if (!node.isVisibleToUser() && hidden.size() < 600) {
             Rect rect = new Rect(); node.getBoundsInScreen(rect);
@@ -242,10 +266,83 @@ final class SignupAccessibilityBridge {
             // Field values must never reach calibration files or debug logs.
             item.put("text", node.isEditable() || node.isPassword() ? "" : safe(node.getText()));
             item.put("description", node.isEditable() || node.isPassword() ? "" : safe(node.getContentDescription()));
-            item.put("hint", node.isEditable() ? safe(editorHint(node)) : Build.VERSION.SDK_INT >= 26 ? safe(node.getHintText()) : "");
+            String hint = node.isEditable() ? safe(editorHint(node)) : Build.VERSION.SDK_INT >= 26 ? safe(node.getHintText()) : "";
+            // WebView 155 can omit hintText for TikTok's type=text email input.
+            // Infer only a fixed label from the visible, unambiguous signup form;
+            // never expose the editor's value as a hint.
+            if (hint.isEmpty() && signupEmailEditor(web, node)) hint = "Email address";
+            if (hint.isEmpty() && loginUsernameEditor(node)) hint = "Username or email";
+            item.put("hint", hint);
             nodes.add(item);
         }
-        for (int i = 0; i < node.getChildCount(); i++) collect(node.getChild(i), path + "." + i, nodes, hidden, depth + 1);
+        for (int i = 0; i < node.getChildCount(); i++) collect(node.getChild(i), path + "." + i, nodes, hidden, depth + 1, web);
+    }
+
+    private static AccessibilityNodeInfo staticLabel(AccessibilityNodeInfo node, String label, int depth) {
+        if (node == null || depth > 40) return null;
+        if (node.isVisibleToUser() && !node.isEditable() && !node.isPassword() &&
+                (matchesStaticLabel(node.getText(), label) || matchesStaticLabel(node.getContentDescription(), label))) return node;
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo found = staticLabel(node.getChild(i), label, depth + 1);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static boolean matchesStaticLabel(CharSequence value, String label) {
+        return value != null && label.equalsIgnoreCase(value.toString().trim().replaceFirst("\\s*\\*$", ""));
+    }
+
+    private static boolean signupEmailEditor(AccessibilityNodeInfo web, AccessibilityNodeInfo editor) {
+        if (web == null || editor == null || !editor.isEditable() || !editor.isEnabled() ||
+                !editor.isVisibleToUser() || editor.isPassword() ||
+                (editor.getInputType() & InputType.TYPE_MASK_CLASS) != InputType.TYPE_CLASS_TEXT ||
+                editableCount(web, 0) != 1) return false;
+        // "Use phone" means the email tab is selected. The phone tab instead
+        // offers "Use email"; neither OTP nor unrelated text fields qualify.
+        AccessibilityNodeInfo label = staticLabel(web, "Enter your email", 0);
+        if (label == null || staticLabel(web, "Use phone", 0) == null) return false;
+        Rect prompt = new Rect(), input = new Rect();
+        label.getBoundsInScreen(prompt);
+        editor.getBoundsInScreen(input);
+        // Accessibility line boxes can overlap the input border by a few pixels.
+        return !input.isEmpty() && prompt.exactCenterY() <= input.top &&
+            input.top - prompt.bottom <= input.height() * 3 &&
+            prompt.left < input.right && input.left < prompt.right;
+    }
+
+    private static boolean loginUsernameEditor(AccessibilityNodeInfo editor) {
+        if (editor == null || !editor.isEditable() || !editor.isEnabled() ||
+                !editor.isVisibleToUser() || editor.isPassword() ||
+                (editor.getInputType() & InputType.TYPE_MASK_CLASS) != InputType.TYPE_CLASS_TEXT) return false;
+        // TikTok/WebView 155 can omit the placeholder entirely. Restrict the
+        // inferred label to the two-field username/password login dialog.
+        AccessibilityNodeInfo dialog = editor.getParent();
+        for (int depth = 0; dialog != null && depth < 40; depth++, dialog = dialog.getParent()) {
+            if (!"android.app.AlertDialog".contentEquals(dialog.getClassName())) continue;
+            if (staticLabel(dialog, "Log in", 0) == null ||
+                    staticLabel(dialog, "Username or email", 0) == null ||
+                    staticLabel(dialog, "Continue", 0) == null) return false;
+            List<AccessibilityNodeInfo> fields = new ArrayList<>();
+            loginFields(dialog, fields, 0);
+            if (fields.size() != 2) return false;
+            AccessibilityNodeInfo password = fields.get(0).isPassword() ? fields.get(0) : fields.get(1);
+            AccessibilityNodeInfo username = fields.get(0).isPassword() ? fields.get(1) : fields.get(0);
+            if (!password.isPassword() || username.isPassword() || !editor.equals(username)) return false;
+            Rect nameBounds = new Rect(), passwordBounds = new Rect();
+            username.getBoundsInScreen(nameBounds);
+            password.getBoundsInScreen(passwordBounds);
+            return !nameBounds.isEmpty() && !passwordBounds.isEmpty() &&
+                nameBounds.bottom <= passwordBounds.top &&
+                nameBounds.left < passwordBounds.right && passwordBounds.left < nameBounds.right;
+        }
+        return false;
+    }
+
+    private static void loginFields(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> fields, int depth) {
+        if (node == null || depth > 40) return;
+        if (node.isEditable() && node.isEnabled() && node.isVisibleToUser()) fields.add(node);
+        for (int i = 0; i < node.getChildCount(); i++) loginFields(node.getChild(i), fields, depth + 1);
     }
 
     static void paste(String text, String field, MethodChannel.Result result) {
@@ -272,7 +369,8 @@ final class SignupAccessibilityBridge {
         }
         String hint = Build.VERSION.SDK_INT >= 26 && editor.getHintText() != null ? editor.getHintText().toString().toLowerCase(java.util.Locale.ROOT) : "";
         if (field.equals("email") && !hint.contains("email") &&
-                (editor.getInputType() & InputType.TYPE_MASK_VARIATION) != InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS) {
+                (editor.getInputType() & InputType.TYPE_MASK_VARIATION) != InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS &&
+                !signupEmailEditor(web, editor) && !loginUsernameEditor(editor)) {
             result.success(status(false, "wrong-email-field")); return;
         }
         if (field.equals("comment") && !hint.contains("comment") && !hint.contains("bình luận")) {
@@ -334,6 +432,23 @@ final class SignupAccessibilityBridge {
             }
             verifyPaste(editor, text, field, clipboard, oldClip, result, 0,
                 field.equals("otp") ? () -> longPressPaste(service, editor, text, field, clipboard, oldClip, result)
+                : field.equals("email") ? () -> {
+                    // Only the unchanged, focused, empty email field may use
+                    // the Accessibility SET_TEXT fallback after paste did nothing.
+                    if (!pasteCancelled && editor.refresh() && editor.isFocused() &&
+                            (signupEmailEditor(webRoot(service), editor) || loginUsernameEditor(editor))) {
+                        CharSequence current = editorValue(editor);
+                        if (current == null || current.length() == 0) {
+                            Bundle arguments = new Bundle();
+                            arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+                            if (editor.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) {
+                                verifyPaste(editor, text, field, clipboard, oldClip, result, 0, null);
+                                return;
+                            }
+                        }
+                    }
+                    failPaste(clipboard, oldClip, text, result, "email-input-not-confirmed");
+                }
                 // TikTok's comment box sometimes acknowledges ACTION_PASTE
                 // without inserting. A long press there selects the
                 // placeholder text instead of offering Paste, so retry the

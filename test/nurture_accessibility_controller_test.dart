@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/nurture_coordinate_profile.dart';
+import 'package:test_tiktok/core/scripts/rotate_captcha_script.dart';
 import 'package:test_tiktok/core/tiktok_flow_result.dart';
 import 'package:test_tiktok/core/tiktok_launch_action.dart';
 
@@ -34,6 +35,9 @@ class _View extends PlatformInAppWebViewController {
     required String source,
     ContentWorld? contentWorld,
   }) async {
+    // Read-only CAPTCHA probes find nothing; they are not page automation.
+    if (source == readRotateCaptchaScript) return null;
+    if (source == rotateCaptchaPresentScript) return false;
     sources.add(source);
     return true;
   }

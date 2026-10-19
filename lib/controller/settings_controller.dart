@@ -17,6 +17,10 @@ class SettingsController extends AppController with WidgetsBindingObserver {
 
   final ProxyStore proxyStore;
   bool exporting = false;
+  bool previewing = false;
+
+  /// Xem trước and Xuất Excel never run at the same time.
+  bool get dataBusy => exporting || previewing;
   final AccessibilityPermissionService accessibilityPermission;
   bool? accessibilityEnabled;
   bool checkingAccessibility = false;
@@ -25,8 +29,34 @@ class SettingsController extends AppController with WidgetsBindingObserver {
   bool get accessibilityBusy =>
       checkingAccessibility || openingAccessibilitySettings;
 
+  /// The rows Xuất Excel would save right now; null when there is nothing to
+  /// show or reading failed (already reported).
+  Future<DataExportPreview?> loadPreview() async {
+    if (!active || dataBusy) return null;
+    FocusManager.instance.primaryFocus?.unfocus();
+    mutate(() => previewing = true);
+    try {
+      final configurations = await proxyStore.list();
+      final accounts = await proxyStore.nurture.listAccounts();
+      if (!active) return null;
+      if (configurations.isEmpty && accounts.isEmpty) {
+        notify('Chưa có dữ liệu cấu hình hoặc nuôi Account để xem trước.');
+        return null;
+      }
+      return DataExportPreview(
+        configurations: configurations,
+        accounts: accounts,
+      );
+    } catch (_) {
+      if (active) notify('Không thể đọc dữ liệu để xem trước. Hãy thử lại.');
+      return null;
+    } finally {
+      if (active) mutate(() => previewing = false);
+    }
+  }
+
   Future<void> exportExcel() async {
-    if (!active || exporting) return;
+    if (!active || dataBusy) return;
     FocusManager.instance.primaryFocus?.unfocus();
     mutate(() => exporting = true);
     try {

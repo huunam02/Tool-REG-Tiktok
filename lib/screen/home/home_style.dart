@@ -6,6 +6,9 @@ import '../../core/app_action_theme.dart';
 abstract final class HomeStyle {
   static const background = Color(0xFF0B101B);
   static const surface = Color(0xFF141C2A);
+
+  /// A list item chosen to run first.
+  static const selectedSurface = Color(0xFF102A2E);
   static const input = Color(0xFF0F1623);
   static const border = Color(0xFF283346);
   static const muted = Color(0xFFA0AEC0);

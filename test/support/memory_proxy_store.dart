@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
+import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
@@ -54,6 +55,18 @@ class MemoryProxyStore extends ProxyStore {
               nurtureAfterSignup: entries.any(
                 (entry) => entry.id == currentId && entry.nurtureAfterSignup,
               ),
+              gpuProfileId:
+                  entries
+                      .where((entry) => entry.id == currentId)
+                      .firstOrNull
+                      ?.gpuProfileId ??
+                  '',
+              nurtureSettings:
+                  entries
+                      .where((entry) => entry.id == currentId)
+                      .firstOrNull
+                      ?.nurtureSettings ??
+                  NurtureSettings.defaults,
             ),
     );
   }
@@ -140,9 +153,13 @@ class MemoryProxyStore extends ProxyStore {
     AccountStatus? statusAccount,
     String? timeZoneId,
     bool? nurtureAfterSignup,
+    NurtureSettings? nurtureSettings,
+    String? gpuProfileId,
   }) async {
     if (failWrites) throw StateError('Storage unavailable');
     account?.validate();
+    final nurtureError = nurtureSettings?.error;
+    if (nurtureError != null) throw FormatException(nurtureError);
     final existing = entries.where(
       (entry) => id == null
           ? sameProxy(entry.proxy, proxy) &&
@@ -173,6 +190,9 @@ class MemoryProxyStore extends ProxyStore {
         hasBeenUsed: old?.hasBeenUsed ?? false,
         nurtureAfterSignup:
             nurtureAfterSignup ?? old?.nurtureAfterSignup ?? false,
+        nurtureSettings:
+            nurtureSettings ?? old?.nurtureSettings ?? NurtureSettings.defaults,
+        gpuProfileId: gpuProfileId ?? old?.gpuProfileId ?? '',
         signupFailed: _signupFailedOverride ?? old?.signupFailed ?? false,
       ),
     );
@@ -196,6 +216,8 @@ class MemoryProxyStore extends ProxyStore {
           account: draft.account,
           statusAccount: draft.statusAccount,
           nurtureAfterSignup: draft.nurtureAfterSignup,
+          nurtureSettings: draft.nurtureSettings,
+          gpuProfileId: draft.gpuProfileId,
         ),
     ];
   }
@@ -226,6 +248,8 @@ class MemoryProxyStore extends ProxyStore {
         statusAccount: entry.statusAccount,
         hasBeenUsed: entry.hasBeenUsed,
         nurtureAfterSignup: entry.nurtureAfterSignup,
+        nurtureSettings: entry.nurtureSettings,
+        gpuProfileId: entry.gpuProfileId,
         signupFailed: entry.signupFailed,
       );
     }
@@ -275,6 +299,8 @@ class MemoryProxyStore extends ProxyStore {
       statusAccount: entry.statusAccount,
       hasBeenUsed: used,
       nurtureAfterSignup: entry.nurtureAfterSignup,
+      nurtureSettings: entry.nurtureSettings,
+      gpuProfileId: entry.gpuProfileId,
       signupFailed: entry.signupFailed,
     );
   }

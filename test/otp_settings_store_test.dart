@@ -18,7 +18,14 @@ void main() {
       RemoteConfig.configs = {};
       final settings = await const OtpSettingsStore().load();
       expect(settings.url, RemoteConfigKey.otp_api_url.defaultValue);
-      expect(settings.toConfiguration().url.toString(), settings.url);
+      // An origin-only URL gets the API path.
+      final api = settings.toConfiguration();
+      expect(api.url.toString(), 'https://187.77.149.179:2001/api/extract-otp');
+      expect(
+        api.trustedCertificate,
+        RemoteConfigKey.otp_api_certificate.defaultValue,
+      );
+      expect(api.trustedCertificate, contains('BEGIN CERTIFICATE'));
     },
   );
 

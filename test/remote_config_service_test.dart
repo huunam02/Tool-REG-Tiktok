@@ -68,6 +68,7 @@ void main() {
         RemoteConfig.defaults.keys,
         unorderedEquals([
           'otp_api_url',
+          'otp_api_certificate',
           'sadcaptcha_license_key',
           'search_keywords',
           'auto_comments',
@@ -93,6 +94,7 @@ void main() {
       final remote = _Remote()
         ..fetched = {
           'otp_api_url': 'https://remote.example.com/api/code',
+          'otp_api_certificate': 'remote-certificate',
           'sadcaptcha_license_key': 'remote-captcha-key',
           'search_keywords': '["Travel", "Cà phê"]',
           'auto_comments': '["Great video!", "Cảm ơn ❤️"]',
@@ -111,6 +113,7 @@ void main() {
         otp.toConfiguration().url.toString(),
         'https://remote.example.com/api/code',
       );
+      expect(otp.toConfiguration().trustedCertificate, 'remote-certificate');
       final captcha = CaptchaSettingsStore();
       expect((await captcha.load()).licenseKey, 'remote-captcha-key');
       captcha.dispose();

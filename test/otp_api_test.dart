@@ -282,7 +282,7 @@ void main() {
     },
   );
 
-  test('trusts only the pinned OTP certificate for its own host', () {
+  test('trusts the configured certificate for the API host only', () {
     const pem = '''
 -----BEGIN CERTIFICATE-----
 MIIDJDCCAgygAwIBAgIULOGy4QZKh3EAt4gdDhtFpyfkXLwwDQYJKoZIhvcNAQEL
@@ -304,10 +304,29 @@ KfIKLV2SHSf1i9R4oSqH1mg98RFQ/+qZ/9UFMN2mRQ8RGHn+ippO+j8+7mavZnQk
 FtS6j41rZLnsIBu+NYUmbh/0VtIuXRiJ39TdN8gOYdchoWVCdhCRuQ==
 -----END CERTIFICATE-----
 ''';
-    expect(acceptsOtpCertificate(pem, '187.77.149.179'), isTrue);
-    expect(acceptsOtpCertificate(pem, 'example.com'), isFalse);
+    OtpApiConfiguration api(String url, String certificate) =>
+        OtpApiConfiguration(
+          url: Uri.parse(url),
+          trustedCertificate: certificate,
+        );
+    final otp = api('https://187.77.149.179:2001/api/extract-otp', pem);
+    expect(otp.trusts(pem, '187.77.149.179'), isTrue);
+    expect(otp.trusts(pem, 'example.com'), isFalse);
     expect(
-      acceptsOtpCertificate(pem.replaceFirst('MIID', 'MIIE'), '187.77.149.179'),
+      otp.trusts(pem.replaceFirst('MIID', 'MIIE'), '187.77.149.179'),
+      isFalse,
+    );
+    // A new domain only needs Remote Config; one-line and "\n" PEMs work.
+    final body = pem.split('\n').where((l) => !l.startsWith('-----')).join();
+    final moved = api(
+      'https://otp.example.com/api/extract-otp',
+      r'-----BEGIN CERTIFICATE-----\n' + body + r'\n-----END CERTIFICATE-----',
+    );
+    expect(moved.trusts(pem, 'otp.example.com'), isTrue);
+    expect(moved.trusts(pem, '187.77.149.179'), isFalse);
+    // Empty: normal certificate verification only.
+    expect(
+      api('https://187.77.149.179:2001', '').trusts(pem, '187.77.149.179'),
       isFalse,
     );
   });

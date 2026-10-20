@@ -6,51 +6,41 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
-/// The OTP server serves a self-signed certificate for its IP. Only this exact
-/// certificate is trusted, and only for that host; every other host keeps
-/// normal verification. Update it whenever the server renews its certificate
-/// (this one expires 2026-10-27).
-const _pinnedOtpHost = '187.77.149.179';
-const _pinnedOtpCertificate = '''
------BEGIN CERTIFICATE-----
-MIIDJDCCAgygAwIBAgIULOGy4QZKh3EAt4gdDhtFpyfkXLwwDQYJKoZIhvcNAQEL
-BQAwGTEXMBUGA1UEAwwOMTg3Ljc3LjE0OS4xNzkwHhcNMjYxMDIwMDEzMTQxWhcN
-MjYxMDI3MDEzMTQxWjAZMRcwFQYDVQQDDA4xODcuNzcuMTQ5LjE3OTCCASIwDQYJ
-KoZIhvcNAQEBBQADggEPADCCAQoCggEBANOS4VVOd3me5EoJycdHAWrXncqwrpbx
-DY7zer+ppbxtRDKISCdxxz+CVq8/o7RXu4y7Prx5X4hCGmcF4CCXEUKCnoncf5GL
-AIRC9P5gLPQdlHKcyRmyRtnpWByU5UEf3hl3vris1+xW60INmEX658rUZ9Npj4ZP
-sX2IPoYNVZ39lfJPqxYVLc4WYlkvgtVj+WygtPWcaeKsOvm06iD4wd90imJJ2Xet
-6nnvYdTFetd8LQty9CEq9i8xVDcBpg2RyQf1u2tlMZ1rg/kCXAmxRZ8Yk4OyQxhn
-EMLBuGVmfUsxbcoFUkiWGcOXWyiCnrZVXxdw+js9vDjvkxOkfDka7BsCAwEAAaNk
-MGIwHQYDVR0OBBYEFGv1cUmaqBTUoscya8upwwmLv134MB8GA1UdIwQYMBaAFGv1
-cUmaqBTUoscya8upwwmLv134MA8GA1UdEwEB/wQFMAMBAf8wDwYDVR0RBAgwBocE
-u02VszANBgkqhkiG9w0BAQsFAAOCAQEAJfC34ZLdLd/RliNXnvnPDbPThvXhi6T2
-hqqmyblRLb7lmuQnw6yTG3VwkM2kH8n+hWeXuuaCuLbvt8aTV9DO1Z1cip9koi3a
-Y+9ABATnctqzIj7qSI+dXq/dRHafCrTzuE0MmBmBLU2gYno3MrsAvFRlBlxNVHfT
-68O88G5Dxm/4gDjEjMz1SHr7V9KXgsGOwY3IDOJ6RMZZDqvlIhN+qRC67HeQeQjS
-KfIKLV2SHSf1i9R4oSqH1mg98RFQ/+qZ/9UFMN2mRQ8RGHn+ippO+j8+7mavZnQk
-FtS6j41rZLnsIBu+NYUmbh/0VtIuXRiJ39TdN8gOYdchoWVCdhCRuQ==
------END CERTIFICATE-----
-''';
-
-String _pemBody(String pem) =>
-    pem.replaceAll(RegExp(r'-----[A-Z ]+-----|\s'), '');
-
-@visibleForTesting
-bool acceptsOtpCertificate(String pem, String host) =>
-    host == _pinnedOtpHost && _pemBody(pem) == _pemBody(_pinnedOtpCertificate);
-
-http.Client _otpHttpClient() => IOClient(
+/// Certificate errors are accepted only for the configured OTP API host and
+/// only when its certificate equals [OtpApiConfiguration.trustedCertificate]
+/// (Remote Config `otp_api_certificate`). Every other host, or an empty
+/// value, keeps normal verification.
+http.Client _otpHttpClient(OtpApiConfiguration configuration) => IOClient(
   HttpClient()
     ..badCertificateCallback = (cert, host, _) =>
-        acceptsOtpCertificate(cert.pem, host),
+        configuration.trusts(cert.pem, host),
 );
 
 class OtpApiConfiguration {
-  const OtpApiConfiguration({required this.url, this.waitSeconds = 180});
+  const OtpApiConfiguration({
+    required this.url,
+    this.waitSeconds = 180,
+    this.trustedCertificate = '',
+  });
 
   final Uri url;
   final int waitSeconds;
+
+  /// PEM of a self-signed certificate trusted for [url]'s host only.
+  final String trustedCertificate;
+
+  /// Whether a certificate that failed normal verification is the trusted
+  /// one for this API's host.
+  bool trusts(String pem, String host) {
+    final trusted = _pemBody(trustedCertificate);
+    return trusted.isNotEmpty && host == url.host && _pemBody(pem) == trusted;
+  }
+
+  /// Base64 body only: Remote Config may hold the PEM on one line, with
+  /// literal "\n" escapes, or with its usual line breaks.
+  static String _pemBody(String pem) => pem
+      .replaceAll(r'\n', '')
+      .replaceAll(RegExp(r'-----(BEGIN|END) CERTIFICATE-----|\s'), '');
 
   static bool isEmail(String value) =>
       RegExp(r'^[^\s@|]+@[^\s@|]+\.[^\s@|]+$').hasMatch(value.trim());
@@ -90,7 +80,7 @@ class OtpApiClient implements OtpCodeReader {
     this.configuration, {
     http.Client? client,
     void Function(String)? logOutput,
-  }) : _client = client ?? _otpHttpClient(),
+  }) : _client = client ?? _otpHttpClient(configuration),
        _logOutput = logOutput ?? ((message) => debugPrint(message));
 
   final OtpApiConfiguration configuration;

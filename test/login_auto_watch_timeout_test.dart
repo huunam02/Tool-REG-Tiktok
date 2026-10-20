@@ -161,28 +161,28 @@ void main() {
     },
   );
 
-  testWidgets(
-    'a retained cookie cannot start nurturing without a live session',
-    (tester) async {
-      final session = _Session(
-        tester,
-        launchAction: TikTokLaunchAction.browse,
-        startWithNurture: true,
-      );
-      session.logic.initialPageLoaded = true;
-      final run = session.logic.runInitialAction();
-      for (var attempt = 0; attempt <= 20; attempt++) {
-        await tester.pump(const Duration(milliseconds: 500));
-      }
-      await run;
-      expect(session.logic.autoWatchEnabled, isFalse);
-      expect(session.logic.loginConfirmed, isFalse);
-      expect(session.logic.autoWatchBusy, isFalse);
-      expect(session.view.starts, 0);
-      expect(session.view.loginChecks, 0);
-      expect(session.notices.last, contains('Hãy đăng nhập lại'));
-    },
-  );
+  testWidgets('an expired retained session logs in again before nurturing', (
+    tester,
+  ) async {
+    final session = _Session(
+      tester,
+      launchAction: TikTokLaunchAction.browse,
+      startWithNurture: true,
+    );
+    session.logic.initialPageLoaded = true;
+    final run = session.logic.runInitialAction();
+    for (var attempt = 0; attempt <= 50; attempt++) {
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+    await run;
+    expect(session.logic.autoWatchEnabled, isTrue);
+    expect(session.logic.loginConfirmed, isTrue);
+    expect(session.logic.autoWatchBusy, isFalse);
+    expect(session.view.starts, 1);
+    expect(session.view.loginChecks, greaterThan(0));
+    await tester.pump(const Duration(minutes: 3));
+    session.logic.onDelete();
+  });
 
   testWidgets('manual browsing only starts nurturing when the user enables it', (
     tester,

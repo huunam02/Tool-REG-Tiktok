@@ -118,7 +118,7 @@ class NurtureVideo {
           RegExp(
             r'^Read or add comments\b',
             caseSensitive: false,
-          ).hasMatch(n.description),
+          ).hasMatch(n.name),
     )) {
       final actionRoot = button.id.substring(0, button.id.lastIndexOf('.'));
       final card = actionRoot.substring(0, actionRoot.lastIndexOf('.'));
@@ -213,10 +213,7 @@ class NurtureVideo {
       if (media == null) continue;
       final next = inside
           .where(
-            (n) =>
-                n.clickable &&
-                n.enabled &&
-                n.description.trim() == 'Go to next video',
+            (n) => n.clickable && n.enabled && n.name == 'Go to next video',
           )
           .firstOrNull;
       return NurtureVideo(
@@ -246,7 +243,7 @@ class NurtureVideo {
                 n.id.startsWith('${dialog.id}.') &&
                 n.clickable &&
                 n.enabled &&
-                n.description.trim() == 'Go to next video',
+                n.name == 'Go to next video',
           )
           .firstOrNull;
       if (next != null) return next;
@@ -639,7 +636,7 @@ class NurtureAccessibilityRunner {
           (dialog) => s.nodes.any(
             (n) =>
                 within(n.id, dialog.id) &&
-                (n.description.trim() == 'Go to next video' ||
+                (n.name == 'Go to next video' ||
                     NurtureVideo._videoUrl.hasMatch(n.text.trim())),
           ),
         )
@@ -867,7 +864,7 @@ class NurtureAccessibilityRunner {
             (n) =>
                 n.clickable &&
                 n.enabled &&
-                n.description.trim() == 'Watch in full screen' &&
+                n.name == 'Watch in full screen' &&
                 v.contains(n.bounds.topLeft) &&
                 n.bounds.bottom <= v.bottom,
           )

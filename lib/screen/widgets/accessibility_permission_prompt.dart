@@ -32,10 +32,12 @@ class _AccessibilityPermissionPromptState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted &&
           (supportsAccessibilityPermission || widget.isEnabled != null)) {
-        showAccessibilityPermissionDialog(context,
-            onlyIfDisabled: true,
-            isEnabled: widget.isEnabled,
-            requestPermission: widget.requestPermission);
+        showAccessibilityPermissionDialog(
+          context,
+          onlyIfDisabled: true,
+          isEnabled: widget.isEnabled,
+          requestPermission: widget.requestPermission,
+        );
       }
     });
   }
@@ -52,20 +54,26 @@ Future<void> showAccessibilityPermissionDialog(
 }) async {
   final check =
       isEnabled ?? FlutterAccessibilityService.isAccessibilityPermissionEnabled;
-  final request = requestPermission ??
+  final request =
+      requestPermission ??
       FlutterAccessibilityService.requestAccessibilityPermission;
-  var enabled = false;
+  bool? enabled;
   try {
     enabled = await check();
   } catch (_) {
-    // Still show the instructions and settings button if the check fails.
+    // A startup check failure does not establish that permission was revoked.
+    // The user can still inspect/open accessibility from Settings.
+    if (onlyIfDisabled) return;
   }
-  if (!context.mounted || onlyIfDisabled && enabled) return;
+  if (!context.mounted || onlyIfDisabled && enabled == true) return;
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (_) => _AccessibilityPermissionDialog(
-        enabled: enabled, check: check, request: request),
+      enabled: enabled,
+      check: check,
+      request: request,
+    ),
   );
 }
 
@@ -76,7 +84,7 @@ class _AccessibilityPermissionDialog extends StatefulWidget {
     required this.request,
   });
 
-  final bool enabled;
+  final bool? enabled;
   final Future<bool> Function() check;
   final Future<bool> Function() request;
 
@@ -106,12 +114,18 @@ class _AccessibilityPermissionDialogState
         Navigator.of(context).pop();
         return;
       }
-      setState(() => _message = 'Quyền Trợ năng chưa được bật. '
-          'Trong Cài đặt, chọn Tool TikTok rồi bật Sử dụng dịch vụ.');
+      setState(
+        () => _message =
+            'Quyền Trợ năng chưa được bật. '
+            'Trong Cài đặt, chọn Tool TikTok rồi bật Sử dụng dịch vụ.',
+      );
     } catch (_) {
       if (mounted) {
-        setState(() => _message = 'Không mở được Cài đặt Trợ năng. '
-            'Hãy mở Cài đặt Android → Trợ năng → Tool TikTok để bật dịch vụ.');
+        setState(
+          () => _message =
+              'Không mở được Cài đặt Trợ năng. '
+              'Hãy mở Cài đặt Android → Trợ năng → Tool TikTok để bật dịch vụ.',
+        );
       }
     } finally {
       if (mounted) setState(() => _opening = false);
@@ -120,24 +134,34 @@ class _AccessibilityPermissionDialogState
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        key: const Key('accessibilityPermissionDialog'),
-        title: Text(widget.enabled ? 'Trợ năng đã bật' : 'Bật quyền Trợ năng'),
-        content: Text(widget.enabled
-            ? 'Tool TikTok đã có quyền Trợ năng để bấm nút Send code.'
-            : _message ??
-                'Tool TikTok cần quyền Trợ năng tự động thao tác bấm trên màn hình.\n\n'
-                    'Nhấn Mở cài đặt → chọn Tool TikTok → bật Sử dụng dịch vụ, rồi quay lại ứng dụng.'),
-        actions: [
-          TextButton(
-            onPressed: _opening ? null : () => Navigator.of(context).pop(),
-            child: Text(widget.enabled ? 'Đóng' : 'Để sau'),
-          ),
-          if (!widget.enabled)
-            FilledButton(
-              key: const Key('openAccessibilitySettings'),
-              onPressed: _opening ? null : _openSettings,
-              child: Text(_opening ? 'Đang mở…' : 'Mở cài đặt'),
-            ),
-        ],
-      );
+    key: const Key('accessibilityPermissionDialog'),
+    title: Text(
+      widget.enabled == null
+          ? 'Kiểm tra quyền Trợ năng'
+          : widget.enabled!
+          ? 'Trợ năng đã bật'
+          : 'Bật quyền Trợ năng',
+    ),
+    content: Text(
+      widget.enabled == true
+          ? 'Tool TikTok đã có quyền Trợ năng để bấm nút Send code.'
+          : _message ??
+                (widget.enabled == null
+                    ? 'Chưa kiểm tra được trạng thái quyền Trợ năng. Bạn có thể mở Cài đặt để kiểm tra.'
+                    : 'Tool TikTok cần quyền Trợ năng tự động thao tác bấm trên màn hình.\n\n'
+                          'Nhấn Mở cài đặt → chọn Tool TikTok → bật Sử dụng dịch vụ, rồi quay lại ứng dụng.'),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _opening ? null : () => Navigator.of(context).pop(),
+        child: Text(widget.enabled == true ? 'Đóng' : 'Để sau'),
+      ),
+      if (widget.enabled != true)
+        FilledButton(
+          key: const Key('openAccessibilitySettings'),
+          onPressed: _opening ? null : _openSettings,
+          child: Text(_opening ? 'Đang mở…' : 'Mở cài đặt'),
+        ),
+    ],
+  );
 }

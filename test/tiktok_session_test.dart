@@ -86,7 +86,7 @@ void main() {
       await store.useSaved(id);
       HomeController createHome() => HomeController(
         initialUserAgent: 'agent',
-        initialOtpSettings: const OtpApiSettings(url: '', token: ''),
+        initialOtpSettings: const OtpApiSettings(url: ''),
         store: store,
       )..onInit();
       var home = createHome();

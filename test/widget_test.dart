@@ -480,10 +480,6 @@ void main() {
         configuration.otpApi!.url.toString(),
         RemoteConfig.getString(RemoteConfigKey.otp_api_url),
       );
-      expect(
-        configuration.otpApi!.readerToken,
-        RemoteConfig.getString(RemoteConfigKey.otp_api_token),
-      );
       expect(configuration.otpApi!.waitSeconds, 180);
       expect(configuration.signupMailboxPassword, 'mail-secret');
       expect(configuration.loginMailboxPassword, 'mail-secret');
@@ -706,11 +702,8 @@ void main() {
           controller.sources.lastWhere((s) => s.contains(script)),
           contains('"otp":"012345"'),
         );
-        // Signup success holds the page for its logout countdown.
-        expect(
-          find.byKey(const Key('signupLogoutCountdown')),
-          action == TikTokLaunchAction.signup ? findsOneWidget : findsNothing,
-        );
+        // Signup keeps the session; no logout countdown is scheduled.
+        expect(find.byKey(const Key('signupLogoutCountdown')), findsNothing);
         if (action == TikTokLaunchAction.login) {
           expect(find.text('Dừng'), findsNothing);
         }
@@ -765,7 +758,7 @@ void main() {
       expect(sources[6], isNot(contains('"otpRequestedAt":null')));
       expect(reader.requests, hasLength(1));
       expect(find.text('Đăng ký TikTok thành công.'), findsOneWidget);
-      expect(find.byKey(const Key('signupLogoutCountdown')), findsOneWidget);
+      expect(find.byKey(const Key('signupLogoutCountdown')), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1137,7 +1130,7 @@ void main() {
       await _pumpAccountStep(tester);
       await tester.pump();
       expect(find.text('Đăng ký TikTok thành công.'), findsOneWidget);
-      expect(find.byKey(const Key('signupLogoutCountdown')), findsOneWidget);
+      expect(find.byKey(const Key('signupLogoutCountdown')), findsNothing);
       final sources = controller.sources.where(
         (source) => source.contains(autoSignupStepScript),
       );
@@ -1633,7 +1626,6 @@ Future<_TestController> _mountApiPage(
       comments: [],
       otpApi: OtpApiConfiguration(
         url: Uri.parse('https://example.com/api/code'),
-        readerToken: 'test-reader-token',
       ),
     ),
   );

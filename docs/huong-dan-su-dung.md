@@ -9,7 +9,7 @@ Tool quản lý cấu hình proxy và tài khoản, chạy đăng ký lần lư�
 1. Mở tool, bấm biểu tượng bánh răng để vào **Cài đặt**.
 2. Bật **Quyền Trợ năng** cho Tool TikTok trong phần cài đặt Android, sau đó quay lại tool.
 3. Vào **Cấu hình → Quản lý cấu hình → dấu +** để thêm proxy và tài khoản.
-4. Nhập email, mật khẩu TikTok, mật khẩu email lấy OTP và kiểm tra **Cấu hình nuôi** trước khi lưu.
+4. Nhập Data Mail và mật khẩu TikTok; email tự lấy từ đầu Data Mail và kiểm tra **Cấu hình nuôi** trước khi lưu.
 5. Với tài khoản chưa đăng ký, vào tab **Đăng ký**. Với tài khoản đã có, bật **Đã đăng ký** khi tạo/sửa rồi vào tab **Nuôi**.
 6. Chạm tài khoản muốn **Chạy trước**, sau đó bấm nút chạy ở cuối tab.
 7. Theo dõi kết quả; xử lý đăng ký thất bại trong tab **Cấu hình lỗi**.
@@ -25,7 +25,7 @@ Trên Android, quyền Trợ năng giúp tool nhập liệu, chạm nút và vu�
 
 Giữ tool ở màn hình trước khi đang chạy tự động để các thao tác Trợ năng thực hiện được. Hạn chế tự bấm vào trang TikTok khi tool đang nhập liệu hoặc chuyển bước.
 
-API lấy OTP, key xử lý CAPTCHA, từ khóa và nội dung bình luận do người quản trị cấu hình qua **Firebase Remote Config**. Màn Cài đặt không có ô nhập URL/token OTP hoặc key CAPTCHA. Nếu tool báo thiếu các giá trị này, nhờ người quản trị kiểm tra theo [hướng dẫn cấu hình Firebase](huong-dan-cau-hinh-firebase.md).
+API lấy OTP, key xử lý CAPTCHA, từ khóa và nội dung bình luận do người quản trị cấu hình qua **Firebase Remote Config**. Màn Cài đặt không có ô nhập URL OTP hoặc key CAPTCHA. Nếu tool báo thiếu các giá trị này, nhờ người quản trị kiểm tra theo [hướng dẫn cấu hình Firebase](huong-dan-cau-hinh-firebase.md).
 
 ## 3. Các khu vực trên màn Home
 
@@ -96,14 +96,14 @@ Trong màn **Tạo cấu hình**, bấm **Import data** và chọn **Từ file**
 Mỗi cấu hình nằm trên một dòng, theo mẫu:
 
 ```text
-host:port:username:password|email|mật_khẩu_TikTok|mật_khẩu_email_OTP|trạng_thái
+host:port:username:password|email|mật_khẩu_mail|refresh_token|client_id|email_phụ|mật_khẩu_TikTok|trạng_thái
 ```
 
 Ví dụ minh họa, cần thay toàn bộ bằng dữ liệu thực tế:
 
 ```text
-192.0.2.10:8080:proxy_user:proxy_pass|account01@example.com|SamplePass12|mail_pass_01|0
-192.0.2.11:8080:proxy_user:proxy_pass|account02@example.com|SamplePass34|mail_pass_02|1
+192.0.2.10:8080:proxy_user:proxy_pass|account01@example.com|mail_pass_01|refresh_token_01|client_id_01|alias01@example.net|SamplePass12|0
+192.0.2.11:8080:proxy_user:proxy_pass|account02@example.com|mail_pass_02|refresh_token_02|client_id_02|alias02@example.net|SamplePass34|1
 ```
 
 - Dấu `|` ngăn cách các trường; không thêm dấu này vào nội dung mật khẩu.
@@ -120,11 +120,13 @@ Chọn **Import data → Từ file** và chọn Excel `.xlsx` hoặc `.xls`. Nê
 
 Một dòng tương ứng một cấu hình. Cách dễ kiểm tra nhất là dùng các cột sau:
 
-| Proxy | Email | Password | Mail Password | Status |
-| --- | --- | --- | --- | --- |
-| `192.0.2.10:8080:proxy_user:proxy_pass` | `account01@example.com` | `SamplePass12` | `mail_pass_01` | `0` |
+| Proxy | Data Mail | Password | Status |
+| --- | --- | --- | --- |
+| `192.0.2.10:8080:proxy_user:proxy_pass` | `account01@example.com\|mail_pass_01\|refresh_token_01\|client_id_01\|alias01@example.net` | `SamplePass12` | `0` |
 
-Cột trạng thái có thể bỏ. Tool cũng đọc được một ô chứa cả dòng dữ liệu như mẫu TXT, hoặc hai cột gồm proxy và chuỗi `email|mật khẩu TikTok|mật khẩu email OTP`. Có thể đặt tiêu đề `Proxy` hoặc `Data` ở dòng đầu.
+Data Mail nằm trong một ô, gồm `email|mật khẩu mail|refresh token|client ID|email phụ`. Email được lấy từ phần đầu; không cần cột Email hay Mail Password. Password là mật khẩu TikTok và nằm sau Data Mail.
+
+Cột trạng thái có thể bỏ. Tool cũng đọc được một ô chứa cả dòng dữ liệu như mẫu TXT, hoặc hai cột gồm proxy và chuỗi `Data Mail|mật khẩu TikTok`. Có thể đặt tiêu đề `Proxy` hoặc `Data` ở dòng đầu.
 
 ### 5.3. Kiểm tra và lưu danh sách đã import
 
@@ -221,7 +223,7 @@ Nút **Bỏ khỏi danh sách lỗi** chỉ bỏ đánh dấu lỗi để cấu 
 4. Bấm **Xuất Excel** trong màn xem trước hoặc ngay ở Cài đặt.
 5. Chọn nơi lưu file `.xlsx` theo hộp thoại của thiết bị.
 
-File có sheet **Data**, mỗi cấu hình một hàng. Nội dung gồm proxy, email, mật khẩu TikTok, mật khẩu email, trạng thái đăng ký, User-Agent, múi giờ, trạng thái đã sử dụng, thiết bị GPU, thông số nuôi và các cột thống kê nuôi được hỗ trợ.
+File có sheet **Data**, mỗi cấu hình một hàng. Nội dung gồm proxy, email, Data Mail, mật khẩu TikTok, trạng thái đăng ký, User-Agent, múi giờ, trạng thái đã sử dụng, thiết bị GPU, thông số nuôi và các cột thống kê nuôi được hỗ trợ.
 
 Có thể import lại file này qua **Import data → Từ file** để tạo cấu hình, khôi phục thông tin tài khoản, trạng thái đăng ký, cấu hình nuôi và GPU. **Import không khôi phục toàn bộ lịch sử chạy hoặc thống kê nuôi.** User-Agent, múi giờ và trạng thái đã dùng trong file xuất hiện tại cũng không được bộ import phục hồi; kiểm tra lại các trường này trên form trước khi lưu.
 
@@ -236,11 +238,11 @@ File Excel chứa mật khẩu dưới dạng đọc được, giống các trư
 | Tab Nuôi không có tài khoản | Bật Đã đăng ký cho tài khoản đã tồn tại, lưu lại rồi kéo xuống làm mới. |
 | Tool không bấm hoặc không nhập liệu | Kiểm tra Quyền Trợ năng trong cài đặt Android, quay lại tool và giữ ứng dụng ở màn hình trước. |
 | Không tải trang hoặc kiểm tra IP thất bại | Kiểm tra mạng, địa chỉ/cổng proxy và thông tin xác thực; dùng Kiểm tra IP để xác nhận kết nối trước khi chạy tài khoản. |
-| Không lấy được OTP | Kiểm tra email và mật khẩu email lấy OTP; nhờ người quản trị kiểm tra URL, token và tình trạng dịch vụ OTP. |
+| Không lấy được OTP | Kiểm tra đủ 5 phần Data Mail; nhờ người quản trị kiểm tra URL và tình trạng dịch vụ OTP. |
 | TikTok báo “Maximum number of attempts reached” | Xem thông báo và nhật ký lỗi, dừng lượt đang gặp lỗi để kiểm tra. Tool không tự gỡ giới hạn hoặc xác định được thời gian chờ do TikTok áp dụng. |
 | CAPTCHA không được xử lý | Kiểm tra Trợ năng, kết nối và key dịch vụ với người quản trị. Tự xử lý phụ thuộc loại CAPTCHA và luồng được hỗ trợ; xem thông báo trên màn hiện tại. |
 | Từ khóa/bình luận chưa đổi | Nhờ quản trị kiểm tra đã xuất bản Remote Config; dừng phiên, chờ ít nhất một phút rồi đóng hoàn toàn và mở lại tool khi có mạng. |
-| Import báo lỗi dòng hoặc sheet | Sửa đúng vị trí được báo; kiểm tra dấu phân cách, đủ mật khẩu email và trạng thái chỉ là 0 hoặc 1. |
+| Import báo lỗi dòng hoặc sheet | Sửa đúng vị trí được báo; kiểm tra dấu phân cách, đủ Data Mail và trạng thái chỉ là 0 hoặc 1. |
 | Mở ứng dụng lại nhưng danh sách cấu hình không tải | Dùng Tải lại cấu hình hoặc Thử lại trên màn tương ứng. |
 
 Để mở bản hướng dẫn ngắn ngay trong ứng dụng: **Cài đặt → Hướng dẫn sử dụng → Mở hướng dẫn sử dụng**.

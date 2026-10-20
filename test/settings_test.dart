@@ -24,7 +24,6 @@ void main() {
     RemoteConfig.configs = {
       ...RemoteConfig.defaults,
       'otp_api_url': 'https://remote.example.com/api/code',
-      'otp_api_token': 'remote-reader-token',
     };
   });
   tearDown(() {
@@ -207,7 +206,6 @@ void main() {
     expect(find.text('Cấu hình CAPTCHA API'), findsNothing);
     final saved = await settingsStore.load();
     expect(saved.url, 'https://remote.example.com/api/code');
-    expect(saved.token, 'remote-reader-token');
 
     await tester.scrollUntilVisible(
       find.byKey(const Key('openUsageGuide')),
@@ -230,7 +228,6 @@ void main() {
         )
         .controller!;
     expect(homeController.otpSettings.url, saved.url);
-    expect(homeController.otpSettings.token, saved.token);
     for (final action in [
       TikTokLaunchAction.signup,
       TikTokLaunchAction.login,

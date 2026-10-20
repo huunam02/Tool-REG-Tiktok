@@ -37,6 +37,8 @@ import '../webview_proxy_ip.dart';
 import '../webview_user_agent.dart';
 import '../webview_timezone.dart';
 import '../app_configuration.dart';
+import '../account_sessions.dart';
+import '../app_session.dart';
 import '../otp_api.dart';
 import '../proxy_store.dart';
 import '../webview_failure.dart';
@@ -118,16 +120,20 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   bool get logoutFollowsNurture =>
       _logoutResult == TikTokFlowResult.nurtureLoggedOut;
 
-  /// Automatic runs and nurture right after signup end with a logout.
-  bool get _logsOutAfterNurture =>
-      onFlowFinished != null && (logoutAfterNurture || _signupHandoffStarted);
+  /// Explicit callers may request logout; normal signup/nurture keeps the jar.
+  bool get _logsOutAfterNurture => onFlowFinished != null && logoutAfterNurture;
 
   /// Before logging out, the screen is held for a random 1–2 minutes.
   Duration _logoutHold() => Duration(seconds: 60 + _workflowRandom.nextInt(61));
 
   void _afterSignupSucceeded() {
     // A route owns the handoff to Home and the next configuration.
-    if (onFlowFinished == null || _signupHandoffStarted || !active) return;
+    if (onFlowFinished == null ||
+        _signupHandoffStarted ||
+        !active ||
+        configuration.configurationId == null) {
+      return;
+    }
     if (configuration.configurationId != null && !_registrationSaved) {
       _failAutoFlow();
       return;
@@ -136,8 +142,16 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     if (configuration.nurtureAfterSignup) {
       unawaited(_nurtureAfterSignup());
     } else {
-      _scheduleLogout(TikTokFlowResult.signupLoggedOut);
+      unawaited(_finishSignupWithSession());
     }
+  }
+
+  Future<void> _finishSignupWithSession() async {
+    await _persistCurrentAccountLoginState(true);
+    if (!active || _flowFinished) return;
+    _flowFinished = true;
+    _autoFlowWatchdog?.cancel();
+    onFlowFinished?.call(TikTokFlowResult.signupCompleted);
   }
 
   /// Warm up the new account for the configured time in the session that
@@ -817,7 +831,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         : configuration.loginUsername;
     if (id == null || email.trim().isEmpty) return;
     try {
-      await proxyStore.setCurrentAccountLoggedIn(id, email, loggedIn);
+      final selected = await proxyStore.setCurrentAccountLoggedIn(
+        id,
+        email,
+        loggedIn,
+      );
+      if (selected) await AccountSessions.save(id, email);
     } catch (_) {
       // Session persistence must not interrupt browser controls.
     }
@@ -1702,7 +1721,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         ? currentConfiguration.signupMailboxPassword
         : currentConfiguration.loginMailboxPassword;
     if (OtpApiConfiguration.isEmail(email) && password.isNotEmpty) return true;
-    notify('Hãy nhập email và mật khẩu hộp thư lấy OTP ở màn Cấu hình.');
+    notify('Hãy nhập Data Mail ở màn Cấu hình.');
     return false;
   }
 
@@ -2865,9 +2884,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       }
       if (canContinue()) {
         await _persistCurrentAccountLoginState(false);
-        notify(
-          'Phiên đăng nhập không còn sẵn sàng. Hãy đăng nhập lại để nuôi tiếp.',
-        );
+        mutate(() => autoWatchBusy = false);
+        await autoLogin();
       }
     } finally {
       mutate(() => autoWatchBusy = false);
@@ -2888,7 +2906,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
     // Latch before starting: reloads, SPA navigations and resume cannot submit again.
     initialActionStarted = true;
-    if (startWithNurture) {
+    if (startWithNurture ||
+        (launchAction == TikTokLaunchAction.login &&
+            await hasTikTokLoginSession())) {
       await _startNurtureWithRetainedSession();
       return;
     }

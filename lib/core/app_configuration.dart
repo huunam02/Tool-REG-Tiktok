@@ -59,7 +59,7 @@ class AppConfiguration {
   final String? webViewTimeZone;
   final int? configurationId;
 
-  /// Nurture the new account in the signup session before logging out.
+  /// Nurture the new account in its signup session before returning to Home.
   final bool nurtureAfterSignup;
 
   /// Like/comment/long-watch rates and session length for nurture.

@@ -8,6 +8,8 @@ import 'package:path/path.dart' as path;
 import 'package:xml/xml.dart';
 
 import 'configuration_data.dart';
+import 'account_password.dart';
+import 'app_configuration.dart';
 import 'data_excel_layout.dart';
 import 'gpu_profile.dart';
 import 'nurture_data.dart';
@@ -95,11 +97,10 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
     // Exports since Cấu hình nuôi start with the configuration columns and
     // carry its columns; other columns are found by header or ignored.
     final withNurtureSettings =
-        headers.length > configurationExcelHeaders.length &&
-        matchesExcelHeaders(
-          headers.take(configurationExcelHeaders.length).toList(),
-          configurationExcelHeaders,
-        ) &&
+        columns.containsKey('Proxy') &&
+        columns.containsKey('Password') &&
+        (columns.containsKey('Data Mail') ||
+            columns.containsKey('Mail Password')) &&
         nurtureSettingsExcelHeaders.every(columns.containsKey);
     final combinedExport =
         withNurtureSettings ||
@@ -136,16 +137,62 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
         final gpuProfileId = withNurtureSettings
             ? _readGpuProfile(cells, columns)
             : null;
+        // Header-based import keeps Data Mail in one cell even though it
+        // contains pipes. Email is always derived from this cell.
+        if (columns.containsKey('Data Mail')) {
+          String read(String name) {
+            final column = columns[name];
+            return column != null && column < cells.length ? cells[column] : '';
+          }
+
+          final status = read('status(Đã dăng ký)').isNotEmpty
+              ? read('status(Đã dăng ký)')
+              : read('Status');
+          final dataMail = read('Data Mail');
+          if (dataMail.trim().isEmpty && read('Proxy').trim().isEmpty) continue;
+          // Saved accounts from the old layout may only have a mail password.
+          final legacy =
+              !dataMail.contains('|') && columns.containsKey('Email');
+          final record = legacy
+              ? ImportedConfiguration(
+                  proxy: WebViewProxy.parseImport(read('Proxy')),
+                  account: AccountCredentials(
+                    email: read('Email'),
+                    password: read('Password').trim().isEmpty
+                        ? generateAccountPassword()
+                        : read('Password'),
+                    mailboxPassword: dataMail,
+                  ),
+                  statusAccount: switch (status.trim()) {
+                    '' || '0' => AccountStatus.unregistered,
+                    '1' => AccountStatus.registered,
+                    _ => throw const FormatException(
+                      'Trạng thái đăng ký phải là 0 hoặc 1.',
+                    ),
+                  },
+                )
+              : ImportedConfiguration.parse(
+                  '${read('Proxy')}|$dataMail|${read('Password')}${status.isEmpty ? '' : '|$status'}',
+                );
+          record.account.validate();
+          records.add(
+            record.copyWith(
+              nurtureSettings: nurtureSettings,
+              gpuProfileId: gpuProfileId,
+            ),
+          );
+          continue;
+        }
         // Additional exported configuration columns are for reference only.
         if (exportedConfiguration && cells.length > 5) {
           cells.removeRange(5, cells.length);
         }
         final line = switch (cells.length) {
           1 => cells.first,
-          2 || 4 || 5 => cells.join('|'),
+          2 || 3 || 4 || 5 => cells.join('|'),
           _ => throw const FormatException(
             'Mỗi dòng Excel cần một ô dữ liệu, hai cột proxy/tài khoản, '
-            'hoặc các cột proxy, email, mật khẩu TikTok, mật khẩu email, trạng thái (không bắt buộc).',
+            'hoặc các cột Proxy, Data Mail, Password, Status (không bắt buộc).',
           ),
         };
         records.add(

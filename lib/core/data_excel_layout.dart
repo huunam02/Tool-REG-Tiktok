@@ -2,8 +2,8 @@
 const configurationExcelHeaders = [
   'Proxy',
   'Email',
+  'Data Mail',
   'Password',
-  'Mail Password',
   'status(Đã dăng ký)',
   'User-Agent',
   'Múi giờ',
@@ -90,5 +90,7 @@ bool matchesExcelHeaders(List<String> cells, List<String> headers) =>
     cells.length == headers.length &&
     List.generate(
       headers.length,
-      (i) => cells[i].trim() == headers[i],
+      (i) =>
+          cells[i].trim() == headers[i] ||
+          cells[i].trim() == 'Mail Password' && headers[i] == 'Data Mail',
     ).every((matches) => matches);

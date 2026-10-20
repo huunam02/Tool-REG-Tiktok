@@ -8,14 +8,12 @@ import '../config.dart' as built_in;
 
 enum RemoteConfigKey {
   otp_api_url,
-  otp_api_token,
   sadcaptcha_license_key,
   search_keywords,
   auto_comments;
 
   String get defaultValue => switch (this) {
-    otp_api_url => 'https://drainer-wager-uncheck.ngrok-free.dev/api/code',
-    otp_api_token => 'c3247bbbf1e7b6913cbf314a4f0aa16e',
+    otp_api_url => 'https://187.77.149.179:2001',
     sadcaptcha_license_key => '406b433775d67e306eb3192ab99c344a',
     search_keywords => jsonEncode(built_in.defaultSearchKeywords),
     auto_comments => jsonEncode(built_in.defaultAutoComments),

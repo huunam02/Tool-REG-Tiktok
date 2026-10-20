@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PersistableBundle;
 import android.text.InputType;
+import android.view.ViewConfiguration;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import java.util.ArrayList;
@@ -377,10 +378,14 @@ final class SignupAccessibilityBridge {
             result.success(status(false, "wrong-comment-field")); return;
         }
         int inputClass = editor.getInputType() & InputType.TYPE_MASK_CLASS;
-        boolean splitOtp = field.equals("otp") && editableCount(web, 0) == 6;
+        // Background page inputs (e.g. search) stay exposed behind the modal,
+        // so count only the slots on the focused editor's row.
+        int otpSlots = field.equals("otp") ? rowEditableCount(web, editor) : 0;
+        boolean splitOtp = otpSlots == 6;
         if (field.equals("otp") && !splitOtp && inputClass != InputType.TYPE_CLASS_NUMBER && inputClass != InputType.TYPE_CLASS_PHONE &&
                 !hint.contains("code") && !hint.contains("otp") && !hint.contains("mã")) {
-            result.success(status(false, "wrong-otp-field")); return;
+            result.success(status(false, "wrong-otp-field:slots=" + otpSlots + ",page=" + editableCount(web, 0) +
+                ",class=" + inputClass)); return;
         }
         CharSequence previous = editorValue(editor);
         if (field.equals("search") && previous != null && previous.length() > 0) {
@@ -468,9 +473,14 @@ final class SignupAccessibilityBridge {
     private static void longPressPaste(AccessibilityListener service, AccessibilityNodeInfo editor, String text, String field,
             ClipboardManager clipboard, ClipData oldClip, MethodChannel.Result result) {
         Rect rect = new Rect(); editor.getBoundsInScreen(rect);
-        gesture(service, rect.exactCenterX(), rect.exactCenterY(), 850, () ->
+        gesture(service, rect.exactCenterX(), rect.exactCenterY(), longPressDuration(), () ->
             pasteMenu(service, editor, text, field, clipboard, oldClip, result, 0), () ->
             failPaste(clipboard, oldClip, text, result, "long-press-failed"));
+    }
+
+    /** Outlasts the device's "Touch & hold delay" (400/1000/1500ms), never under 850ms. */
+    static int longPressDuration() {
+        return Math.max(850, ViewConfiguration.getLongPressTimeout() + 450);
     }
 
     private static void gesture(AccessibilityListener service, float x, float y, int duration,
@@ -591,6 +601,21 @@ final class SignupAccessibilityBridge {
             if (found != null) return found;
         }
         return null;
+    }
+
+    /** Visible non-password editors whose vertical center lies within [editor]'s row. */
+    private static int rowEditableCount(AccessibilityNodeInfo web, AccessibilityNodeInfo editor) {
+        Rect row = new Rect(); editor.getBoundsInScreen(row);
+        if (row.isEmpty()) return 0;
+        List<AccessibilityNodeInfo> fields = new ArrayList<>();
+        loginFields(web, fields, 0);
+        int count = 0;
+        for (AccessibilityNodeInfo field : fields) {
+            if (field.isPassword()) continue;
+            Rect bounds = new Rect(); field.getBoundsInScreen(bounds);
+            if (!bounds.isEmpty() && bounds.centerY() >= row.top && bounds.centerY() <= row.bottom) count++;
+        }
+        return count;
     }
 
     private static int editableCount(AccessibilityNodeInfo node, int depth) {

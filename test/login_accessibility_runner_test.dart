@@ -193,7 +193,7 @@ void main() {
         loginPassword: 'password',
         otpApi: OtpApiConfiguration(
           url: Uri.parse('https://example.com/api/code'),
-          readerToken: 'token',
+
           waitSeconds: 1,
         ),
       );
@@ -623,7 +623,6 @@ void main() {
           loginMailboxPassword: 'mail-password',
           otpApi: OtpApiConfiguration(
             url: Uri.parse('https://example.com/api/code'),
-            readerToken: 'test-token',
           ),
         ),
         otpReaderFactory: (_) => readerCount++ == 0 ? reader : secondReader,

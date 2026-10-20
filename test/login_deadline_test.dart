@@ -137,10 +137,7 @@ AppConfiguration _configuration() => AppConfiguration(
   loginUsername: 'login@example.com',
   loginPassword: 'login-password',
   loginMailboxPassword: 'mail-password',
-  otpApi: OtpApiConfiguration(
-    url: Uri.parse('https://example.com/api/code'),
-    readerToken: 'test-token',
-  ),
+  otpApi: OtpApiConfiguration(url: Uri.parse('https://example.com/api/code')),
 );
 
 class _LoginView extends PlatformInAppWebViewController {

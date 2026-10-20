@@ -8,9 +8,12 @@ import 'home_style.dart';
 /// Đăng ký tab: configurations waiting for their first signup. The tapped
 /// one runs first; the run then continues down the list.
 class SignupTab extends StatelessWidget {
-  const SignupTab({super.key, required this.logic});
+  const SignupTab({super.key, required this.logic, required this.onSignup});
 
   final HomeController logic;
+
+  /// Signs up only this configuration, without continuing to the others.
+  final void Function(int configurationId) onSignup;
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +65,9 @@ class SignupTab extends StatelessWidget {
               onTap: logic.busy
                   ? null
                   : () => logic.selectSignupPriority(entry.id),
+              onSignup: logic.busy || logic.proxyLoadFailed
+                  ? null
+                  : () => onSignup(entry.id),
             ),
             const SizedBox(height: 12),
           ],
@@ -108,11 +114,13 @@ class _SignupCard extends StatelessWidget {
     required this.entry,
     required this.first,
     required this.onTap,
+    required this.onSignup,
   });
 
   final SavedProxy entry;
   final bool first;
   final VoidCallback? onTap;
+  final VoidCallback? onSignup;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -130,47 +138,59 @@ class _SignupCard extends StatelessWidget {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.all(18),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(
-              first ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: first ? HomeStyle.cyan : HomeStyle.muted,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entry.account?.email ?? entry.name,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  if (entry.account?.email != null &&
-                      entry.name != entry.account?.email) ...[
-                    Text(
-                      entry.name,
-                      style: const TextStyle(
-                        color: HomeStyle.muted,
-                        fontSize: 12,
+            Row(
+              children: [
+                Icon(
+                  first ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: first ? HomeStyle.cyan : HomeStyle.muted,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.account?.email ?? entry.name,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                  ],
-                  Text(
-                    'Proxy: ${proxyLabel(entry.proxy)}',
-                    style: const TextStyle(
-                      color: HomeStyle.muted,
-                      fontSize: 12,
-                    ),
+                      const SizedBox(height: 4),
+                      if (entry.account?.email != null &&
+                          entry.name != entry.account?.email) ...[
+                        Text(
+                          entry.name,
+                          style: const TextStyle(
+                            color: HomeStyle.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                      ],
+                      Text(
+                        'Proxy: ${proxyLabel(entry.proxy)}',
+                        style: const TextStyle(
+                          color: HomeStyle.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
+                ),
+                if (first) ...[
+                  const SizedBox(width: 8),
+                  const ProxyBadge(label: 'Chạy trước', color: HomeStyle.cyan),
                 ],
-              ),
+              ],
             ),
-            if (first) ...[
-              const SizedBox(width: 8),
-              const ProxyBadge(label: 'Chạy trước', color: HomeStyle.cyan),
-            ],
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              key: Key('signupOne-${entry.id}'),
+              onPressed: onSignup,
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Đăng ký'),
+            ),
           ],
         ),
       ),

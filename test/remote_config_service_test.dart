@@ -68,7 +68,6 @@ void main() {
         RemoteConfig.defaults.keys,
         unorderedEquals([
           'otp_api_url',
-          'otp_api_token',
           'sadcaptcha_license_key',
           'search_keywords',
           'auto_comments',
@@ -94,7 +93,6 @@ void main() {
       final remote = _Remote()
         ..fetched = {
           'otp_api_url': 'https://remote.example.com/api/code',
-          'otp_api_token': 'remote-token',
           'sadcaptcha_license_key': 'remote-captcha-key',
           'search_keywords': '["Travel", "Cà phê"]',
           'auto_comments': '["Great video!", "Cảm ơn ❤️"]',
@@ -113,7 +111,6 @@ void main() {
         otp.toConfiguration().url.toString(),
         'https://remote.example.com/api/code',
       );
-      expect(otp.toConfiguration().readerToken, 'remote-token');
       final captcha = CaptchaSettingsStore();
       expect((await captcha.load()).licenseKey, 'remote-captcha-key');
       captcha.dispose();
@@ -127,13 +124,13 @@ void main() {
     final remote = _Remote()
       ..offline = true
       ..activated = {
-        'otp_api_token': 'cached-token',
+        'otp_api_url': 'https://cached.example.com/api/extract-otp',
         'sadcaptcha_license_key': 'cached-key',
       };
     await RemoteConfig.init(instance: remote);
     expect(
-      RemoteConfig.getString(RemoteConfigKey.otp_api_token),
-      'cached-token',
+      (await const OtpSettingsStore().load()).url,
+      'https://cached.example.com/api/extract-otp',
     );
     expect(
       RemoteConfig.getString(RemoteConfigKey.sadcaptcha_license_key),
@@ -141,7 +138,7 @@ void main() {
     );
     expect(
       RemoteConfig.getString(RemoteConfigKey.otp_api_url),
-      RemoteConfigKey.otp_api_url.defaultValue,
+      'https://cached.example.com/api/extract-otp',
     );
   });
 
@@ -155,13 +152,13 @@ void main() {
     () async {
       await RemoteConfig.init(
         instance: _Remote()
-          ..fetched = {'sadcaptcha_license_key': '', 'otp_api_token': ''},
+          ..fetched = {'sadcaptcha_license_key': '', 'otp_api_url': ''},
       );
       expect(
         RemoteConfig.getString(RemoteConfigKey.sadcaptcha_license_key),
         isEmpty,
       );
-      expect((await const OtpSettingsStore().load()).token, isEmpty);
+      expect((await const OtpSettingsStore().load()).url, isEmpty);
     },
   );
 

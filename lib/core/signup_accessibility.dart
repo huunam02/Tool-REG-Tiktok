@@ -124,6 +124,10 @@ class SignupNode {
   final Rect bounds;
   String get label =>
       [text, description, hint].where((s) => s.isNotEmpty).join(' ').trim();
+
+  /// The control's accessible name. Older WebViews expose aria-label as the
+  /// content description; newer ones (e.g. Android 16) expose it as text.
+  String get name => (description.isNotEmpty ? description : text).trim();
   static Rect rectFrom(dynamic raw) {
     final values = (raw as List).cast<num>();
     return Rect.fromLTRB(

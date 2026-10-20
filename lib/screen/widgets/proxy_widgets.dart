@@ -325,7 +325,7 @@ class ProxyDetails extends StatelessWidget {
           const SizedBox(height: 10),
           _field(
             context,
-            'Mật khẩu email lấy OTP',
+            'Data Mail',
             profile.account!.mailboxPassword,
             Icons.mail_outline,
             valueKey: Key('${keyPrefix}MailboxPassword'),

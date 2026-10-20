@@ -689,6 +689,51 @@ void main() {
     expect(accessibility.actions.where((a) => a == 'send-code'), hasLength(1));
   });
 
+  testWidgets('a dropped Log in tap is retried before opening signup', (
+    tester,
+  ) async {
+    var loginTaps = 0;
+    final (failure, accessibility, _) = await runSignup(
+      tester,
+      otpResults: ['123456'],
+      setup: (accessibility) => accessibility.afterTap = (name) {
+        // TikTok ignores the first tap while the page still hydrates.
+        if (name == 'open-login' && ++loginTaps == 1) {
+          accessibility.state = 'home-ready';
+        }
+      },
+    );
+    expect(failure, isNull, reason: '${accessibility.actions}');
+    expect(accessibility.state, 'authenticated-home');
+    expect(accessibility.actions.where((a) => a == 'open-login'), hasLength(2));
+    expect(
+      accessibility.actions.where((a) => a == 'open-signup'),
+      hasLength(1),
+    );
+  });
+
+  testWidgets('Log in that never opens the dialog stops after three taps', (
+    tester,
+  ) async {
+    final (failure, accessibility, _) = await runSignup(
+      tester,
+      otpResults: [],
+      setup: (accessibility) => accessibility.afterTap = (name) {
+        if (name == 'open-login') accessibility.state = 'home-ready';
+      },
+    );
+    expect(
+      failure,
+      isA<StateError>().having(
+        (e) => e.message,
+        'message',
+        contains('Đang mở hộp đăng nhập'),
+      ),
+    );
+    expect(accessibility.actions, ['open-login', 'open-login', 'open-login']);
+    expect(accessibility.pastes, isEmpty);
+  });
+
   testWidgets('OTP API timeout resends the code once and fetches it again', (
     tester,
   ) async {

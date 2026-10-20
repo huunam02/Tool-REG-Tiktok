@@ -8,6 +8,8 @@ import 'package:get/get.dart';
 import '../app_configuration.dart';
 import '../services/remote_config_service.dart';
 import '../app_session.dart';
+import '../account_sessions.dart';
+import '../account_proxy.dart';
 import '../device_memory.dart';
 import '../gpu_profile.dart';
 import '../nurture_data.dart';
@@ -103,6 +105,7 @@ class HomeController extends AppController
     navigate, {
     int? firstId,
     List<int> order = const [],
+    int? onlyId,
   }) async {
     if (busy || proxyLoadFailed) return;
     final generation = ++_autoRunGeneration;
@@ -118,13 +121,13 @@ class HomeController extends AppController
     });
     var stoppedByScreen = false;
     try {
-      final eligible = await _autoRunCandidates(mode, visited);
+      final eligible = await _autoRunCandidates(mode, visited, onlyId);
       if (!_autoRunCurrent(generation)) return;
       mutate(() => autoRunTotal = eligible.length);
       var first = true;
       while (_autoRunCurrent(generation)) {
         final candidates = _inOrder(
-          await _autoRunCandidates(mode, visited),
+          await _autoRunCandidates(mode, visited, onlyId),
           order,
         );
         if (!_autoRunCurrent(generation)) return;
@@ -237,10 +240,12 @@ class HomeController extends AppController
     unawaited(restoreProxy());
   }
 
+  /// [onlyId] limits the run to that one configuration (Đăng ký on a card).
   Future<List<SavedProxy>> _autoRunCandidates(
     AutoRunMode mode,
-    Set<int> visited,
-  ) async {
+    Set<int> visited, [
+    int? onlyId,
+  ]) async {
     final wanted = mode.signsUp
         ? AccountStatus.unregistered
         : AccountStatus.registered;
@@ -253,6 +258,7 @@ class HomeController extends AppController
               entry.statusAccount == wanted &&
               (!mode.signsUp ||
                   entry.signupFailed == (mode == AutoRunMode.retryFailed)) &&
+              (onlyId == null || entry.id == onlyId) &&
               !visited.contains(entry.id),
         )
         .toList()
@@ -291,17 +297,31 @@ class HomeController extends AppController
     return true;
   }
 
-  /// Each account starts from an empty WebView session on its own proxy.
+  /// Mount only this configuration’s cookie jar before opening its WebView.
   Future<bool> _selectAutoRunConfiguration(
     SavedProxy next,
     int generation,
   ) async {
     final email = next.account?.email ?? '';
     try {
-      await _clearSession();
+      if (autoRun?.signsUp == true) {
+        validateSignupProxy(next, await store.list());
+      }
+      await _saveCurrentSession();
+      if (!_autoRunCurrent(generation)) return false;
+      await AccountSessions.activate(
+        next.id,
+        email,
+        clear: _clearSession,
+        fresh: autoRun?.signsUp == true,
+      );
       if (!_autoRunCurrent(generation)) return false;
       await store.useSaved(next.id);
-      await store.setCurrentAccountLoggedIn(next.id, email, false);
+      await store.setCurrentAccountLoggedIn(
+        next.id,
+        email,
+        await _readLoginSession(),
+      );
       if (!_autoRunCurrent(generation)) return false;
       await restoreProxy();
       if (!_autoRunCurrent(generation)) return false;
@@ -311,9 +331,13 @@ class HomeController extends AppController
         throw StateError('Configuration changed');
       }
       return true;
-    } catch (_) {
+    } catch (error) {
       if (_autoRunCurrent(generation)) {
-        notify('Không thể chuyển sang cấu hình $email. Bỏ qua cấu hình này.');
+        notify(
+          error is FormatException
+              ? error.message
+              : 'Không thể chuyển sang cấu hình $email. Bỏ qua cấu hình này.',
+        );
       }
       return false;
     }
@@ -480,7 +504,8 @@ class HomeController extends AppController
   ProxyGeolocationLookup? _timeZoneLookup;
   late final ProxyStore proxyStore;
   bool get _actionBusy => opening || loadingProxy || managingProxies;
-  bool get busy => _actionBusy || autoRunning;
+  bool selectingNurture = false;
+  bool get busy => _actionBusy || autoRunning || selectingNurture;
   TikTokLaunchAction get accountAction => hasCurrentAccountSession
       ? TikTokLaunchAction.browse
       : currentProxy?.statusAccount == AccountStatus.registered
@@ -659,8 +684,18 @@ class HomeController extends AppController
     }
     mutate(() => checkingConfiguration = true);
     try {
-      await _clearSession();
+      await _saveCurrentSession();
+      await AccountSessions.activate(
+        entry.id,
+        entry.account?.email ?? '',
+        clear: _clearSession,
+      );
       await store.useSaved(entry.id);
+      await store.setCurrentAccountLoggedIn(
+        entry.id,
+        entry.account?.email ?? '',
+        await _readLoginSession(),
+      );
       if (!entry.hasBeenUsed) await store.setUsed(entry.id, false);
       await restoreProxy();
       if (!active) return;
@@ -682,6 +717,68 @@ class HomeController extends AppController
   }
 
   bool checkingConfiguration = false;
+
+  Future<void> _saveCurrentSession() async {
+    final profile = currentProxy;
+    final id = profile?.configurationId;
+    if (id != null) {
+      if (await store.canReuseCurrentAccountSession() &&
+          await _readLoginSession()) {
+        await AccountSessions.save(id, profile?.account?.email ?? '');
+      }
+    }
+  }
+
+  /// Open one account from Nuôi, mounting its saved cookies and proxy first.
+  Future<void> nurtureAccount(
+    int configurationId,
+    Future<void> Function(AppConfiguration, TikTokLaunchAction) navigate,
+  ) async {
+    if (busy || proxyLoadFailed) return;
+    mutate(() => selectingNurture = true);
+    try {
+      final entries = await store.list();
+      final next = entries
+          .where((entry) => entry.id == configurationId)
+          .firstOrNull;
+      if (next == null ||
+          next.account == null ||
+          next.statusAccount != AccountStatus.registered) {
+        throw const FormatException(
+          'Tài khoản này chưa đăng ký hoặc cấu hình đã bị xóa.',
+        );
+      }
+      await _saveCurrentSession();
+      if (!active) return;
+      final email = next.account!.email;
+      await AccountSessions.activate(next.id, email, clear: _clearSession);
+      if (!active) return;
+      await store.useSaved(next.id);
+      await store.setCurrentAccountLoggedIn(
+        next.id,
+        email,
+        await _readLoginSession(),
+      );
+      await restoreProxy();
+      if (!active) return;
+      if (proxyLoadFailed ||
+          currentProxy?.configurationId != next.id ||
+          currentProxy?.account?.email != email) {
+        throw StateError('Configuration changed');
+      }
+      await openTikTok(TikTokLaunchAction.login, navigate, automatic: true);
+    } on FormatException catch (error) {
+      if (active) notify(error.message);
+    } catch (_) {
+      if (active) notify('Không thể mở tài khoản để nuôi. Hãy thử lại.');
+    } finally {
+      if (active) {
+        await restoreProxy();
+        await loadNurtureAccounts();
+        mutate(() => selectingNurture = false);
+      }
+    }
+  }
 
   Future<void> openTikTok(
     TikTokLaunchAction action,
@@ -712,7 +809,7 @@ class HomeController extends AppController
         account.validate();
       } on FormatException {
         notify(
-          'Bổ sung email, mật khẩu TikTok và mật khẩu email OTP trong Quản lý cấu hình.',
+          'Bổ sung email, mật khẩu TikTok và Data Mail trong Quản lý cấu hình.',
         );
         return;
       }
@@ -720,6 +817,19 @@ class HomeController extends AppController
     FocusManager.instance.primaryFocus?.unfocus();
     mutate(() => opening = true);
     try {
+      final profileId = currentProxy?.configurationId;
+      if (action == TikTokLaunchAction.signup && profileId != null) {
+        validateSignupProxy(currentProxy!, await store.list());
+      }
+      if (!automatic && !checking && profileId != null) {
+        await AccountSessions.activate(
+          profileId,
+          account?.email ?? '',
+          clear: _clearSession,
+          fresh: action == TikTokLaunchAction.signup,
+          adoptLegacy: await store.canReuseCurrentAccountSession(),
+        );
+      }
       final browserUserAgent = await resolveWebViewUserAgent(userAgent);
       if (!active) return;
       if (needsAndroidDesktopIdentity) {
@@ -775,8 +885,8 @@ class HomeController extends AppController
         signupPassword: account?.password ?? '',
         loginUsername: account?.email ?? '',
         loginPassword: account?.password ?? '',
-        signupMailboxPassword: account?.mailboxPassword ?? '',
-        loginMailboxPassword: account?.mailboxPassword ?? '',
+        signupMailboxPassword: account?.dataMail ?? '',
+        loginMailboxPassword: account?.dataMail ?? '',
         otpApi: otpApi,
         nurtureAfterSignup: currentProxy?.nurtureAfterSignup ?? false,
         nurtureSettings:
@@ -787,6 +897,7 @@ class HomeController extends AppController
             : null,
       );
       await navigate(configuration, action);
+      await _saveCurrentSession();
       if (automatic) return;
       if (active && action == TikTokLaunchAction.signup) {
         await restoreProxy();
@@ -816,11 +927,6 @@ class HomeController extends AppController
 
   OtpApiConfiguration? otpApiFor(TikTokLaunchAction action) {
     if (action == TikTokLaunchAction.browse) return null;
-    if (otpSettings.token.trim().isEmpty) {
-      throw const FormatException(
-        'Token OTP API chưa được cấu hình trong Remote Config.',
-      );
-    }
     try {
       return otpSettings.toConfiguration();
     } on FormatException {

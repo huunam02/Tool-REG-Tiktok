@@ -516,6 +516,33 @@ void main() {
     expect(a.likeCount, isNull); // "7.5M" is rounded.
   });
 
+  test('reads the feed when WebView exposes aria-labels as text', () {
+    final recording =
+        jsonDecode(
+              File(
+                'test/fixtures/nurture_accessibility_recording.json',
+              ).readAsStringSync(),
+            )
+            as Map;
+    final data = jsonDecode(jsonEncode(recording['feed'])) as Map;
+    // Android 16 WebView: the accessible name moves from description to text.
+    for (final node in (data['nodes'] as List).cast<Map>()) {
+      final description = '${node['description'] ?? ''}';
+      if (description.isNotEmpty && '${node['text'] ?? ''}'.isEmpty) {
+        node['text'] = description;
+        node['description'] = '';
+      }
+    }
+    final original = NurtureVideo.read(
+      SignupSnapshot(Map<String, dynamic>.from(recording['feed'])),
+    )!;
+    final moved = NurtureVideo.read(
+      SignupSnapshot(Map<String, dynamic>.from(data)),
+    )!;
+    expect(moved.key, original.key);
+    expect(moved.comments?.text, startsWith('Read or add comments'));
+  });
+
   test(
     'real focused comment stays visible with the playback clock while IME is hidden',
     () {

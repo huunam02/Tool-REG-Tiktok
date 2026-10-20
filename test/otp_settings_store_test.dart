@@ -18,7 +18,7 @@ void main() {
       RemoteConfig.configs = {};
       final settings = await const OtpSettingsStore().load();
       expect(settings.url, RemoteConfigKey.otp_api_url.defaultValue);
-      expect(settings.token, RemoteConfigKey.otp_api_token.defaultValue);
+      expect(settings.toConfiguration().url.toString(), settings.url);
     },
   );
 
@@ -27,18 +27,18 @@ void main() {
     () async {
       SharedPreferences.setMockInitialValues({
         'otp_api_url': 'http://old.example.com/api/code',
-        'otp_api_token': 'old-token',
       });
       RemoteConfig.configs[RemoteConfigKey.otp_api_url.name] =
           'https://remote.example.com/api/code';
-      RemoteConfig.configs[RemoteConfigKey.otp_api_token.name] = 'remote-token';
       const store = OtpSettingsStore();
       final settings = await store.load();
       expect(settings.url, 'https://remote.example.com/api/code');
-      expect(settings.toConfiguration().readerToken, 'remote-token');
-      RemoteConfig.configs[RemoteConfigKey.otp_api_token.name] =
-          'updated-token';
-      expect((await store.load()).token, 'updated-token');
+      RemoteConfig.configs[RemoteConfigKey.otp_api_url.name] =
+          'https://updated.example.com/api/extract-otp';
+      expect(
+        (await store.load()).url,
+        'https://updated.example.com/api/extract-otp',
+      );
     },
   );
 }

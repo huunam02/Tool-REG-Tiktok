@@ -94,8 +94,8 @@ List<List<CellValue?>> dataExportRows({
             : '$proxyHost:${proxy.uri.port}:${proxy.username}:${proxy.password}',
       ),
       TextCellValue(configuration.account?.email ?? ''),
+      TextCellValue(configuration.account?.dataMail ?? ''),
       TextCellValue(configuration.account?.password ?? ''),
-      TextCellValue(configuration.account?.mailboxPassword ?? ''),
       IntCellValue(
         configuration.statusAccount == AccountStatus.registered ? 1 : 0,
       ),

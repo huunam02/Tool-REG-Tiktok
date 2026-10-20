@@ -27,7 +27,6 @@ void main() {
             loginMailboxPassword: 'mail-password',
             otpApi: OtpApiConfiguration(
               url: Uri.parse('http://127.0.0.1:3210/api/otp'),
-              readerToken: 'test-token',
             ),
           ),
           useAccessibility: false,

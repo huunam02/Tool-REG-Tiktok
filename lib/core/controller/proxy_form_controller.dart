@@ -358,6 +358,11 @@ class ConfigurationFormFields {
       });
     }
     timeZoneId.addListener(() => revision++);
+    mailboxPassword.addListener(() {
+      accountEmail.text = AccountCredentials.emailFromDataMail(
+        mailboxPassword.text,
+      );
+    });
   }
 
   final TextEditingController url;
@@ -396,11 +401,11 @@ class ConfigurationFormFields {
     url.text = proxyAddress(data.proxy);
     username.text = data.proxy.username;
     password.text = data.proxy.password;
-    accountEmail.text = data.account.email;
     accountPassword.text = data.account.password.trim().isEmpty
         ? generateAccountPassword()
         : data.account.password;
-    mailboxPassword.text = data.account.mailboxPassword;
+    mailboxPassword.text = data.account.dataMail;
+    accountEmail.text = data.account.email;
     statusAccount = data.statusAccount;
     final settings = data.nurtureSettings;
     if (settings != null) showNurtureSettings(settings);
@@ -439,7 +444,7 @@ class ConfigurationFormFields {
     account: AccountCredentials(
       email: accountEmail.text.trim(),
       password: accountPassword.text,
-      mailboxPassword: mailboxPassword.text,
+      dataMail: mailboxPassword.text.trim(),
     ),
     statusAccount: statusAccount,
     timeZoneId: normalizeProxyTimeZone(timeZoneId.text),

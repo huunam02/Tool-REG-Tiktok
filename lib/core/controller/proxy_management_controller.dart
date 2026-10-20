@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../proxy_store.dart';
+import '../account_sessions.dart';
 import '../proxy_draft.dart';
 import 'app_controller.dart';
 
@@ -107,6 +108,7 @@ class ProxyManagementController extends AppController {
   Future<void> delete(SavedProxy entry) async {
     await _perform(() async {
       await store.delete(entry.id);
+      await AccountSessions.delete(entry.id);
       await reload();
     });
   }

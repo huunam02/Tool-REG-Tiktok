@@ -36,8 +36,8 @@ void main() {
     expect(rows.first.map((cell) => cell?.displayText), [
       'Proxy',
       'Email',
+      'Data Mail',
       'Password',
-      'Mail Password',
       'status(Đã dăng ký)',
       'User-Agent',
       'Múi giờ',
@@ -62,8 +62,8 @@ void main() {
       [
         '192.0.2.7:8080:00123:pass:word',
         'person@example.com',
-        ' =secret ',
         ' 00123 ',
+        ' =secret ',
         '1',
         'test-agent',
         'Asia/Ho_Chi_Minh',

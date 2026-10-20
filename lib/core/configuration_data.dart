@@ -15,21 +15,33 @@ class AccountCredentials {
   const AccountCredentials({
     required this.email,
     required this.password,
-    required this.mailboxPassword,
-  });
+    String? dataMail,
+    String? mailboxPassword,
+  }) : mailboxPassword = dataMail ?? mailboxPassword ?? '';
 
   final String email;
   final String password;
+  // Keep the existing storage column readable for saved configurations.
   final String mailboxPassword;
+  String get dataMail => mailboxPassword;
+
+  static String emailFromDataMail(String value) =>
+      value.split('|').first.trim();
+
+  static bool isValidDataMail(String value) {
+    final parts = value.trim().split('|');
+    return parts.length == 5 &&
+        OtpApiConfiguration.isEmail(parts.first) &&
+        parts.every((part) => part.trim().isNotEmpty) &&
+        !value.contains(RegExp(r'[\r\n]'));
+  }
 
   void validate() {
     if (!OtpApiConfiguration.isEmail(email.trim())) {
       throw const FormatException('Email trong dữ liệu import không hợp lệ.');
     }
     if (password.trim().isEmpty || mailboxPassword.trim().isEmpty) {
-      throw const FormatException(
-        'Nhập đủ mật khẩu TikTok và mật khẩu email OTP.',
-      );
+      throw const FormatException('Nhập đủ mật khẩu TikTok và Data Mail.');
     }
   }
 
@@ -117,11 +129,37 @@ class ImportedConfiguration {
   static ImportedConfiguration parse(String input) {
     final line = input.replaceAll(RegExp(r'^[\r\n]+|[\r\n]+$'), '');
     final parts = line.split('|');
+    if (!line.contains(RegExp(r'[\r\n]')) &&
+        (parts.length == 7 || parts.length == 8)) {
+      final dataMail = parts.sublist(1, 6).join('|').trim();
+      if (!AccountCredentials.isValidDataMail(dataMail)) {
+        throw const FormatException(
+          'Data Mail cần đủ email|mật khẩu|refresh token|client ID|email phụ.',
+        );
+      }
+      final status = parts.length == 8 ? parts.last.trim() : '0';
+      if (status != '0' && status != '1') {
+        throw const FormatException('Trạng thái đăng ký phải là 0 hoặc 1.');
+      }
+      return ImportedConfiguration(
+        proxy: WebViewProxy.parseImport(parts.first),
+        account: AccountCredentials(
+          email: AccountCredentials.emailFromDataMail(dataMail),
+          password: parts[6].trim().isEmpty
+              ? generateAccountPassword()
+              : parts[6],
+          dataMail: dataMail,
+        ),
+        statusAccount: status == '1'
+            ? AccountStatus.registered
+            : AccountStatus.unregistered,
+      );
+    }
     if (line.contains('\r') ||
         line.contains('\n') ||
         (parts.length != 4 && parts.length != 5)) {
       throw const FormatException(
-        'Nhập một dòng: host:port:user:pass|email|mật khẩu TikTok|mật khẩu email OTP[|0/1]. '
+        'Nhập một dòng: host:port:user:pass|Data Mail|mật khẩu TikTok[|0/1]. '
         'Các trường ngăn cách bằng dấu |.',
       );
     }

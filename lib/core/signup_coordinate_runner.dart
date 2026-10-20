@@ -166,6 +166,29 @@ class SignupCoordinateRunner {
     throw StateError('Chưa xác nhận được bước: $status');
   }
 
+  static const _maxOpenLoginTaps = 3;
+  static const _openLoginRetryAfter = Duration(seconds: 10);
+
+  /// TikTok can drop the Log in tap while the page still hydrates. Opening
+  /// the dialog submits nothing, so a bounded retry is safe.
+  Future<SignupSnapshot> _openLoginDialog() async {
+    const status = 'Đang mở hộp đăng nhập…';
+    for (var taps = 1; ; taps++) {
+      _actions.remove('open-login');
+      await _tap('open-login', expected: exact('Log in'));
+      onStatus(status);
+      final deadline = now().add(_openLoginRetryAfter);
+      while (now().isBefore(deadline)) {
+        final value = await _snapshot();
+        if (_entryAction(value) != 'open-login') return value;
+        await _pause(300);
+      }
+      if (taps >= _maxOpenLoginTaps) {
+        throw StateError('Chưa xác nhận được bước: $status');
+      }
+    }
+  }
+
   static RegExp exact(String text) =>
       RegExp('^${RegExp.escape(text)}\$', caseSensitive: false);
 
@@ -572,13 +595,9 @@ class SignupCoordinateRunner {
       onStatus('Tài khoản TikTok đã đăng nhập.');
       return;
     }
-    final entryAction = _entryAction(entry);
+    var entryAction = _entryAction(entry);
     if (entryAction == 'open-login') {
-      await _tap('open-login', expected: exact('Log in'));
-      await _wait(
-        (s) => s.contains(exact('Log in to TikTok')),
-        'Đang mở hộp đăng nhập…',
-      );
+      entryAction = _entryAction(await _openLoginDialog());
     }
     if (entryAction != 'signup-phone-email') {
       await _tap('open-signup', expected: exact('Sign up'));

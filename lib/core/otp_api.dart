@@ -1,18 +1,55 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
+
+/// The OTP server serves a self-signed certificate for its IP. Only this exact
+/// certificate is trusted, and only for that host; every other host keeps
+/// normal verification. Update it whenever the server renews its certificate
+/// (this one expires 2026-10-27).
+const _pinnedOtpHost = '187.77.149.179';
+const _pinnedOtpCertificate = '''
+-----BEGIN CERTIFICATE-----
+MIIDJDCCAgygAwIBAgIULOGy4QZKh3EAt4gdDhtFpyfkXLwwDQYJKoZIhvcNAQEL
+BQAwGTEXMBUGA1UEAwwOMTg3Ljc3LjE0OS4xNzkwHhcNMjYxMDIwMDEzMTQxWhcN
+MjYxMDI3MDEzMTQxWjAZMRcwFQYDVQQDDA4xODcuNzcuMTQ5LjE3OTCCASIwDQYJ
+KoZIhvcNAQEBBQADggEPADCCAQoCggEBANOS4VVOd3me5EoJycdHAWrXncqwrpbx
+DY7zer+ppbxtRDKISCdxxz+CVq8/o7RXu4y7Prx5X4hCGmcF4CCXEUKCnoncf5GL
+AIRC9P5gLPQdlHKcyRmyRtnpWByU5UEf3hl3vris1+xW60INmEX658rUZ9Npj4ZP
+sX2IPoYNVZ39lfJPqxYVLc4WYlkvgtVj+WygtPWcaeKsOvm06iD4wd90imJJ2Xet
+6nnvYdTFetd8LQty9CEq9i8xVDcBpg2RyQf1u2tlMZ1rg/kCXAmxRZ8Yk4OyQxhn
+EMLBuGVmfUsxbcoFUkiWGcOXWyiCnrZVXxdw+js9vDjvkxOkfDka7BsCAwEAAaNk
+MGIwHQYDVR0OBBYEFGv1cUmaqBTUoscya8upwwmLv134MB8GA1UdIwQYMBaAFGv1
+cUmaqBTUoscya8upwwmLv134MA8GA1UdEwEB/wQFMAMBAf8wDwYDVR0RBAgwBocE
+u02VszANBgkqhkiG9w0BAQsFAAOCAQEAJfC34ZLdLd/RliNXnvnPDbPThvXhi6T2
+hqqmyblRLb7lmuQnw6yTG3VwkM2kH8n+hWeXuuaCuLbvt8aTV9DO1Z1cip9koi3a
+Y+9ABATnctqzIj7qSI+dXq/dRHafCrTzuE0MmBmBLU2gYno3MrsAvFRlBlxNVHfT
+68O88G5Dxm/4gDjEjMz1SHr7V9KXgsGOwY3IDOJ6RMZZDqvlIhN+qRC67HeQeQjS
+KfIKLV2SHSf1i9R4oSqH1mg98RFQ/+qZ/9UFMN2mRQ8RGHn+ippO+j8+7mavZnQk
+FtS6j41rZLnsIBu+NYUmbh/0VtIuXRiJ39TdN8gOYdchoWVCdhCRuQ==
+-----END CERTIFICATE-----
+''';
+
+String _pemBody(String pem) =>
+    pem.replaceAll(RegExp(r'-----[A-Z ]+-----|\s'), '');
+
+@visibleForTesting
+bool acceptsOtpCertificate(String pem, String host) =>
+    host == _pinnedOtpHost && _pemBody(pem) == _pemBody(_pinnedOtpCertificate);
+
+http.Client _otpHttpClient() => IOClient(
+  HttpClient()
+    ..badCertificateCallback = (cert, host, _) =>
+        acceptsOtpCertificate(cert.pem, host),
+);
 
 class OtpApiConfiguration {
-  const OtpApiConfiguration({
-    required this.url,
-    required this.readerToken,
-    this.waitSeconds = 180,
-  });
+  const OtpApiConfiguration({required this.url, this.waitSeconds = 180});
 
   final Uri url;
-  final String readerToken;
   final int waitSeconds;
 
   static bool isEmail(String value) =>
@@ -27,10 +64,9 @@ class OtpApiConfiguration {
         url.hasFragment) {
       throw const FormatException('Nhập URL API HTTP/HTTPS hợp lệ.');
     }
-    // Remote Config may hold only the service origin; the reader always
-    // serves POST /api/code, and the bare origin answers 405.
+    // Remote Config may hold only the service origin.
     if (url.path.isEmpty || url.path == '/') {
-      return url.replace(path: '/api/code');
+      return url.replace(path: '/api/extract-otp');
     }
     return url;
   }
@@ -54,7 +90,7 @@ class OtpApiClient implements OtpCodeReader {
     this.configuration, {
     http.Client? client,
     void Function(String)? logOutput,
-  }) : _client = client ?? http.Client(),
+  }) : _client = client ?? _otpHttpClient(),
        _logOutput = logOutput ?? ((message) => debugPrint(message));
 
   final OtpApiConfiguration configuration;
@@ -69,13 +105,7 @@ class OtpApiClient implements OtpCodeReader {
   }) async {
     if (!OtpApiConfiguration.isEmail(email) || password.isEmpty) {
       _log('ERROR', {'reason': 'Missing or invalid mailbox credentials'});
-      throw const OtpApiException(
-        'Hãy nhập email và mật khẩu hộp thư để lấy OTP.',
-      );
-    }
-    if (configuration.readerToken.trim().isEmpty) {
-      _log('ERROR', {'reason': 'Missing reader token'});
-      throw const OtpApiException('Hãy nhập token của API lấy OTP.');
+      throw const OtpApiException('Hãy nhập Data Mail hợp lệ để lấy OTP.');
     }
     try {
       return await _fetch(
@@ -111,6 +141,10 @@ class OtpApiClient implements OtpCodeReader {
   }
 
   Future<String> _fetch(String email, String password) async {
+    if (password.contains('|') ||
+        configuration.url.path == '/api/extract-otp') {
+      return _fetchDataMail(password.trim());
+    }
     final stopwatch = Stopwatch()..start();
     final requestBody = {
       'email': '$email|$password',
@@ -124,7 +158,6 @@ class OtpApiClient implements OtpCodeReader {
       ),
       'headers': {
         'Content-Type': 'application/json',
-        'X-Reader-Token': '***',
         'ngrok-skip-browser-warning': '1',
       },
       'data': {'email': '$email|***', 'wait': configuration.waitSeconds},
@@ -134,11 +167,10 @@ class OtpApiClient implements OtpCodeReader {
       configuration.url,
       abortTrigger: _abort.future,
     );
-    // Do not forward the reader token or mailbox credentials to a redirect.
+    // Do not forward mailbox credentials to a redirect.
     request.followRedirects = false;
     request.headers.addAll({
       'Content-Type': 'application/json',
-      'X-Reader-Token': configuration.readerToken,
       'ngrok-skip-browser-warning': '1',
     });
     request.body = jsonEncode(requestBody);
@@ -162,7 +194,9 @@ class OtpApiClient implements OtpCodeReader {
     switch (response.statusCode) {
       case 401:
       case 403:
-        throw const OtpApiException('Token của API lấy OTP không hợp lệ.');
+        throw const OtpApiException(
+          'API từ chối truy cập hộp thư. Hãy kiểm tra Data Mail.',
+        );
       case 408:
         throw const OtpApiException(
           'API chưa tìm thấy OTP trong thời gian chờ. Bạn có thể nhập mã thủ công.',
@@ -194,6 +228,73 @@ class OtpApiClient implements OtpCodeReader {
     return code.trim();
   }
 
+  Future<String> _fetchDataMail(String dataMail) async {
+    final parts = dataMail.split('|');
+    if (parts.length != 5 ||
+        !OtpApiConfiguration.isEmail(parts.first) ||
+        parts.any((part) => part.trim().isEmpty) ||
+        dataMail.contains(RegExp(r'[\r\n]'))) {
+      throw const OtpApiException(
+        'Data Mail cần đủ 5 phần, ngăn cách bằng dấu |.',
+      );
+    }
+    final url = configuration.url.replace(
+      path: '/api/extract-otp',
+      queryParameters: {'rawInput': dataMail},
+    );
+    // Never log the query or response body: both can contain mail secrets.
+    _log('REQUEST', {
+      'method': 'GET',
+      'url': '${url.origin}${url.path}',
+      'data': {'rawInput': '***'},
+    });
+    final request = http.AbortableRequest(
+      'GET',
+      url,
+      abortTrigger: _abort.future,
+    )..followRedirects = false;
+    final response = await _client.send(request);
+    final rawBody = await const Utf8Decoder(
+      allowMalformed: true,
+    ).bind(response.stream).join();
+    _log('RESPONSE', {'statusCode': response.statusCode});
+    if (response.statusCode == 408 || response.statusCode == 504) {
+      throw const OtpApiException(
+        'API chưa tìm thấy OTP trong thời gian chờ.',
+        timedOut: true,
+      );
+    }
+    if (response.statusCode != 200) {
+      throw const OtpApiException(
+        'API lấy OTP đang lỗi. Hãy kiểm tra Data Mail và thử lại.',
+      );
+    }
+    dynamic body;
+    try {
+      body = jsonDecode(rawBody);
+    } catch (_) {
+      throw const OtpApiException('API lấy OTP trả về dữ liệu không hợp lệ.');
+    }
+    String? readCode(dynamic value) {
+      if (value is String && RegExp(r'^[0-9]{6}$').hasMatch(value.trim())) {
+        return value.trim();
+      }
+      if (value is Map && value['ok'] != false && value['success'] != false) {
+        for (final key in ['otp', 'code', 'data']) {
+          final code = readCode(value[key]);
+          if (code != null) return code;
+        }
+      }
+      return null;
+    }
+
+    final code = readCode(body);
+    if (code == null) {
+      throw const OtpApiException('API chưa trả về mã OTP 6 chữ số hợp lệ.');
+    }
+    return code;
+  }
+
   void _log(String event, Map<String, dynamic> data) {
     if (!kDebugMode) return;
     _logOutput(
@@ -203,7 +304,7 @@ class OtpApiClient implements OtpCodeReader {
 
   dynamic _redact(dynamic value, String password) {
     String redactText(String text) {
-      for (final secret in [password, configuration.readerToken]) {
+      for (final secret in [password]) {
         if (secret.isNotEmpty) text = text.replaceAll(secret, '***');
       }
       return text;

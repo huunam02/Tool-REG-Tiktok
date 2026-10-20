@@ -16,7 +16,6 @@ void main() {
     client = OtpApiClient(
       OtpApiConfiguration(
         url: Uri.parse('http://127.0.0.1:${server.port}/api/code'),
-        readerToken: 'test-token',
       ),
       logOutput: logs.add,
     );
@@ -50,7 +49,7 @@ void main() {
       final request = await observed.future;
       expect(request.method, 'POST');
       expect(request.uri.path, '/api/code');
-      expect(request.headers.value('X-Reader-Token'), 'test-token');
+      expect(request.headers.value('X-Reader-Token'), isNull);
       expect(request.headers.value('ngrok-skip-browser-warning'), '1');
       expect(request.headers.contentType!.mimeType, 'application/json');
       expect(await body.future, {
@@ -76,7 +75,7 @@ void main() {
       server.listen((request) async {
         await request.drain<void>();
         request.response.statusCode = status;
-        request.response.write('{"error":"mail-secret test-token"}');
+        request.response.write('{"error":"mail-secret"}');
         await request.response.close();
       });
       try {
@@ -106,7 +105,7 @@ void main() {
           jsonEncode({
             'ok': true,
             'code': '012345',
-            'detail': 'Credentials: mail-secret / test-token',
+            'detail': 'Credentials: mail-secret',
             'extra': [
               {
                 'email': 'other@example.com|other-password',
@@ -239,7 +238,7 @@ void main() {
       email: 'mail@example.com',
       password: 'mail-secret',
     );
-    reader.response.completeError(StateError('mail-secret test-token'));
+    reader.response.completeError(StateError('mail-secret'));
     await Future<void>.delayed(Duration.zero);
     expect(request.error, isNotNull);
     expect(request.error, isNot(contains('mail-secret')));
@@ -267,7 +266,7 @@ void main() {
       ]) {
         expect(
           OtpApiConfiguration.parseUrl(url).toString(),
-          'https://example.ngrok-free.dev/api/code',
+          'https://example.ngrok-free.dev/api/extract-otp',
         );
       }
       for (final url in [
@@ -282,6 +281,36 @@ void main() {
       }
     },
   );
+
+  test('trusts only the pinned OTP certificate for its own host', () {
+    const pem = '''
+-----BEGIN CERTIFICATE-----
+MIIDJDCCAgygAwIBAgIULOGy4QZKh3EAt4gdDhtFpyfkXLwwDQYJKoZIhvcNAQEL
+BQAwGTEXMBUGA1UEAwwOMTg3Ljc3LjE0OS4xNzkwHhcNMjYxMDIwMDEzMTQxWhcN
+MjYxMDI3MDEzMTQxWjAZMRcwFQYDVQQDDA4xODcuNzcuMTQ5LjE3OTCCASIwDQYJ
+KoZIhvcNAQEBBQADggEPADCCAQoCggEBANOS4VVOd3me5EoJycdHAWrXncqwrpbx
+DY7zer+ppbxtRDKISCdxxz+CVq8/o7RXu4y7Prx5X4hCGmcF4CCXEUKCnoncf5GL
+AIRC9P5gLPQdlHKcyRmyRtnpWByU5UEf3hl3vris1+xW60INmEX658rUZ9Npj4ZP
+sX2IPoYNVZ39lfJPqxYVLc4WYlkvgtVj+WygtPWcaeKsOvm06iD4wd90imJJ2Xet
+6nnvYdTFetd8LQty9CEq9i8xVDcBpg2RyQf1u2tlMZ1rg/kCXAmxRZ8Yk4OyQxhn
+EMLBuGVmfUsxbcoFUkiWGcOXWyiCnrZVXxdw+js9vDjvkxOkfDka7BsCAwEAAaNk
+MGIwHQYDVR0OBBYEFGv1cUmaqBTUoscya8upwwmLv134MB8GA1UdIwQYMBaAFGv1
+cUmaqBTUoscya8upwwmLv134MA8GA1UdEwEB/wQFMAMBAf8wDwYDVR0RBAgwBocE
+u02VszANBgkqhkiG9w0BAQsFAAOCAQEAJfC34ZLdLd/RliNXnvnPDbPThvXhi6T2
+hqqmyblRLb7lmuQnw6yTG3VwkM2kH8n+hWeXuuaCuLbvt8aTV9DO1Z1cip9koi3a
+Y+9ABATnctqzIj7qSI+dXq/dRHafCrTzuE0MmBmBLU2gYno3MrsAvFRlBlxNVHfT
+68O88G5Dxm/4gDjEjMz1SHr7V9KXgsGOwY3IDOJ6RMZZDqvlIhN+qRC67HeQeQjS
+KfIKLV2SHSf1i9R4oSqH1mg98RFQ/+qZ/9UFMN2mRQ8RGHn+ippO+j8+7mavZnQk
+FtS6j41rZLnsIBu+NYUmbh/0VtIuXRiJ39TdN8gOYdchoWVCdhCRuQ==
+-----END CERTIFICATE-----
+''';
+    expect(acceptsOtpCertificate(pem, '187.77.149.179'), isTrue);
+    expect(acceptsOtpCertificate(pem, 'example.com'), isFalse);
+    expect(
+      acceptsOtpCertificate(pem.replaceFirst('MIID', 'MIIE'), '187.77.149.179'),
+      isFalse,
+    );
+  });
 }
 
 class _ControlledReader implements OtpCodeReader {

@@ -79,10 +79,7 @@ void main() {
       // Auto runs clear the WebView session; there is none in these tests.
       clearSession: () async => sessionClears++,
       initialUserAgent: 'agent',
-      initialOtpSettings: const OtpApiSettings(
-        url: 'https://otp.example/api',
-        token: 'test',
-      ),
+      initialOtpSettings: const OtpApiSettings(url: 'https://otp.example/api'),
       store: store,
     );
     home.onInit();
@@ -134,7 +131,10 @@ void main() {
     Future<int> save(String email, NurtureSettings? settings) =>
         home.store.save(
           name: email,
-          proxy: null,
+          proxy: WebViewProxy.parse(
+            '${email.split('@').first}.proxy.example:8080',
+          ),
+          timeZoneId: 'Europe/Berlin',
           account: AccountCredentials(
             email: email,
             password: 'password',
@@ -220,7 +220,8 @@ void main() {
     for (final gpu in ['galaxy-s23', 'pixel-7']) {
       final id = await home.store.save(
         name: gpu,
-        proxy: null,
+        proxy: WebViewProxy.parse('$gpu.proxy.example:8080'),
+        timeZoneId: 'Europe/Berlin',
         account: AccountCredentials(
           email: '$gpu@example.com',
           password: 'password',
@@ -248,7 +249,8 @@ void main() {
     );
     Future<int> save(String email, AccountStatus status) => home.store.save(
       name: email,
-      proxy: null,
+      proxy: WebViewProxy.parse('${email.split('@').first}.proxy.example:8080'),
+      timeZoneId: 'Europe/Berlin',
       account: AccountCredentials(
         email: email,
         password: 'password',
@@ -341,7 +343,7 @@ void main() {
         );
         final a = await save('a', 'a.example:1111', 'Europe/Warsaw');
         final b = await save('b', 'b.example:2222', 'America/Chicago');
-        // No proxy: the device's own network and time zone.
+        // No proxy: use the device network and clear the previous override.
         final c = await save('c', null, '');
         if (mode == AutoRunMode.retryFailed) {
           for (final (id, name) in [(a, 'a'), (b, 'b'), (c, 'c')]) {
@@ -361,7 +363,6 @@ void main() {
           initialUserAgent: 'agent',
           initialOtpSettings: const OtpApiSettings(
             url: 'https://otp.example/api',
-            token: 'test',
           ),
           store: store,
           now: () => clock = clock.add(const Duration(minutes: 1)),
@@ -387,12 +388,12 @@ void main() {
         });
         expect(opened, [
           (a, 'a@example.com', 'Europe/Warsaw', 'http://a.example:1111'),
-          // Right after a proxied account, the override is cleared.
           (c, 'c@example.com', null, 'direct'),
           (b, 'b@example.com', 'America/Chicago', 'http://b.example:2222'),
         ]);
         // Every account: clear the session, then apply its proxy, then open.
         expect(clearedAt, hasLength(3));
+        expect(run.autoRunFailed, 3);
         for (var i = 0; i < 3; i++) {
           expect(clearedAt[i], lessThan(openedAt[i]));
           if (i > 0) {

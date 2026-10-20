@@ -8,9 +8,10 @@ import 'home_style.dart';
 
 /// Nuôi Account tab: nurture statistics of every registered account.
 class NurtureTab extends StatelessWidget {
-  const NurtureTab({super.key, required this.logic});
+  const NurtureTab({super.key, required this.logic, required this.onNurture});
 
   final HomeController logic;
+  final ValueChanged<int> onNurture;
 
   @override
   Widget build(BuildContext context) => HomeRefreshList(
@@ -23,7 +24,7 @@ class NurtureTab extends StatelessWidget {
       ),
       const SizedBox(height: 6),
       const Text(
-        'Chạm vào một tài khoản để nuôi nó trước.',
+        'Bấm Nuôi để mở tài khoản với proxy và phiên đã lưu của tài khoản đó.',
         style: TextStyle(fontSize: 12, color: HomeStyle.muted),
       ),
       const SizedBox(height: 16),
@@ -59,6 +60,9 @@ class NurtureTab extends StatelessWidget {
         for (final account in logic.nurtureAccounts) ...[
           _NurtureAccountCard(
             account: account,
+            onNurture: logic.busy || account.configurationId == null
+                ? null
+                : () => onNurture(account.configurationId!),
             first:
                 account.configurationId != null &&
                 account.configurationId ==
@@ -110,6 +114,7 @@ class _NurtureAccountCard extends StatelessWidget {
     required this.account,
     required this.first,
     required this.onTap,
+    required this.onNurture,
   });
 
   final NurtureAccount account;
@@ -117,6 +122,7 @@ class _NurtureAccountCard extends StatelessWidget {
   /// Nurtured first by Chạy nuôi lần lượt.
   final bool first;
   final VoidCallback? onTap;
+  final VoidCallback? onNurture;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -188,6 +194,13 @@ class _NurtureAccountCard extends StatelessWidget {
                   ],
                 ),
               ],
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              key: Key('nurtureOne-${account.configurationId}'),
+              onPressed: onNurture,
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Nuôi'),
             ),
             const SizedBox(height: 14),
             _Info(

@@ -570,15 +570,37 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedAccountEmail', index),
           controller: fields.accountEmail,
+          readOnly: true,
           autocorrect: false,
           keyboardType: TextInputType.emailAddress,
           decoration: const InputDecoration(
-            hintText: 'Nhập email',
+            hintText: 'Tự tách từ Data Mail',
             prefixIcon: Icon(Icons.alternate_email, size: 20),
           ),
           validator: (value) => OtpApiConfiguration.isEmail(value?.trim() ?? '')
               ? null
               : 'Nhập email tài khoản hợp lệ.',
+        ),
+        const SizedBox(height: 16),
+        _fieldLabel('Data Mail'),
+        TextFormField(
+          key: _configurationKey('savedMailboxPassword', index),
+          controller: fields.mailboxPassword,
+          autocorrect: false,
+          enableSuggestions: false,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.done,
+          minLines: 4,
+          maxLines: 8,
+          decoration: const InputDecoration(
+            hintText: 'email|mật khẩu|refresh token|client ID|email phụ',
+            helperText: 'Email đăng ký được lấy từ phần đầu của Data Mail.',
+            helperMaxLines: 2,
+            prefixIcon: Icon(Icons.mail_outline, size: 20),
+          ),
+          validator: (value) => AccountCredentials.isValidDataMail(value ?? '')
+              ? null
+              : 'Data Mail cần đủ 5 phần, ngăn cách bằng dấu |.',
         ),
         const SizedBox(height: 16),
         _fieldLabel('Mật khẩu TikTok'),
@@ -603,21 +625,6 @@ class _ProxyFormView extends StatelessWidget {
           ),
           validator: (value) => value == null || value.trim().isEmpty
               ? 'Nhập mật khẩu TikTok.'
-              : null,
-        ),
-        const SizedBox(height: 16),
-        _fieldLabel('Mật khẩu email lấy OTP'),
-        TextFormField(
-          key: _configurationKey('savedMailboxPassword', index),
-          controller: fields.mailboxPassword,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: const InputDecoration(
-            hintText: 'Nhập mật khẩu email lấy OTP',
-            prefixIcon: Icon(Icons.mail_outline, size: 20),
-          ),
-          validator: (value) => value == null || value.trim().isEmpty
-              ? 'Nhập mật khẩu email lấy OTP.'
               : null,
         ),
         const SizedBox(height: 8),
@@ -682,7 +689,7 @@ class _ProxyFormView extends StatelessWidget {
                               hintText: 'Dán nội dung cấu hình',
                               helperText:
                                   'Để đọc Excel/TXT, chọn Import data > Từ file.\n'
-                                  'host:port:user:pass|email|mật khẩu TikTok|mật khẩu email OTP[|0/1]\n'
+                                  'host:port:user:pass|Data Mail|mật khẩu TikTok[|0/1]\n'
                                   'Mỗi dòng một cấu hình. 1: đã đăng ký; 0 hoặc bỏ qua: chưa đăng ký.',
                               helperMaxLines: 6,
                               errorText: logic.importError,

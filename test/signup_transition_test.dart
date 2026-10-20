@@ -28,7 +28,6 @@ void main() {
             signupMailboxPassword: 'mail-password',
             otpApi: OtpApiConfiguration(
               url: Uri.parse('https://example.com/api/code'),
-              readerToken: 'test-token',
             ),
           ),
           useAccessibility: false,

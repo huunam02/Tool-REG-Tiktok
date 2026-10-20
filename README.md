@@ -37,7 +37,7 @@ Chọn kiểu **String** cho cả 5 tham số. Hai danh sách là chuỗi chứa
 | `search_keywords` | `["Travel", "Cà phê", "Technology"]` |
 | `auto_comments` | `["Great video!", "Cảm ơn bạn ❤️"]` |
 
-Tất cả tên tham số Remote Config dùng `snake_case`: `otp_api_url`, `otp_api_token`,
+Tất cả tên tham số Remote Config dùng `snake_case`: `otp_api_url`,
 `sadcaptcha_license_key`, `search_keywords`, `auto_comments`. Hai tên cũ
 `listSearchKeywords` và `AutoComments` đã đổi thành `search_keywords` và
 `auto_comments`. Dữ liệu mặc định đầy đủ để sao chép từng tham số nằm trong
@@ -487,19 +487,25 @@ chờ bộ đếm gửi lại hoặc màn OTP xác nhận gửi mã; hết 15 gi
 thì dừng, chưa gọi API lấy OTP và không tự gửi lại mã.
 
 App luôn lấy OTP qua API cho **Đăng nhập** và **Đăng ký**. App chỉ dùng
-`otp_api_url` và `otp_api_token` từ Firebase Remote Config cho cả hai luồng;
+`otp_api_url` từ Firebase Remote Config cho cả hai luồng;
 các giá trị đã lưu trên thiết bị không còn được dùng. Màn Cài đặt không có mục
 nhập hoặc xem cấu hình API OTP/CAPTCHA.
 URL API chấp nhận cả HTTP và HTTPS. Nếu API chạy trên máy tính, Android Emulator
 dùng `10.0.2.2`, iOS Simulator trên cùng máy dùng `127.0.0.1`; điện thoại thật
 dùng IP LAN của máy tính hoặc địa chỉ API truy cập được từ thiết bị.
-Nhập mật khẩu hộp thư của email trong màn tạo hoặc sửa cấu hình.
-Mật khẩu hộp thư là trường riêng với mật khẩu TikTok. App tự lấy mã OTP từ API.
+Nhập Data Mail trong màn tạo hoặc sửa cấu hình theo dạng
+`email|mật khẩu mail|refresh token|client ID|email phụ`. Email tự lấy từ phần đầu.
+Mật khẩu TikTok nằm sau Data Mail trên form và trong import/export Excel.
+TXT dùng `proxy|Data Mail|mật khẩu TikTok[|0/1]`.
 
-App dùng thư viện `http` để gọi `POST /api/code` sau khi TikTok yêu cầu OTP, với JSON
-`{"email":"email|mật khẩu hộp thư","wait":180}` và headers
-`X-Reader-Token`, `ngrok-skip-browser-warning: 1`. Khi API trả
-`{"ok":true,"code":"012345"}`, app nhập mã bằng bộ nhập native rồi xác nhận.
+App gọi `GET /api/extract-otp?rawInput=...` sau khi TikTok yêu cầu OTP.
+`rawInput` chứa nguyên Data Mail và được mã hóa bằng `Uri.queryParameters`;
+không cần reader token với API này. URL mặc định là
+`https://187.77.149.179:2001/api/extract-otp`. Nếu Firebase Remote Config
+đang đặt `otp_api_url` cũ, cập nhật giá trị theo `docs/remote_config_values.json`.
+App đọc mã sáu chữ số từ `otp`, `code` hoặc `data` trong JSON, giữ số 0 ở đầu,
+rồi nhập mã bằng bộ nhập native và xác nhận. Không ghi Data Mail vào log.
+API `POST /api/code` cũ vẫn được hỗ trợ cho dữ liệu mật khẩu mail cũ.
 Trên Android, OTP đăng ký và đăng nhập được sao chép đủ sáu số vào clipboard
 rồi dán bằng `InputConnection.performContextMenuAction(android.R.id.paste)`.
 App kiểm tra đúng ô đang focus và trạng thái tác vụ trước khi dán; chỉ xác nhận

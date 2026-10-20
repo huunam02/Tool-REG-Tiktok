@@ -74,32 +74,35 @@ class _HomeView extends StatelessWidget {
   );
 
   /// Signup continues through every unregistered configuration; nurture
-  /// logs in to every registered one, then logs out.
+  /// reuses each registered account’s session and retains it after nurturing.
   Future<void> _startAutoRun(
     BuildContext context,
     AutoRunMode mode, {
     int? firstId,
     List<int> order = const [],
-  }) => logic.startAutoRun(mode, firstId: firstId, order: order, (
-    configuration,
-    action,
-  ) async {
-    if (!context.mounted) return null;
-    final result = await Navigator.of(context).push<TikTokFlowResult>(
-      MaterialPageRoute<TikTokFlowResult>(
-        builder: (_) => TikTokPage(
-          configuration: configuration,
-          launchAction: action,
-          proxyStore: logic.proxyStore,
-          autoAdvance: true,
-          logoutAfterNurture: mode == AutoRunMode.nurture,
+    int? onlyId,
+  }) => logic.startAutoRun(
+    mode,
+    firstId: firstId,
+    order: order,
+    onlyId: onlyId,
+    (configuration, action) async {
+      if (!context.mounted) return null;
+      final result = await Navigator.of(context).push<TikTokFlowResult>(
+        MaterialPageRoute<TikTokFlowResult>(
+          builder: (_) => TikTokPage(
+            configuration: configuration,
+            launchAction: action,
+            proxyStore: logic.proxyStore,
+            autoAdvance: true,
+          ),
         ),
-      ),
-    );
-    // Notices from the closed TikTok screen no longer apply on Home.
-    if (context.mounted) ScaffoldMessenger.of(context).clearSnackBars();
-    return result;
-  });
+      );
+      // Notices from the closed TikTok screen no longer apply on Home.
+      if (context.mounted) ScaffoldMessenger.of(context).clearSnackBars();
+      return result;
+    },
+  );
 
   Future<void> _openSettings(BuildContext context) =>
       Navigator.of(context).push<void>(
@@ -180,8 +183,33 @@ class _HomeView extends StatelessWidget {
                       logic: logic,
                       onManageProxies: () => _manageProxies(context),
                     ),
-                    SignupTab(logic: logic),
-                    NurtureTab(logic: logic),
+                    SignupTab(
+                      logic: logic,
+                      onSignup: (id) => _startAutoRun(
+                        context,
+                        AutoRunMode.signup,
+                        firstId: id,
+                        onlyId: id,
+                      ),
+                    ),
+                    NurtureTab(
+                      logic: logic,
+                      onNurture: (id) => logic.nurtureAccount(id, (
+                        configuration,
+                        action,
+                      ) async {
+                        if (!context.mounted) return;
+                        await Navigator.of(context).push<TikTokFlowResult>(
+                          MaterialPageRoute(
+                            builder: (_) => TikTokPage(
+                              configuration: configuration,
+                              launchAction: action,
+                              proxyStore: logic.proxyStore,
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
                     FailedConfigurationsTab(logic: logic),
                   ],
                 ),

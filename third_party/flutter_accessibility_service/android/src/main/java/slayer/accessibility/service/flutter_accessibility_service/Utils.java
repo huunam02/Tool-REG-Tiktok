@@ -3,6 +3,7 @@ package slayer.accessibility.service.flutter_accessibility_service;
 import static android.content.Context.MODE_PRIVATE;
 
 import android.content.Context;
+import android.content.ComponentName;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
@@ -19,25 +20,22 @@ import java.util.HashMap;
 public class Utils {
 
     public static boolean isAccessibilitySettingsOn(Context mContext) {
-        int accessibilityEnabled = 0;
-        final String service = mContext.getPackageName() + "/" + AccessibilityListener.class.getCanonicalName();
-        try {
-            accessibilityEnabled = Settings.Secure.getInt(mContext.getApplicationContext().getContentResolver(), android.provider.Settings.Secure.ACCESSIBILITY_ENABLED);
-        } catch (Settings.SettingNotFoundException e) {
-            return false;
-        }
-        TextUtils.SimpleStringSplitter mStringColonSplitter = new TextUtils.SimpleStringSplitter(':');
-        if (accessibilityEnabled == 1) {
-            String settingValue = Settings.Secure.getString(mContext.getApplicationContext().getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-            if (settingValue != null) {
-                mStringColonSplitter.setString(settingValue);
-                while (mStringColonSplitter.hasNext()) {
-                    String accessibilityService = mStringColonSplitter.next();
-                    if (accessibilityService.equalsIgnoreCase(service)) {
-                        return true;
-                    }
-                }
-            }
+        ComponentName service = new ComponentName(mContext, AccessibilityListener.class);
+        String enabledServices = Settings.Secure.getString(
+                mContext.getApplicationContext().getContentResolver(),
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        return containsEnabledService(enabledServices, service);
+    }
+
+    // Read the grant from Android settings, independently of whether the
+    // service has reconnected to this newly started app process yet.
+    static boolean containsEnabledService(String enabledServices, ComponentName service) {
+        if (enabledServices == null) return false;
+        TextUtils.SimpleStringSplitter splitter = new TextUtils.SimpleStringSplitter(':');
+        splitter.setString(enabledServices);
+        while (splitter.hasNext()) {
+            ComponentName enabled = ComponentName.unflattenFromString(splitter.next().trim());
+            if (service.equals(enabled)) return true;
         }
         return false;
     }

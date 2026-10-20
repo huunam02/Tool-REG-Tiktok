@@ -32,8 +32,8 @@ class UsageGuidePage extends StatelessWidget {
           'Thêm cấu hình',
           'Tab Cấu hình → Quản lý cấu hình → Thêm. Bấm Import data để nhập '
               'Từ file (Excel .xlsx/.xls hoặc TXT) hoặc Dán từ clipboard. Mỗi '
-              'dòng một cấu hình: host:port:user:pass|email|mật khẩu TikTok|'
-              'mật khẩu email OTP, thêm |1 nếu tài khoản đã đăng ký (|0 nếu '
+              'dòng một cấu hình: host:port:user:pass|Data Mail|mật khẩu TikTok. '
+              'Data Mail gồm email|mật khẩu|refresh token|client ID|email phụ, thêm |1 nếu tài khoản đã đăng ký (|0 nếu '
               'chưa). Nhiều dòng tạo nhiều cấu hình cùng lúc.',
         ),
         (
@@ -54,7 +54,7 @@ class UsageGuidePage extends StatelessWidget {
         ),
         (
           'Menu ⋮ của cấu hình',
-          'Kiểm tra IP: xóa phiên cũ, nạp proxy, User-Agent, múi giờ và GPU '
+          'Kiểm tra IP: lưu phiên hiện tại, khôi phục cookie riêng, nạp proxy, User-Agent, múi giờ và GPU '
               'của cấu hình rồi mở WhatIsMyBrowser để xem trang web nhận được '
               'gì (không đánh dấu Đã dùng). Sửa: đổi thông tin. Xóa: bỏ cấu '
               'hình khỏi danh sách. Lọc danh sách theo Tất cả, Chưa dùng, '
@@ -68,20 +68,23 @@ class UsageGuidePage extends StatelessWidget {
         (
           'Tab Đăng ký',
           'Liệt kê cấu hình chưa đăng ký. Chạm một cấu hình để đặt Chạy '
-              'trước, rồi bấm Chạy đăng ký lần lượt tài khoản. Với mỗi tài '
+              'trước, rồi bấm Chạy đăng ký lần lượt tài khoản. Mỗi tài khoản cần '
+              'proxy riêng nếu có khai báo; để trống sẽ dùng mạng mặc định của máy. '
+              'Proxy đã khai báo bị trùng giữa các tài khoản sẽ bị chặn. Với mỗi tài '
               'khoản, app xóa phiên cũ, nạp cấu hình và proxy, đăng ký, lấy '
               'OTP qua API và tự giải CAPTCHA. Nếu bật Nuôi sau khi đăng ký, '
-              'tài khoản mới được nuôi theo cấu hình nuôi; sau đó giữ màn hình '
-              '1–2 phút, đăng xuất, nghỉ 5–15 giây rồi sang cấu hình tiếp theo.',
+              'tài khoản mới được nuôi theo cấu hình nuôi; sau đó lưu cookie riêng, '
+              'nghỉ 5–15 giây rồi sang cấu hình tiếp theo.',
         ),
         (
           'Tab Nuôi',
           'Liệt kê tài khoản đã đăng ký kèm thống kê: số lần nuôi, lần nuôi '
-              'cuối, thời gian xem, video đã xem, thả tim, bình luận. Chạm một '
+              'cuối, thời gian xem, video đã xem, thả tim, bình luận. Bấm Nuôi trên '
+              'từng tài khoản để mở đúng proxy và cookie đã lưu của tài khoản đó. Chạm một '
               'tài khoản để Chạy trước, rồi bấm Chạy nuôi lần lượt các tài '
-              'khoản. Mỗi tài khoản được đăng nhập, nuôi ngẫu nhiên news feed '
-              'hoặc tìm kiếm từ khóa theo cấu hình nuôi, giữ màn hình 1–2 phút '
-              'rồi đăng xuất.',
+              'khoản. App khôi phục cookie riêng và kiểm tra phiên; chỉ đăng nhập '
+              'lại nếu phiên không còn hợp lệ. Tài khoản được nuôi ngẫu nhiên news feed '
+              'hoặc tìm kiếm từ khóa theo cấu hình nuôi rồi lưu phiên cho lần sau.',
         ),
         (
           'Tab Cấu hình lỗi',
@@ -189,8 +192,9 @@ class UsageGuidePage extends StatelessWidget {
                 child: Text(
                   'Bảo mật: WebRTC luôn bị chặn nên trang web không đọc được IP '
                   'nội bộ của máy. Mỗi cấu hình có proxy, User-Agent, múi giờ và '
-                  'thiết bị GPU riêng. Mỗi lần tự chạy hoặc Kiểm tra IP đều bắt '
-                  'đầu bằng phiên WebView sạch (xóa cookie và dữ liệu trang).',
+                  'thiết bị GPU riêng. Cookie được lưu theo từng cấu hình và tài khoản. '
+                  'Khi đổi cấu hình, app xóa dữ liệu WebView rồi khôi phục cookie '
+                  'của cấu hình đó. Đăng ký luôn bắt đầu bằng phiên sạch.',
                   style: TextStyle(color: SettingsStyle.muted, height: 1.55),
                 ),
               ),

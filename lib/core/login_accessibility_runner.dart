@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+
 import 'app_configuration.dart';
 import 'cookie_consent_accessibility.dart';
 import 'login_coordinate_profile.dart';
@@ -87,8 +89,19 @@ class LoginAccessibilityRunner {
               snapshot.viewport.bounds.contains(node.bounds.center),
         )
         .toList();
+    // Chromium reports TikTok's web modal as android.app.Dialog while the
+    // page behind it stays in the tree; its sidebar "Log in" icon also
+    // matches Continue patterns and is smaller than the modal's button.
+    final dialog = snapshot.nodes
+        .where((n) => n.className.endsWith('Dialog'))
+        .lastOrNull;
+    bool inDialog(SignupNode node) =>
+        dialog != null &&
+        (node.id.startsWith('${dialog.id}.') ||
+            dialog.bounds.contains(node.bounds.center));
     // Prefer actionable nodes over their text children or large containers.
     matches.sort((a, b) {
+      if (inDialog(a) != inDialog(b)) return inDialog(a) ? -1 : 1;
       final recorded = action == null ? null : profile.point(action);
       if (recorded != null) {
         final physical = snapshot.viewport.toScreen(recorded);
@@ -210,6 +223,11 @@ class LoginAccessibilityRunner {
       throw StateError('Bước $action đã thực hiện; đã dừng để tránh gửi lại.');
     }
     final point = await profile.target(action, snapshot.viewport, node);
+    debugPrint(
+      '[Diag tap] $action node="${node.label}|${node.text}" '
+      'class=${node.className} bounds=${node.bounds} point=$point '
+      'viewport=${snapshot.viewport.bounds} dialogs=${snapshot.nodes.where((n) => n.className.endsWith('Dialog')).map((n) => n.className).toSet()}',
+    );
     await _guard();
     await accessibility.tap(snapshot.viewport, point);
     await _pause(fast ? 250 : 2000 + _random.nextInt(5001));
@@ -526,7 +544,12 @@ class LoginAccessibilityRunner {
               await _pause(250);
               continue;
             }
-            final next = _find(snapshot, _continue, requireClickable: true);
+            final next = _find(
+              snapshot,
+              _continue,
+              requireClickable: true,
+              action: 'submit-otp',
+            );
             final enteredLength = editors
                 .where((n) => !n.password)
                 .fold<int>(0, (sum, node) => sum + node.length);
@@ -570,7 +593,12 @@ class LoginAccessibilityRunner {
           await _pause(300);
           continue;
         }
-        final submit = _find(snapshot, _continue, requireClickable: true);
+        final submit = _find(
+          snapshot,
+          _continue,
+          requireClickable: true,
+          action: 'submit-password',
+        );
         if (submit != null) {
           await _tap('submit-password', snapshot, submit, fast: true);
           deadline = now().add(const Duration(seconds: 45));

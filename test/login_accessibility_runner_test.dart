@@ -109,6 +109,30 @@ void main() {
     });
   }
 
+  testWidgets('Continue is tapped inside the modal, not the sidebar Log in', (
+    tester,
+  ) async {
+    final screen = _Screen()
+      ..needsOtp = false
+      ..sidebarLogin = true;
+    final runner = LoginAccessibilityRunner(
+      accessibility: screen,
+      profile: LoginCoordinateProfile({}),
+      configuration: _configuration,
+      isActive: () => true,
+      isTikTok: () async => true,
+      isPageReady: () => true,
+      now: tester.binding.clock.now,
+      onStatus: (_) {},
+      getOtp: () async => '012345',
+    );
+    final error = await _finish(tester, runner.run());
+    expect(error, isNull);
+    expect(screen.state, 'authenticated');
+    expect(screen.taps, contains('submit-password'));
+    expect(screen.taps, isNot(contains('sidebar-login')));
+  });
+
   for (final dropped in [1, 3]) {
     testWidgets(
       'Log in tap ignored $dropped time(s) is retried at most 3 times',
@@ -739,6 +763,10 @@ class _Screen extends SignupAccessibility {
   bool resendAvailable = false, acknowledgeResend = true;
   bool cookieBanner = false;
 
+  /// TikTok's login modal as Chromium reports it (android.app.Dialog), with
+  /// the page's small sidebar "Log in" icon still exposed behind it.
+  bool sidebarLogin = false;
+
   /// TikTok ignores taps on Log in while the page is still hydrating.
   int droppedLoginTaps = 0;
 
@@ -842,6 +870,22 @@ class _Screen extends SignupAccessibility {
       node('cookie-title', 'Allow cookies from TikTok?', 700, clickable: false);
       // Android WebView reports the banner button as disabled.
       node('accept-cookies', 'Allow all', 750, enabled: false);
+    }
+    if (sidebarLogin && state != 'home' && state != 'authenticated') {
+      nodes.insert(0, {
+        'id': 'modal',
+        'className': 'android.app.Dialog',
+        'bounds': [80, 80, 320, 450],
+        'enabled': true,
+      });
+      targets['sidebar-login'] = const Rect.fromLTRB(5, 150, 25, 170);
+      nodes.add({
+        'id': 'sidebar-login',
+        'text': 'Log in',
+        'bounds': [5, 150, 25, 170],
+        'enabled': true,
+        'clickable': true,
+      });
     }
     if (focusLag > 0) focusLag--;
     if (shortScreen && keyboard) {

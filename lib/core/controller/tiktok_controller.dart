@@ -220,6 +220,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     VoidCallback? onAction,
   }) {
     _lastNotice = message;
+    debugPrint('[Diag notice] ${message.replaceAll('\n', ' | ')}');
     super.notify(
       message,
       duration: duration,
@@ -1070,7 +1071,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
                 : 'Không thể tiếp tục nuôi qua Accessibility.';
             debugPrint('Accessibility nurture stopped: $message');
             notify(message);
-            if (_logsOutAfterNurture) {
+            // Automatic runs keep their deadline whether or not they log out,
+            // so a TikTok dialog cannot stall the queue until the watchdog.
+            if (_logsOutAfterNurture || autoAdvance) {
               final stopsAt = _autoWatchStopsAt;
               if (_nurtureRestarts < maxNurtureRestarts &&
                   stopsAt != null &&
@@ -2760,6 +2763,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           activeLoginOtp = '';
         },
         onStatus: (status) {
+          debugPrint('[Diag login] $status');
           if (isActive()) mutate(() => loginStatus = status);
         },
         now: _now,
@@ -2910,6 +2914,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         (launchAction == TikTokLaunchAction.login &&
             await hasTikTokLoginSession())) {
       await _startNurtureWithRetainedSession();
+      // A revoked session falls back to login; a failed one must not wait
+      // for the watchdog before the run moves on.
+      if (active && !_flowContinues) _failAutoFlow();
       return;
     }
     switch (launchAction) {

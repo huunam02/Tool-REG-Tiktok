@@ -93,23 +93,32 @@ Trong màn **Tạo cấu hình**, bấm **Import data** và chọn **Từ file**
 
 ### 5.1. TXT hoặc clipboard
 
-Mỗi cấu hình nằm trên một dòng, theo mẫu:
+Mỗi tài khoản nằm trên **một dòng**, gồm 4 phần theo đúng thứ tự, ngăn cách bằng dấu `|`:
 
 ```text
-host:port:username:password|email|mật_khẩu_mail|refresh_token|client_id|email_phụ|mật_khẩu_TikTok|trạng_thái
+Proxy|Data Mail|Mật khẩu TikTok|Trạng thái
 ```
 
-Ví dụ minh họa, cần thay toàn bộ bằng dữ liệu thực tế:
+| Phần | Bắt buộc | Ghi chú |
+| --- | --- | --- |
+| Proxy | Có | Dạng `host:port:user:pass` |
+| Data Mail | Có | Dán nguyên chuỗi Data Mail, giữ nguyên các dấu `\|` bên trong |
+| Mật khẩu TikTok | Không | Để trống thì tool tự tạo |
+| Trạng thái | Không | `0` = chưa đăng ký, `1` = đã đăng ký |
+
+Ví dụ minh họa (mỗi dòng là một tài khoản), cần thay bằng dữ liệu thực tế:
 
 ```text
-192.0.2.10:8080:proxy_user:proxy_pass|account01@example.com|mail_pass_01|refresh_token_01|client_id_01|alias01@example.net|SamplePass12|0
-192.0.2.11:8080:proxy_user:proxy_pass|account02@example.com|mail_pass_02|refresh_token_02|client_id_02|alias02@example.net|SamplePass34|1
+1.2.3.4:8080:u1:p1|a01@mail.com|mp01|rt01|ci01|b01@mail.com|Tk12345|0
+1.2.3.5:8080:u2:p2|a02@mail.com|mp02|rt02|ci02|b02@mail.com|Tk67890|1
 ```
 
-- Dấu `|` ngăn cách các trường; không thêm dấu này vào nội dung mật khẩu.
-- Trạng thái `0` là **Chưa đăng ký**, `1` là **Đã đăng ký**.
-- Có thể bỏ trường trạng thái; khi đó tool dùng **Chưa đăng ký**, kể cả khi công tắc trên form trước đó đang bật.
-- Nếu để trống mật khẩu TikTok giữa hai dấu `|`, tool tạo mật khẩu mới. Chỉ dùng cách này cho tài khoản cần tạo mới; với tài khoản đã có phải nhập mật khẩu đúng.
+Ở dòng đầu, `a01@mail.com|mp01|rt01|ci01|b01@mail.com` là Data Mail.
+
+- **Proxy là bắt buộc** và phải đủ `host:port:user:pass`. Tài khoản không dùng proxy hoặc proxy không có user/pass: thêm thủ công trên form.
+- **Không ghi trạng thái:** bỏ luôn dấu `|` ở cuối, dòng kết thúc bằng mật khẩu TikTok; tool dùng **Chưa đăng ký**, kể cả khi công tắc trên form trước đó đang bật. Để `|` ở cuối mà trống sẽ báo lỗi.
+- **Mật khẩu TikTok để trống** (hai dấu `||` liền nhau): tool tự tạo mật khẩu mới. Chỉ dùng cho tài khoản cần đăng ký; tài khoản đã có phải ghi đúng mật khẩu hiện tại.
+- Data Mail thật rất dài nên dòng sẽ tự xuống dòng khi hiển thị; đó vẫn là **một dòng**, không tự nhấn Enter giữa các phần.
 - Dòng trống được bỏ qua. File TXT dùng UTF-8 hoặc Unicode UTF-16.
 
 Bạn cũng có thể dán nội dung vào ô import trên form rồi bấm **dấu ✓** để đọc dữ liệu. Muốn đọc file, dùng **Từ file**; dán tên hoặc đường dẫn file vào ô sẽ không đọc được nội dung file.
@@ -126,12 +135,12 @@ Một dòng tương ứng một cấu hình. Cách dễ kiểm tra nhất là d�
 
 Data Mail nằm trong một ô, gồm `email|mật khẩu mail|refresh token|client ID|email phụ`. Email được lấy từ phần đầu; không cần cột Email hay Mail Password. Password là mật khẩu TikTok và nằm sau Data Mail.
 
-Cột trạng thái có thể bỏ. Tool cũng đọc được một ô chứa cả dòng dữ liệu như mẫu TXT, hoặc hai cột gồm proxy và chuỗi `Data Mail|mật khẩu TikTok`. Có thể đặt tiêu đề `Proxy` hoặc `Data` ở dòng đầu.
+Cột trạng thái có thể bỏ. Tool cũng đọc được một ô chứa cả dòng dữ liệu như mẫu TXT, hoặc hai cột gồm proxy và chuỗi `Data Mail|mật khẩu TikTok`. Có thể đặt tiêu đề `Proxy` hoặc `Data` ở dòng đầu. Không tách 5 phần của Data Mail ra nhiều cột: hàng có từ 6 cột trở lên mà không dùng tiêu đề như bảng trên sẽ báo lỗi.
 
 ### 5.3. Kiểm tra và lưu danh sách đã import
 
 1. Sau khi đọc dữ liệu, mỗi dòng xuất hiện thành một mục **Thông tin cấu hình** riêng.
-2. Kiểm tra proxy, email, hai loại mật khẩu và trạng thái của từng mục.
+2. Kiểm tra proxy, Data Mail, mật khẩu TikTok và trạng thái của từng mục.
 3. Chỉnh User-Agent, múi giờ, GPU và cấu hình nuôi nếu cần.
 4. Bấm **Tạo N cấu hình** để lưu cả danh sách.
 

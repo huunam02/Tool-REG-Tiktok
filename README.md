@@ -202,11 +202,15 @@ Nút **Import data** trên màn tạo mở bottom sheet có hai mục:
 **Từ file** (Excel `.xlsx`, `.xls` hoặc `.txt`) và **Dán từ clipboard**.
 TXT và clipboard nhận nhiều cấu hình,
 mỗi cấu hình một dòng theo định dạng:
-`host:port:username:password|email|mật_khẩu_TikTok|mật_khẩu_email_OTP[|0/1]`.
-Thêm `|1` ở cuối để đặt **Đã đăng ký**; `|0` hoặc không thêm trạng thái đặt
-**Chưa đăng ký**, kể cả khi công tắc đang bật. Giá trị khác báo lỗi import.
-Thứ tự bốn trường là **Proxy | Email | Password | Mail Password**, ngăn cách bằng
-dấu `|`. Phần proxy vẫn dùng `host:port:username:password`. Dòng trống được bỏ qua. Nếu có dòng
+`Proxy|Data Mail|Mật khẩu TikTok[|0/1]`, ví dụ
+`1.2.3.4:8080:u1:p1|a01@mail.com|mp01|rt01|ci01|b01@mail.com|Tk12345|0`.
+Data Mail được dán nguyên chuỗi (giữ các dấu `|` bên trong); email lấy từ
+phần đầu. Proxy bắt buộc dạng `host:port:user:pass`. Mật khẩu TikTok trống được tạo mới.
+Thêm `|1` ở cuối để đặt **Đã đăng ký**; `|0` hoặc không thêm trạng thái (không có
+dấu `|` cuối) đặt **Chưa đăng ký**, kể cả khi công tắc đang bật. Giá trị khác,
+kể cả `|` cuối để trống, báo lỗi import. Định dạng cũ
+`proxy|email|mật_khẩu_TikTok|mật_khẩu_email_OTP[|0/1]` vẫn đọc được nhưng không
+có Data Mail. Dòng trống được bỏ qua. Nếu có dòng
 lỗi, app báo số dòng và giữ nguyên dữ liệu trước đó để sửa rồi import lại.
 Mỗi dòng hiển thị một mục **Thông tin cấu hình** riêng, có proxy, tài khoản,
 trạng thái và User-Agent độc lập, chỉnh sửa riêng trước khi lưu.
@@ -215,18 +219,18 @@ User-Agent riêng và có nút đổi riêng. Nhấn **Tạo N cấu hình** đ�
 cả danh sách trong một giao dịch; lỗi lưu không để lại cấu hình lưu dở.
 
 Excel nhận dữ liệu trên tất cả sheet, mỗi cấu hình một dòng: toàn bộ chuỗi
-trong một ô; hai cột proxy và chuỗi tài khoản; hoặc các cột proxy, email,
-mật khẩu TikTok, mật khẩu email và trạng thái (cột trạng thái không bắt buộc).
-Có thể đặt tiêu đề `Proxy` hoặc `Data` ở dòng đầu. Dòng trống được bỏ qua;
+trong một ô; hai cột proxy và `Data Mail|mật khẩu TikTok`; hoặc các cột có
+tiêu đề `Proxy`, `Data Mail`, `Password`, `Status` (cột trạng thái không bắt
+buộc, Data Mail nằm trọn trong một ô). Có thể đặt tiêu đề `Proxy` hoặc `Data` ở dòng đầu. Dòng trống được bỏ qua;
 lỗi Excel hiển thị tên sheet và số dòng. Ô nhập thủ công vẫn dùng được,
 nhấn dấu ✓ trong ô để import dữ liệu đã nhập.
 
 Vào **Cài đặt → Xuất dữ liệu Excel → Xuất Excel data** để mở hộp thoại
 chọn nơi lưu file `.xlsx`. File có một sheet **Data**, mỗi cấu hình một hàng:
 
-- Năm cột đầu giữ định dạng import **Proxy | Email | Password | Mail Password |
-  status(Đã dăng ký)** (`0/1`), tiếp theo là User-Agent, múi giờ và
-  trạng thái đã sử dụng (`0/1`).
+- Năm cột đầu là **Proxy | Email | Data Mail | Password | status(Đã dăng ký)**
+  (`0/1`), tiếp theo là User-Agent, múi giờ, trạng thái đã sử dụng (`0/1`),
+  Thiết bị GPU và năm cột cấu hình nuôi.
 - Các cột tiếp theo là thống kê nuôi ghép theo email (không phân biệt hoa/thường):
   thời gian xem theo ms và phút, số video đã xem/xem hết/lướt sớm, bình luận,
   chế độ và từ khóa. Cấu hình chưa có thống kê
@@ -235,8 +239,9 @@ chọn nơi lưu file `.xlsx`. File có một sheet **Data**, mỗi cấu hình 
 - Tài khoản chỉ còn lịch sử nuôi sau khi cấu hình bị xóa vẫn có một hàng riêng,
   với phần proxy, mật khẩu và trạng thái đăng ký để trống.
 
-Khi import lại file xuất, app đọc năm cột đầu; các cột bổ sung chỉ dùng để tra
-cứu, không khôi phục lịch sử nuôi. Hàng chỉ có thống kê nuôi được bỏ qua.
+Khi import lại file xuất, app đọc theo tiêu đề các cột Proxy, Data Mail,
+Password, trạng thái, Thiết bị GPU và cấu hình nuôi; các cột còn lại chỉ dùng
+để tra cứu, không khôi phục lịch sử nuôi. Hàng chỉ có thống kê nuôi được bỏ qua.
 File xuất theo định dạng hai sheet trước đây vẫn nhập được.
 Quy tắc kiểm tra import cũ vẫn áp dụng: cần proxy có xác thực và đủ tài khoản;
 cấu hình dùng mạng mặc định hoặc chưa có tài khoản vẫn được xuất để tra cứu.

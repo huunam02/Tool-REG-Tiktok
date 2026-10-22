@@ -32,7 +32,7 @@ void main() {
     () {
       expect(
         WebViewProxy.parse(' 127.0.0.1:8080 ')!.uri.toString(),
-        'http://127.0.0.1:8080',
+        'socks5://127.0.0.1:8080',
       );
       expect(
         WebViewProxy.parse('https://proxy.example.com:443/')!.uri.scheme,
@@ -45,7 +45,7 @@ void main() {
         'http://localhost:0',
         'http://localhost:65536',
         'http://localhost:abc',
-        'socks5://localhost:8080',
+        'socks4://localhost:8080',
         'http://localhost:8080/path',
         'http://user:secret@localhost:8080',
         'http://local host:8080',

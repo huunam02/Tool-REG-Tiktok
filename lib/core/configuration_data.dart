@@ -77,7 +77,8 @@ class ImportedConfiguration {
     this.gpuProfileId,
   });
 
-  final WebViewProxy proxy;
+  /// Null for "Mặc định của máy": exports leave the Proxy column empty.
+  final WebViewProxy? proxy;
   final AccountCredentials account;
   final AccountStatus statusAccount;
 
@@ -97,6 +98,10 @@ class ImportedConfiguration {
     nurtureSettings: nurtureSettings ?? this.nurtureSettings,
     gpuProfileId: gpuProfileId ?? this.gpuProfileId,
   );
+
+  /// An empty proxy field keeps the device's own connection.
+  static WebViewProxy? parseImportedProxy(String value) =>
+      value.trim().isEmpty ? null : WebViewProxy.parseImport(value);
 
   static List<ImportedConfiguration> parseMany(String input) {
     if (RegExp(
@@ -142,7 +147,7 @@ class ImportedConfiguration {
         throw const FormatException('Trạng thái đăng ký phải là 0 hoặc 1.');
       }
       return ImportedConfiguration(
-        proxy: WebViewProxy.parseImport(parts.first),
+        proxy: parseImportedProxy(parts.first),
         account: AccountCredentials(
           email: AccountCredentials.emailFromDataMail(dataMail),
           password: parts[6].trim().isEmpty
@@ -179,7 +184,7 @@ class ImportedConfiguration {
       accountParts[1] = generateAccountPassword();
     }
     return ImportedConfiguration(
-      proxy: WebViewProxy.parseImport(proxy),
+      proxy: parseImportedProxy(proxy),
       account: AccountCredentials.parseImport(accountParts.join('|')),
       statusAccount: statusAccount,
     );

@@ -1,21 +1,16 @@
 package com.brisklane.browser
 
 import android.app.ActivityManager
-import android.view.View
-import android.view.ViewGroup
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
 import android.os.Build
-import android.webkit.WebView
 import org.json.JSONObject
-import com.pichillilorenzo.flutter_inappwebview_android.InAppWebViewFlutterPlugin
-import com.stalliondz.tool.tiktok.DesktopChromeIdentity
-import com.stalliondz.tool.tiktok.NativeClipboardPaste
-import com.stalliondz.tool.tiktok.NativeKeyboardInput
-import com.stalliondz.tool.tiktok.NativeSendCodeTarget
+import com.brisklane.browser.gecko.GeckoViewFactory
+import com.brisklane.browser.gecko.GeckoPlatformView
+import com.brisklane.browser.proxy.ProfileVpnManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -23,10 +18,17 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity: FlutterActivity() {
     private var signupCalibration: MethodChannel? = null
     private var calibrationReceiver: BroadcastReceiver? = null
+    private var profileVpnManager: ProfileVpnManager? = null
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleCalibrationIntent(intent)
+    }
+
+    @Deprecated("Deprecated in Android")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (profileVpnManager?.onActivityResult(requestCode, resultCode) == true) return
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     private fun handleCalibrationIntent(intent: Intent) {
@@ -34,7 +36,7 @@ class MainActivity: FlutterActivity() {
         val action = intent.getStringExtra("signupCalibration") ?: return
         val requestId = intent.getStringExtra("requestId") ?: return
         if (!requestId.matches(Regex("[a-f0-9]{32}"))) return
-        if (action !in listOf("snapshot", "login-profile", "nurture-profile", "nurture-layout", "nurture-swipe", "nurture-prepare-input", "nurture-release-input", "paste-comment", "submit-comment", "select-birthday", "paste-email", "paste-password", "paste-otp", "paste-user-otp", "back", "tap")) return
+        if (action !in listOf("snapshot", "logout-step", "login-profile", "nurture-profile", "nurture-layout", "nurture-swipe", "nurture-prepare-input", "nurture-release-input", "paste-comment", "submit-comment", "select-birthday", "paste-email", "paste-password", "paste-otp", "paste-user-otp", "back", "tap")) return
         signupCalibration?.invokeMethod("calibrate", mapOf(
             "action" to action,
             "userOtp" to intent.getStringExtra("userOtp"),
@@ -60,6 +62,27 @@ class MainActivity: FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            "test_tiktok/gecko_view",
+            GeckoViewFactory(this, flutterEngine.dartExecutor.binaryMessenger),
+        )
+        profileVpnManager = ProfileVpnManager(this)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/profile_vpn")
+            .setMethodCallHandler(profileVpnManager)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/gecko_storage")
+            .setMethodCallHandler { call, result ->
+                val storage = com.brisklane.browser.gecko.GeckoRuntimeHolder.runtime(this).storageController
+                when (call.method) {
+                    "clearContext" -> {
+                        val contextId = call.argument<String>("contextId")
+                        if (contextId.isNullOrBlank()) result.error("invalid_context", "Missing Gecko context ID", null)
+                        else { storage.clearDataForSessionContext(contextId); result.success(null) }
+                    }
+                    "clearAll" -> storage.clearData(org.mozilla.geckoview.StorageController.ClearFlags.ALL)
+                        .accept({ result.success(null) }, { result.error("clear_failed", it?.message, null) })
+                    else -> result.notImplemented()
+                }
+            }
         signupCalibration = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/signup_calibration")
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
             calibrationReceiver = object : BroadcastReceiver() {
@@ -92,69 +115,39 @@ class MainActivity: FlutterActivity() {
                 val attempt = call.argument<Number>("attempt")
                 val context = call.argument<String>("context") ?: "login"
                 val action = call.argument<String>("action") ?: "send-code"
-                val root = id?.let {
-                    flutterEngine.platformViewsController.getPlatformViewById(it.toInt())
-                }
-                val webView = root?.let { findWebView(it) }
-                if (webView == null) {
+                val gecko = GeckoPlatformView.active
+                if (gecko == null) {
                     result.success(null)
                     return@setMethodCallHandler
                 }
+                val state = if (context == "signup") "__flutterAutoSignup" else "__flutterAutoLogin"
+                val method = sendCodeTargetMethod(context, action)
                 if (call.method == "invalidateTarget") {
-                    NativeSendCodeTarget.invalidate(webView, context, action) { result.success(it) }
+                    val key = JSONObject.quote("$context/$action")
+                    gecko.evaluateNative("window.__flutterNativeTapTargets?.delete($key) === true") { value, _ ->
+                        result.success(value == true)
+                    }
                     return@setMethodCallHandler
                 }
-                if (attempt == null) {
+                if (attempt == null || method == null) {
                     result.success(null)
                     return@setMethodCallHandler
                 }
-                NativeSendCodeTarget.read(webView, attempt.toInt(), context, action) { result.success(it) }
-            }
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/webview_identity")
-            .setMethodCallHandler { call, result ->
-                if (call.method !in listOf("configure", "configureEngine", "configureSignupViewport")) {
-                    result.notImplemented()
-                    return@setMethodCallHandler
-                }
-                val id = call.argument<Any>("id")
-                val root = if (id is Number) {
-                    flutterEngine.platformViewsController.getPlatformViewById(id.toInt())
-                } else {
-                    val plugin = flutterEngine.plugins.get(InAppWebViewFlutterPlugin::class.java)
-                        as? InAppWebViewFlutterPlugin
-                    plugin?.headlessInAppWebViewManager?.webViews?.get(id as? String)
-                        ?.flutterWebView?.view
-                }
-                val webView = root?.let { findIdentityWebView(it) }
-                if (webView == null) {
-                    result.error("identity_view_missing", "Không tìm thấy WebView để cấu hình Chrome desktop.", null)
-                    return@setMethodCallHandler
-                }
-                try {
-                    if (call.method == "configureSignupViewport") {
-                        webView.settings.setSupportZoom(false)
-                        webView.settings.builtInZoomControls = false
-                        webView.settings.displayZoomControls = false
-                        webView.settings.textZoom = 100
-                        webView.setInitialScale(0)
-                        result.success(true)
-                        return@setMethodCallHandler
+                gecko.evaluateNative("window.$state?.$method?.(${attempt.toInt()}) ?? null") { value, _ ->
+                    val target = value as? Map<*, *>
+                    val x = (target?.get("x") as? Number)?.toDouble()
+                    val y = (target?.get("y") as? Number)?.toDouble()
+                    val viewportWidth = (target?.get("viewportWidth") as? Number)?.toDouble()
+                    val viewportHeight = (target?.get("viewportHeight") as? Number)?.toDouble()
+                    val view = gecko.view
+                    if (x == null || y == null || viewportWidth == null || viewportHeight == null ||
+                        viewportWidth <= 0 || viewportHeight <= 0 || x !in 0.0..<viewportWidth || y !in 0.0..<viewportHeight) {
+                        result.success(null)
+                    } else {
+                        val location = IntArray(2).also(view::getLocationOnScreen)
+                        val scale = view.width / viewportWidth
+                        result.success(mapOf("x" to location[0] + x * scale, "y" to location[1] + y * scale))
                     }
-                    if (call.method == "configureEngine") {
-                        result.success(DesktopChromeIdentity.configure(webView, emulateHardware = false,
-                            fixedSignupViewport = call.argument<Boolean>("fixedSignupViewport") == true,
-                            viewportWidthDp = call.argument<Number>("viewportWidth")?.toDouble()))
-                        return@setMethodCallHandler
-                    }
-                    val userAgent = call.argument<String>("userAgent")
-                        ?: error("Thiếu User-Agent Chrome desktop.")
-                    val fullVersion = call.argument<String>("chromeFullVersion")
-                        ?: error("Thiếu phiên bản Chrome cho Client Hints.")
-                    result.success(DesktopChromeIdentity.configure(webView, userAgent, fullVersion,
-                        fixedSignupViewport = call.argument<Boolean>("fixedSignupViewport") == true,
-                        viewportWidthDp = call.argument<Number>("viewportWidth")?.toDouble()))
-                } catch (error: Exception) {
-                    result.error("identity_unsupported", error.message, null)
                 }
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/comment_input")
@@ -163,8 +156,8 @@ class MainActivity: FlutterActivity() {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
-                val webView = findWebView(window.decorView)
-                if (webView == null) {
+                val gecko = GeckoPlatformView.active
+                if (gecko == null) {
                     result.success(false)
                     return@setMethodCallHandler
                 }
@@ -190,46 +183,38 @@ class MainActivity: FlutterActivity() {
                     result.success(false)
                     return@setMethodCallHandler
                 }
-                if (call.method == "paste") {
-                    if (context !in listOf("signup", "login") ||
-                        call.argument<String>("field") != "otp" || !text.matches(Regex("[0-9]{6}"))) {
-                        result.success(false)
-                        return@setMethodCallHandler
-                    }
-                    NativeClipboardPaste.paste(webView, guardScript) { result.success(it) }
-                } else {
-                    NativeKeyboardInput.typeText(webView, text, guardScript) { result.success(it) }
-                }
+                val script = """
+                    (() => {
+                      if (!($guardScript)) return false;
+                      const editor = document.activeElement;
+                      if (!editor || !editor.isConnected || editor.disabled || editor.readOnly) return false;
+                      const value = $encodedText;
+                      const proto = editor instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                      if (setter) setter.call(editor, value); else editor.value = value;
+                      editor.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText', data: value}));
+                      editor.dispatchEvent(new Event('change', {bubbles: true}));
+                      return editor.value === value;
+                    })()
+                """.trimIndent()
+                gecko.evaluateNative(script) { value, _ -> result.success(value == true) }
             }
     }
 
     override fun onDestroy() {
         calibrationReceiver?.let { unregisterReceiver(it) }
         calibrationReceiver = null
+        profileVpnManager = null
         super.onDestroy()
     }
 
-    private fun findWebView(view: View): WebView? {
-        // The IP checker adds an invisible headless WebView before TikTok.
-        // Keyboard input must target the visible account/comment page.
-        if (view.visibility != View.VISIBLE) return null
-        if (view is WebView) return view
-        if (view is ViewGroup) {
-            for (index in 0 until view.childCount) {
-                findWebView(view.getChildAt(index))?.let { return it }
-            }
-        }
-        return null
-    }
-
-    private fun findIdentityWebView(view: View): WebView? {
-        // Headless IP probes are invisible but need the same HTTP identity.
-        if (view is WebView) return view
-        if (view is ViewGroup) {
-            for (index in 0 until view.childCount) {
-                findIdentityWebView(view.getChildAt(index))?.let { return it }
-            }
-        }
-        return null
+    private fun sendCodeTargetMethod(context: String, action: String): String? = when {
+        action == "send-code" && context in listOf("login", "signup") -> "getSendCodeTarget"
+        action == "select-verification-email" && context == "login" -> "getEmailVerificationTarget"
+        action == "submit-password" && context == "signup" -> "getPasswordSubmitTarget"
+        action == "skip-username" && context == "signup" -> "getUsernameSkipTarget"
+        action == "continue-password" && context == "login" -> "getPasswordContinueTarget"
+        action == "continue-otp" && context == "login" -> "getOtpContinueTarget"
+        else -> null
     }
 }

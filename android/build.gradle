@@ -12,6 +12,18 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
+// file_picker skips the Kotlin plugin on AGP 9 and expects AGP's built-in
+// Kotlin, which gradle.properties disables for the other plugins. Apply it here.
+subprojects {
+    if (project.name == "file_picker") {
+        pluginManager.withPlugin("com.android.library") {
+            apply plugin: "org.jetbrains.kotlin.android"
+            tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                compilerOptions.jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+            }
+        }
+    }
+}
 
 tasks.register("clean", Delete) {
     delete rootProject.buildDir

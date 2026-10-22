@@ -12,7 +12,7 @@ enum SendCodeTapFailure {
   gestureTimedOut,
 }
 
-/// Taps an authorized target returned by the app's native WebView bridge.
+/// Taps an authorized target returned by the app's native GeckoView bridge.
 /// Cached DOM regions and native geometry avoid repeated layout measurement;
 /// every lookup still hit-tests the live button with a small random offset.
 /// The bridge verifies origin, attempt, focus, hit-testing and visible bounds;

@@ -449,7 +449,7 @@ const String autoSignupStepScript = r'''
       state.actions.add('skip-username');
       const current = state.usernameSkipRequest = { control: skip, at: Date.now(), failed: false };
       try {
-        const request = window.flutter_inappwebview?.callHandler('FlutterSignupUsernameSkip', config.attempt);
+        const request = window.gecko_bridge?.callHandler('FlutterSignupUsernameSkip', config.attempt);
         if (!request?.then) current.failed = true;
         else request.then(tapped => {
           if (state.active && state.usernameSkipRequest === current) current.failed = tapped !== true;
@@ -832,7 +832,7 @@ const String autoSignupStepScript = r'''
 
     try {
 
-      request = window.flutter_inappwebview?.callHandler(
+      request = window.gecko_bridge?.callHandler(
 
         'FlutterSignupPaste', config.attempt, field
 
@@ -934,7 +934,7 @@ const String autoSignupStepScript = r'''
       const current = state.passwordRequest = { control: submit, at: Date.now(), failed: false,
         value: config.manualFieldInput ? passwordInput.value : undefined };
       try {
-        const request = window.flutter_inappwebview?.callHandler('FlutterSignupPasswordSubmit', config.attempt);
+        const request = window.gecko_bridge?.callHandler('FlutterSignupPasswordSubmit', config.attempt);
         if (!request?.then) current.failed = true;
         else request.then(tapped => {
           if (state.active && state.passwordRequest === current) current.failed = tapped !== true;
@@ -1040,7 +1040,7 @@ const String autoSignupStepScript = r'''
         state.actions.add('send-code');
         const current = state.codeRequest = { at: Date.now(), control: sendCode, failed: false };
         try {
-          const request = window.flutter_inappwebview?.callHandler('FlutterSignupSendCode', config.attempt);
+          const request = window.gecko_bridge?.callHandler('FlutterSignupSendCode', config.attempt);
           if (!request?.then) current.failed = true;
           else request.then(tapped => {
             if (state.active && state.codeRequest === current) current.failed = tapped !== true;

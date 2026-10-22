@@ -275,6 +275,7 @@ void main() {
     'dropdown-not-moving',
     'html-dropdown',
     'html-dropdown-not-moving',
+    'gecko-combobox',
   ]) {
     testWidgets('recorded Android Accessibility flow: $scenario', (
       tester,
@@ -303,6 +304,7 @@ void main() {
           scenario == 'birthday-readback-mismatch';
       accessibility.freezeDropdown = scenario.endsWith('dropdown-not-moving');
       accessibility.hideNativeOptions = scenario.startsWith('html-');
+      accessibility.geckoComboboxes = scenario == 'gecko-combobox';
       var otpRequests = 0;
       var skipped = 0;
       accessibility.rejectSkip = scenario == 'skip-rejected';
@@ -357,6 +359,7 @@ void main() {
         'last-day',
         'earliest-year',
         'html-dropdown',
+        'gecko-combobox',
       ].contains(scenario)) {
         expect(failure, isNull);
         expect(skipped, 1);
@@ -618,6 +621,52 @@ void main() {
     expect(accessibility.pastes, isEmpty);
   });
 
+  testWidgets('a covered app pauses gestures and continues when uncovered', (
+    tester,
+  ) async {
+    final accessibility = _RecordedAccessibility(profile, recording);
+    var foreground = true;
+    final runner = SignupCoordinateRunner(
+      profile: profile,
+      accessibility: accessibility,
+      configuration: AppConfiguration(
+        userAgent: '',
+        comments: [],
+        signupEmail: 'test@example.org',
+        signupPassword: 'Example12!a',
+        loginUsername: '',
+        loginPassword: '',
+      ),
+      isActive: () => true,
+      isForeground: () => foreground,
+      isTikTok: () async => true,
+      getOtp: () async => throw StateError('Must not fetch OTP'),
+      onStatus: (_) {},
+      now: tester.binding.clock.now,
+      random: _BoundaryRandom(true),
+    );
+    Object? failure;
+    final run = runner.run().catchError((Object error) {
+      failure = error;
+    });
+    while (accessibility.actions.isEmpty) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    foreground = false;
+    await tester.pump(const Duration(seconds: 30));
+    expect(accessibility.actions, ['open-login']);
+    expect(failure, isNull);
+
+    foreground = true;
+    while (accessibility.actions.length < 2) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    runner.cancel();
+    await tester.pump(const Duration(seconds: 7));
+    await run;
+    expect(failure, isA<SignupCancelled>());
+  });
+
   Future<(Object?, _RecordedAccessibility, int)> runSignup(
     WidgetTester tester, {
     double shiftY = 0,
@@ -825,6 +874,10 @@ class _RecordedAccessibility extends SignupAccessibility {
   bool failBirthdayReadback = false;
   bool freezeDropdown = false;
   bool hideNativeOptions = false;
+
+  /// GeckoView exposes a combobox as an EditText named "`<field>`. Double-tap
+  /// for more options", with its selected value in a child node.
+  bool geckoComboboxes = false;
   int ignoredSwipes = 0;
   String? picker;
   int optionStart = 0;
@@ -929,6 +982,25 @@ class _RecordedAccessibility extends SignupAccessibility {
           }
         }
       }
+    }
+    if (geckoComboboxes) {
+      final values = <Map<String, dynamic>>[];
+      for (final node in data['nodes'] as List) {
+        if (!'${node['className']}'.endsWith('Spinner')) continue;
+        final field = '${node['hint']}';
+        values.add({
+          'id': '${node['id']}.value',
+          'text': node['text'],
+          'bounds': node['bounds'],
+          'className': 'android.view.View',
+          'enabled': true,
+        });
+        node
+          ..['className'] = 'android.widget.EditText'
+          ..['text'] = '$field. Double-tap for more options'
+          ..['hint'] = '';
+      }
+      (data['nodes'] as List).addAll(values);
     }
     if (picker != null && !hideNativeOptions) {
       final options = allOptions.skip(optionStart).take(6).toList();

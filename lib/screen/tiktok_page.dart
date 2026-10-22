@@ -1,8 +1,5 @@
 import 'dart:async';
-import 'dart:collection';
-
 import 'package:flutter/material.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../core/controller/tiktok_controller.dart';
 import '../core/scripts/auto_cookie_script.dart';
@@ -21,6 +18,8 @@ import '../core/webview_locale.dart';
 import '../core/webview_privacy.dart';
 import '../core/webview_user_agent.dart';
 import '../core/webview_timezone.dart';
+import '../core/gecko_browser.dart';
+import '../core/account_sessions.dart';
 import 'widgets/controller_scope.dart';
 import 'widgets/signup_viewport.dart';
 
@@ -316,7 +315,7 @@ class _TikTokView extends StatelessWidget {
                   key: const Key('nativeWebView'),
                   tooltip: logic.usesEngineIdentity
                       ? 'Dùng User-Agent đã chọn (thủ công)'
-                      : 'Desktop theo WebView (thủ công)',
+                      : 'Desktop theo GeckoView (thủ công)',
                   icon: const Icon(Icons.web, color: Colors.black),
                   onPressed: () {
                     logic.cancelAutoActions();
@@ -338,74 +337,37 @@ class _TikTokView extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               _signupViewport(
-                InAppWebView(
-                  initialUrlRequest: logic.needsDesktopIdentity
-                      ? null
-                      : URLRequest(
-                          url: WebUri(logic.initialUrl),
-                          headers: logic.navigationHeaders,
-                        ),
-                  initialUserScripts: UnmodifiableListView([
+                GeckoBrowserView(
+                  initialUrl: logic.initialUrl,
+                  contextId: logic.configuration.configurationId == null
+                      ? 'profile-${logic.configuration.userAgent.hashCode}'
+                      : geckoProfileContextId(logic.configuration.configurationId!),
+                  userAgent: logic.configuration.userAgent,
+                  initialScripts: [
                     if (!logic.useNativeWebView &&
                         needsAndroidDesktopIdentity &&
                         logic.configuration.webViewTimeZone != null)
-                      webViewTimeZoneUserScript(
-                        logic.configuration.webViewTimeZone!,
-                      ),
+                      webViewTimeZoneScript(logic.configuration.webViewTimeZone!),
                     // Every mode reports the configuration's phone GPU.
-                    gpuInfoUserScript(logic.configuration.gpuProfile),
-                    disableWebRtcUserScript(),
+                    gpuInfoScript(logic.configuration.gpuProfile),
+                    disableWebRtcScript,
                     if (forceEnglishWebViewLocale && !logic.useNativeWebView)
-                      englishWebViewLocaleUserScript(),
+                      englishWebViewLocaleScript,
                     if (!logic.useNativeWebView &&
                         !logic.usesAccessibilityAccountFlow)
-                      UserScript(
-                        source: inlineVideoScript,
-                        injectionTime:
-                            UserScriptInjectionTime.AT_DOCUMENT_START,
-                      ),
+                      inlineVideoScript,
                     if (!logic.useNativeWebView &&
                         !logic.usesAccessibilityAccountFlow)
-                      UserScript(
-                        source: autoAcceptCookieScript,
-                        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
-                        forMainFrameOnly: true,
-                      ),
+                      autoAcceptCookieScript,
                     if (!logic.useNativeWebView &&
                         !logic.usesAccessibilityAccountFlow)
-                      UserScript(
-                        source: autoSelectInterestScript,
-                        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
-                        forMainFrameOnly: true,
-                      ),
-                  ]),
-                  initialSettings: InAppWebViewSettings(
-                    userAgent: logic.usesEngineIdentity
-                        ? null
-                        : logic.configuration.userAgent,
-                    preferredContentMode: UserPreferredContentMode.DESKTOP,
-                    useWideViewPort: true,
-                    loadWithOverviewMode: true,
-                    initialScale: 0,
-                    supportZoom: !logic.usesAccessibilityAccountFlow,
-                    builtInZoomControls: !logic.usesAccessibilityAccountFlow,
-                    displayZoomControls: false,
-                    textZoom: 100,
-                    javaScriptEnabled: true,
-                    mediaPlaybackRequiresUserGesture: false,
-                    allowsInlineMediaPlayback: true,
-                    incognito: false,
-                    cacheEnabled: true,
-                  ),
-                  onWebViewCreated: logic.onWebViewCreated,
-                  onReceivedHttpAuthRequest: logic.onReceivedHttpAuthRequest,
+                      autoSelectInterestScript,
+                  ],
+                  onCreated: logic.onWebViewCreated,
                   onLoadStart: logic.onLoadStart,
                   onProgressChanged: logic.onProgressChanged,
                   onLoadStop: logic.onLoadStop,
                   onReceivedError: logic.onReceivedError,
-                  onReceivedHttpError: logic.onReceivedHttpError,
-                  onConsoleMessage: logic.onConsoleMessage,
-                  shouldOverrideUrlLoading: logic.shouldOverrideUrlLoading,
                 ),
               ),
               if (logic.loadingProgress < 100)

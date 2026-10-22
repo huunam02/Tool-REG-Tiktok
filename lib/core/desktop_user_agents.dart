@@ -13,16 +13,7 @@ final List<String> androidDesktopUserAgents = List<String>.unmodifiable([
   miuiBrowserUserAgent,
 ]);
 
-/// iOS keeps macOS desktop identities. No generated Windows templates.
-final List<String> iosDesktopUserAgents = List<String>.unmodifiable([
-  for (final major in recentChromeFullVersions.keys)
-    chromeDesktopUserAgent(macChromePlatform, major: major),
-]);
-
-List<String> get desktopUserAgents =>
-    defaultTargetPlatform == TargetPlatform.iOS
-    ? iosDesktopUserAgents
-    : androidDesktopUserAgents;
+List<String> get desktopUserAgents => androidDesktopUserAgents;
 
 const _usedUserAgentsKey = 'desktop_user_agents_used';
 const _directUserAgentKey = 'desktop_user_agent_direct';

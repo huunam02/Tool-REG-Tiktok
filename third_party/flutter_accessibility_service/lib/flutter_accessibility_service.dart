@@ -26,6 +26,9 @@ class FlutterAccessibilityService {
   static Future<bool> signupSubmitComment() async =>
       await _methodChannel.invokeMethod<bool>('signupSubmitComment') ?? false;
 
+  static Future<bool> signupClearOtp(String expected) async =>
+      await _methodChannel.invokeMethod<bool>('signupClearOtp', {'expected': expected}) ?? false;
+
   static Future<bool> signupDismissKeyboard() async =>
       await _methodChannel.invokeMethod<bool>('signupDismissKeyboard') ?? false;
 

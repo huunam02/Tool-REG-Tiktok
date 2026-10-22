@@ -44,6 +44,7 @@ class SignupCoordinateRunner {
     this.onUsernameSkipped,
     this.isPageReady,
     this.readBirthdayMenu,
+    this.isForeground,
     DateTime Function()? now,
     Random? random,
   }) : now = now ?? DateTime.now,
@@ -81,6 +82,9 @@ class SignupCoordinateRunner {
   /// WebView load completion is separate from visible Accessibility nodes.
   final bool Function()? isPageReady;
   final Future<SignupBirthdayMenu?> Function(String field)? readBirthdayMenu;
+
+  /// False while a notification shade or system dialog covers the app.
+  final bool Function()? isForeground;
   final Set<String> _actions = {};
   bool _cancelled = false;
   bool readyToSubmit = false;
@@ -92,6 +96,11 @@ class SignupCoordinateRunner {
 
   Future<void> _guard() async {
     if (_cancelled || !isActive()) throw const SignupCancelled();
+    // Wait out a shade or dialog: a gesture now would land on it, not TikTok.
+    while (!(isForeground?.call() ?? true)) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (_cancelled || !isActive()) throw const SignupCancelled();
+    }
     if (!await isTikTok()) throw StateError('Đã rời trang TikTok.');
     if (_cancelled || !isActive()) throw const SignupCancelled();
   }
@@ -413,6 +422,19 @@ class SignupCoordinateRunner {
             n.className.endsWith('Spinner') &&
             n.text.trim() == value &&
             n.label.toLowerCase().contains(field.toLowerCase()),
+      ) ||
+      // GeckoView exposes the combobox as "<field>. Double-tap…" and its
+      // selected value as a child node inside the combobox bounds.
+      s.nodes.any(
+        (n) =>
+            n.className.endsWith('EditText') &&
+            RegExp('^$field\\b', caseSensitive: false).hasMatch(n.label) &&
+            s.nodes.any(
+              (c) =>
+                  c != n &&
+                  c.text.trim() == value &&
+                  n.bounds.contains(c.bounds.center),
+            ),
       );
 
   bool _authenticated(SignupSnapshot s) =>

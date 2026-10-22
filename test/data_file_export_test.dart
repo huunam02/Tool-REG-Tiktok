@@ -111,6 +111,29 @@ void main() {
     },
   );
 
+  test('a configuration without proxy round-trips as Mặc định của máy', () {
+    final records = decodeConfigurationImportFile(
+      ConfigurationImportFile(
+        'export.xlsx',
+        encodeDataExport(
+          configurations: [
+            SavedProxy(
+              id: 14,
+              name: 'Không proxy',
+              proxy: null,
+              userAgent: 'test-agent',
+              account: configuration.account,
+            ),
+          ],
+          accounts: const [],
+        ),
+      ),
+    );
+    expect(records, hasLength(1));
+    expect(records.single.proxy, isNull);
+    expect(sameAccount(records.single.account, configuration.account), isTrue);
+  });
+
   test(
     'exports all nurture totals and accounts without a saved configuration',
     () {
@@ -463,7 +486,7 @@ void main() {
 
     expect(decode('samsung galaxy s23').single.gpuProfileId, 'galaxy-s23');
     expect(
-      () => decode('iPhone 15'),
+      () => decode('Desktop PC'),
       throwsA(
         isA<FormatException>().having(
           (error) => error.message,

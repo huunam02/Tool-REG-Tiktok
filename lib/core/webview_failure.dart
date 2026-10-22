@@ -1,4 +1,4 @@
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'gecko_browser.dart';
 
 class WebViewFailure {
   const WebViewFailure(
@@ -33,7 +33,7 @@ class WebViewFailure {
   );
 
   factory WebViewFailure.network(
-    WebResourceError error, {
+    GeckoWebResourceError error, {
     required bool usingProxy,
   }) {
     final code = RegExp(
@@ -44,7 +44,7 @@ class WebViewFailure {
     String message;
     var connectionFailure = true;
     if (usingProxy &&
-        (error.type == WebResourceErrorType.PROXY_AUTHENTICATION ||
+        (error.type == GeckoWebResourceErrorType.proxyAuthentication ||
             code == 'ERR_INVALID_AUTH_CREDENTIALS')) {
       return proxyAuth;
     } else if (code == 'ERR_PROXY_AUTH_UNSUPPORTED') {
@@ -61,27 +61,27 @@ class WebViewFailure {
       message =
           'Không kết nối được tới proxy. '
           'Kiểm tra địa chỉ, cổng và kết nối mạng.';
-    } else if (error.type == WebResourceErrorType.TIMEOUT ||
+    } else if (error.type == GeckoWebResourceErrorType.timeout ||
         code == 'ERR_CONNECTION_TIMED_OUT' ||
         code == 'ERR_TIMED_OUT') {
       message =
           'Kết nối$via quá thời gian chờ. '
           'Kiểm tra kết nối rồi thử lại.';
-    } else if (error.type == WebResourceErrorType.HOST_LOOKUP ||
+    } else if (error.type == GeckoWebResourceErrorType.hostLookup ||
         code == 'ERR_NAME_NOT_RESOLVED') {
       message =
           'Không phân giải được địa chỉ kết nối$via. '
           'Kiểm tra địa chỉ và mạng rồi thử lại.';
-    } else if (error.type == WebResourceErrorType.CANNOT_CONNECT_TO_HOST ||
-        error.type == WebResourceErrorType.NETWORK_CONNECTION_LOST ||
+    } else if (error.type == GeckoWebResourceErrorType.cannotConnectToHost ||
+        error.type == GeckoWebResourceErrorType.networkConnectionLost ||
         code == 'ERR_CONNECTION_RESET' ||
         code == 'ERR_CONNECTION_CLOSED' ||
         code == 'ERR_INTERNET_DISCONNECTED') {
       message =
           'Kết nối$via thất bại hoặc bị ngắt. '
           'Kiểm tra kết nối rồi thử lại.';
-    } else if (error.type == WebResourceErrorType.FAILED_SSL_HANDSHAKE ||
-        error.type == WebResourceErrorType.SECURE_CONNECTION_FAILED ||
+    } else if (error.type == GeckoWebResourceErrorType.failedSslHandshake ||
+        error.type == GeckoWebResourceErrorType.secureConnectionFailed ||
         (code?.startsWith('ERR_CERT_') ?? false)) {
       message =
           'Không thiết lập được kết nối HTTPS$via. '

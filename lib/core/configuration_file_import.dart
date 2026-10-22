@@ -9,7 +9,6 @@ import 'package:xml/xml.dart';
 
 import 'configuration_data.dart';
 import 'account_password.dart';
-import 'app_configuration.dart';
 import 'data_excel_layout.dart';
 import 'gpu_profile.dart';
 import 'nurture_data.dart';
@@ -155,7 +154,9 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
               !dataMail.contains('|') && columns.containsKey('Email');
           final record = legacy
               ? ImportedConfiguration(
-                  proxy: WebViewProxy.parseImport(read('Proxy')),
+                  proxy: ImportedConfiguration.parseImportedProxy(
+                    read('Proxy'),
+                  ),
                   account: AccountCredentials(
                     email: read('Email'),
                     password: read('Password').trim().isEmpty

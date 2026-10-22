@@ -161,7 +161,7 @@ void main() {
                 matches(RegExp(r'^[A-Z][a-z]{5,9}[0-9]{2}[!@#$%^&*]$')),
               );
               expect(data[index].account.mailboxPassword, ' x:secret<&> ');
-              expect(data[index].proxy.username, 'user');
+              expect(data[index].proxy!.username, 'user');
               expect(data[index].statusAccount, AccountStatus.unregistered);
             }
           },

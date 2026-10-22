@@ -109,12 +109,18 @@ class NurtureVideo {
 
   static NurtureVideo? read(SignupSnapshot snapshot) {
     if (!snapshot.ready || !snapshot.viewport.valid) return null;
-    final nodes = {for (final n in snapshot.nodes) n.id: n};
+    // Gecko retains the clock in the tree after the player controls fade out.
+    // Hidden nodes supply playback metadata and ancestor geometry only; action
+    // targets still come exclusively from the visible snapshot below.
+    final nodes = {
+      for (final n in [...snapshot.hiddenNodes, ...snapshot.nodes]) n.id: n,
+    };
     final candidates = <NurtureVideo>[];
     for (final button in snapshot.nodes.where(
       (n) =>
           n.clickable &&
           n.enabled &&
+          !n.bounds.intersect(snapshot.viewport.bounds).isEmpty &&
           RegExp(
             r'^Read or add comments\b',
             caseSensitive: false,
@@ -122,7 +128,7 @@ class NurtureVideo {
     )) {
       final actionRoot = button.id.substring(0, button.id.lastIndexOf('.'));
       final card = actionRoot.substring(0, actionRoot.lastIndexOf('.'));
-      final children = snapshot.nodes
+      final children = nodes.values
           .where((n) => n.id.startsWith('$card.'))
           .toList();
       final times = children
@@ -194,7 +200,10 @@ class NurtureVideo {
       final inside = snapshot.nodes
           .where((n) => n.id.startsWith('${dialog.id}.'))
           .toList();
-      final times = inside.where((n) => _time.hasMatch(n.text.trim()));
+      final times = nodes.values.where(
+        (n) =>
+            n.id.startsWith('${dialog.id}.') && _time.hasMatch(n.text.trim()),
+      );
       if (times.length != 1) continue;
       final url = inside
           .map((n) => _videoUrl.firstMatch(n.text.trim())?.group(1))
@@ -614,7 +623,7 @@ class NurtureAccessibilityRunner {
   /// and public comments are content, never system prompts.
   List<SignupNode> _prompts(SignupSnapshot s) {
     final current = NurtureVideo.read(s);
-    final editor = _editor(s);
+    final editor = _editorMetadata(s);
     final close = _close(s);
     String? panelRoot;
     if (editor != null && close != null) {
@@ -671,11 +680,7 @@ class NurtureAccessibilityRunner {
   }
 
   SignupNode? _close(SignupSnapshot s) {
-    final editors = s.editors.where(
-      (n) =>
-          RegExp(r'comment|bình luận', caseSensitive: false).hasMatch(n.hint),
-    );
-    if (editors.length != 1) return null;
+    if (_editorMetadata(s) == null) return null;
     return s.find(RegExp(r'^exit$', caseSensitive: false));
   }
 
@@ -799,6 +804,7 @@ class NurtureAccessibilityRunner {
           );
         }
         last[name] = _now();
+        debugPrint('Nurture search step: $name');
         if (name == 'paste') {
           final result = await accessibility.paste(keyword, 'search');
           _check();
@@ -856,6 +862,46 @@ class NurtureAccessibilityRunner {
               n.text.trim() == 'Videos',
         )
         .firstOrNull;
+    final query = keyword.toLowerCase();
+    final viewAll = s.nodes
+        .where(
+          (n) =>
+              n.text.trim().startsWith('View all results for') &&
+              n.text.toLowerCase().contains(query),
+        )
+        .firstOrNull;
+    final drawer = s.nodes
+        .where(
+          (n) =>
+              n.editable &&
+              n.bounds.width > v.width * .2 &&
+              n.bounds.center.dx < v.left + v.width * .5 &&
+              !n.bounds.intersect(v).isEmpty &&
+              !RegExp('comment', caseSensitive: false).hasMatch(n.hint),
+        )
+        .firstOrNull;
+    if (drawer != null) {
+      // Gecko can keep the search drawer open after submitting. The results
+      // behind it are still accessible, but their tap targets are covered.
+      if ((fired['view-all'] ?? 0) > 0 && videosTab != null) {
+        final close = s.nodes
+            .where(
+              (n) =>
+                  n.clickable &&
+                  n.enabled &&
+                  n.name == 'Close' &&
+                  n.bounds.center.dx < v.left + v.width * .5,
+            )
+            .firstOrNull;
+        return close == null ? null : ('close-search', close);
+      }
+      if (viewAll != null) {
+        // Let a slow navigation use the full search deadline after two taps.
+        return (fired['view-all'] ?? 0) < 2 ? ('view-all', viewAll) : null;
+      }
+      if (!drawer.focused) return ('focus-search', drawer);
+      return (fired['paste'] ?? 0) == 0 ? ('paste', drawer) : null;
+    }
     if (videosTab != null) {
       // The Top tab mixes in users and LIVE rooms; Videos holds only posts.
       if ((fired['videos-tab'] ?? 0) == 0) return ('videos-tab', videosTab);
@@ -874,26 +920,7 @@ class NurtureAccessibilityRunner {
       }
       return null;
     }
-    final query = keyword.toLowerCase();
-    final viewAll = s.nodes
-        .where(
-          (n) =>
-              n.text.trim().startsWith('View all results for') &&
-              n.text.toLowerCase().contains(query),
-        )
-        .firstOrNull;
     if (viewAll != null) return ('view-all', viewAll);
-    final drawer = s.nodes
-        .where(
-          (n) =>
-              n.editable &&
-              n.focused &&
-              n.bounds.width > v.width * .2 &&
-              n.bounds.center.dx < v.left + v.width * .5 &&
-              !RegExp('comment', caseSensitive: false).hasMatch(n.hint),
-        )
-        .firstOrNull;
-    if (drawer != null) return ('paste', drawer);
     final sidebar = s.nodes
         .where((n) => n.editable && n.bounds.center.dx < v.left + v.width * .1)
         .firstOrNull;
@@ -1025,9 +1052,8 @@ class NurtureAccessibilityRunner {
         if (count == before + 1) {
           raised = true;
         } else if (raised && count == before) {
-          throw const _LikeSkipped(
-            'TikTok đã hoàn lại lượt thả tim (tài khoản có thể bị hạn chế).',
-          );
+          // Continue quietly without counting or retrying a rolled-back like.
+          return;
         }
       } while (_now().isBefore(until));
       if (!raised) throw const _LikeSkipped('Chưa xác nhận được thả tim.');
@@ -1084,7 +1110,7 @@ class NurtureAccessibilityRunner {
 
   Future<bool> _closeEmptyComments() async {
     var s = await _snapshot();
-    final editor = _editor(s);
+    final editor = _editorMetadata(s);
     final close = _close(s);
     if (editor == null || editor.length != 0 || close == null) return false;
     final kind = NurtureVideo.read(s)?.orientation.name ?? 'shared';
@@ -1100,7 +1126,7 @@ class NurtureAccessibilityRunner {
       beforeDispatch: (point) async {
         final fresh = await _snapshot();
         final button = _close(fresh);
-        if (_editor(fresh)?.length != 0 ||
+        if (_editorMetadata(fresh)?.length != 0 ||
             button == null ||
             !button.bounds.contains(fresh.viewport.toScreen(point))) {
           throw StateError('Có thay đổi trong ô bình luận; đã giữ bản nháp.');
@@ -1126,6 +1152,18 @@ class NurtureAccessibilityRunner {
         )
         .toList();
     return list.length == 1 ? list.single : null;
+  }
+
+  /// Hidden fields supply draft metadata only. All input gestures still use
+  /// [_editor], which requires a visible, enabled control.
+  SignupNode? _editorMetadata(SignupSnapshot s) {
+    final fields = {
+      for (final n in [...s.hiddenNodes, ...s.nodes])
+        if (n.editable &&
+            RegExp('comment|bình luận', caseSensitive: false).hasMatch(n.hint))
+          n.id: n,
+    }.values;
+    return fields.length == 1 ? fields.single : null;
   }
 
   int _matches(SignupSnapshot s, String text) =>
@@ -1329,12 +1367,19 @@ class NurtureAccessibilityRunner {
       );
       await _waitFor(video.key, (s) => _close(s) == null);
     } on _CommentNotReady catch (error) {
-      final empty = video.detail && _editor(await _snapshot())?.length == 0;
-      if (!pasteAttempted && (empty || await _closeEmptyComments())) {
-        onCommentSkipped?.call(
-          '${error.message} Bỏ qua bình luận này và tiếp tục nuôi.',
-        );
-        return;
+      if (!pasteAttempted) {
+        // Gecko can omit the detail editor while it is unfocused. No paste
+        // was attempted, so an unavailable editor does not introduce a draft.
+        // A visible existing draft still prevents advancing to another post.
+        final canContinue = video.detail
+            ? (_editorMetadata(await _snapshot())?.length ?? 0) == 0
+            : await _closeEmptyComments();
+        if (canContinue) {
+          onCommentSkipped?.call(
+            '${error.message} Bỏ qua bình luận này và tiếp tục nuôi.',
+          );
+          return;
+        }
       }
       throw StateError(
         '${error.message} Đã dừng và giữ bản nháp; không gửi lại.',

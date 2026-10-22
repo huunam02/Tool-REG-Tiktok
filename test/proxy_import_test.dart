@@ -26,7 +26,7 @@ void main() {
 
   test('imports proxy address, port and separate credentials', () {
     final proxy = WebViewProxy.parseImport(record);
-    expect(proxy.uri.toString(), 'http://192.0.2.7:9323');
+    expect(proxy.uri.toString(), 'socks5://192.0.2.7:9323');
     expect(proxy.uri.userInfo, isEmpty);
     expect(proxy.username, 'proxy-user');
     expect(proxy.password, 'proxy-password');
@@ -182,7 +182,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('savedProxyName')), findsNothing);
     expect(text(tester, 'savedAccountEmail'), 'person@example.com');
-    expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
+    expect(text(tester, 'savedProxyUrl'), 'socks5://192.0.2.7:9323');
     expect(text(tester, 'savedProxyUsername'), 'proxy-user');
     expect(text(tester, 'savedProxyPassword'), 'proxy-password');
     expect(text(tester, 'savedProxyTimeZone'), 'America/New_York');
@@ -233,7 +233,7 @@ void main() {
         suffix == '|1' || suffix == '|2',
       );
       expect(text(tester, 'savedAccountEmail'), 'person@example.com');
-      expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
+      expect(text(tester, 'savedProxyUrl'), 'socks5://192.0.2.7:9323');
       expect(text(tester, 'savedMailboxPassword'), 'Mailbox-password');
       if (suffix == '|2') {
         expect(
@@ -285,7 +285,7 @@ void main() {
     expect(text(tester, 'proxyImportData'), isEmpty);
     expect(find.byKey(const Key('savedProxyName')), findsNothing);
     expect(text(tester, 'savedAccountEmail'), 'person@example.com');
-    expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
+    expect(text(tester, 'savedProxyUrl'), 'socks5://192.0.2.7:9323');
     expect(text(tester, 'savedProxyUsername'), 'proxy-user');
     expect(text(tester, 'savedProxyPassword'), 'proxy-password');
     expect(tester.takeException(), isNull);
@@ -520,7 +520,7 @@ void main() {
       await tester.ensureVisible(find.byKey(Key(entry.key)));
       await tester.enterText(find.byKey(Key(entry.key)), entry.value);
     }
-    expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
+    expect(text(tester, 'savedProxyUrl'), 'socks5://192.0.2.7:9323');
     expect(text(tester, 'savedAccountPassword'), 'TikTok-password');
     expect(text(tester, 'savedMailboxPassword'), 'Mailbox-password');
     await tester.tap(find.byKey(const Key('saveProxyEntry')));
@@ -600,7 +600,7 @@ void main() {
       expect(find.byKey(const Key('applyProxyImportData')), findsNothing);
       await tester.enterText(
         find.byKey(const Key('savedProxyUrl')),
-        'http://192.0.2.7:9323',
+        'socks5://192.0.2.7:9323',
       );
       await tester.enterText(
         find.byKey(const Key('savedProxyUsername')),
@@ -652,7 +652,7 @@ void main() {
       await tester.tap(find.byKey(const Key('applyProxyImportData')));
       await tester.pumpAndSettle();
       expect(
-        find.text('Dòng 1: Nhập proxy HTTP/HTTPS dạng host:port.'),
+        find.text('Dòng 1: Nhập proxy dạng host:port.'),
         findsOneWidget,
       );
       for (final entry in originals.entries) {
@@ -664,7 +664,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.text('Dòng 1: Nhập proxy HTTP/HTTPS dạng host:port.'),
+        find.text('Dòng 1: Nhập proxy dạng host:port.'),
         findsNothing,
       );
       await tester.tap(find.byKey(const Key('applyProxyImportData')));
@@ -672,8 +672,40 @@ void main() {
       expect(find.byKey(const Key('savedProxyName')), findsNothing);
       expect(text(tester, 'savedAccountEmail'), 'person@example.com');
       expect(text(tester, 'savedProxyUserAgent'), 'test-agent');
-      expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
+      expect(text(tester, 'savedProxyUrl'), 'socks5://192.0.2.7:9323');
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('signup email accepts manual input and Data Mail fills it', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProxyManagementPage(
+          store: MemoryProxyStore(),
+          detectTimeZone: _testTimeZone,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('addProxy')));
+    await tester.pumpAndSettle();
+    final email = find.byKey(const Key('savedAccountEmail'));
+    final dataMail = find.byKey(const Key('savedMailboxPassword'));
+    await tester.ensureVisible(dataMail);
+    await tester.enterText(dataMail, 'first@example.com|p|token|client|alt');
+    expect(text(tester, 'savedAccountEmail'), 'first@example.com');
+
+    await tester.ensureVisible(email);
+    await tester.enterText(email, 'typed@example.com');
+    await tester.enterText(dataMail, 'second@example.com|p|token|client|alt');
+    expect(text(tester, 'savedAccountEmail'), 'typed@example.com');
+
+    await tester.enterText(email, '');
+    await tester.enterText(dataMail, 'third@example.com|p|token|client|alt');
+    expect(text(tester, 'savedAccountEmail'), 'third@example.com');
+  });
 }

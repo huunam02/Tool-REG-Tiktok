@@ -22,7 +22,7 @@ function setup(host = 'www.tiktok.com') {
   const originalFetch = () => new Promise(resolve => responses.push(resolve));
   const originalOpen = XHR.prototype.open;
   const window = { __manualViewingConfig: {session: 's', segment: '1'}, fetch: originalFetch, XMLHttpRequest: XHR,
-    flutter_inappwebview: { callHandler(name, value) { messages.push({name, value}); return Promise.resolve(); } },
+    gecko_bridge: { callHandler(name, value) { messages.push({name, value}); return Promise.resolve(); } },
     addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name),
     scrollBy() { assert.fail('Must not automate viewing'); },
   };

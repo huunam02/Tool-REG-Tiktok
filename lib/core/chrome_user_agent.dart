@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 // Chrome desktop stable, verified against Chrome Releases on 2026-10-15.
 const currentChromeMajor = 155;
 const currentChromeFullVersion = '155.0.8059.79';
@@ -11,10 +9,7 @@ String get windowsChromeUserAgent =>
 bool isWindowsChromeUserAgent(String agent) =>
     agent.contains('($windowsChromePlatform)') && agent.contains('Chrome/');
 
-const macChromePlatform = 'Macintosh; Intel Mac OS X 10_15_7';
-String get desktopChromePlatform => defaultTargetPlatform == TargetPlatform.iOS
-    ? macChromePlatform
-    : linuxChromePlatform;
+const desktopChromePlatform = linuxChromePlatform;
 const recentChromeFullVersions = <int, String>{
   151: '151.0.7922.173',
   152: '152.0.7977.64',
@@ -58,8 +53,7 @@ String chromeFullVersionForUserAgent(String agent) =>
 /// Normalize existing Chrome/Edge desktop identities without changing custom
 /// non-Chromium strings. Supported Chrome versions retain their selected major.
 String normalizeDesktopUserAgentForPlatform(String agent) {
-  if (defaultTargetPlatform == TargetPlatform.android &&
-      isMiuiBrowserUserAgent(agent)) {
+  if (isMiuiBrowserUserAgent(agent)) {
     return miuiBrowserUserAgent;
   }
   final chrome = RegExp(
@@ -69,8 +63,7 @@ String normalizeDesktopUserAgentForPlatform(String agent) {
   );
   return chrome.hasMatch(agent)
       ? chromeDesktopUserAgent(
-          defaultTargetPlatform == TargetPlatform.android &&
-                  isWindowsChromeUserAgent(agent)
+          isWindowsChromeUserAgent(agent)
               ? windowsChromePlatform
               : desktopChromePlatform,
           major: recentChromeMajorForUserAgent(agent),

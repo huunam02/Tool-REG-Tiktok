@@ -186,7 +186,7 @@ class _Service extends SignupAccessibility {
       allowMove = true,
       stall = false;
   bool confirmPost = true, suppressed = false;
-  bool focusWorks = true;
+  bool focusWorks = true, hiddenEditor = false;
   int missingClockAfterOpen = 0, missingClockFrames = 0, panelDelaySeconds = 0;
   int closes = 0;
 
@@ -244,6 +244,10 @@ class _Service extends SignupAccessibility {
       likes = '${int.parse(likes!) - 1}';
     }
     final nodes = data['nodes'] as List;
+    if (hiddenEditor) {
+      data['hidden'] = nodes.where((n) => n['id'] == 'panel.editor').toList();
+      nodes.removeWhere((n) => n['id'] == 'panel.editor');
+    }
     if (dialogUntil != null && clock.isBefore(dialogUntil!)) {
       nodes.add({
         ..._node('9', const Rect.fromLTWH(100, 300, 200, 100)),
@@ -346,6 +350,13 @@ class _Service extends SignupAccessibility {
 
 /// TikTok's sidebar search → suggestions → Videos tab → result player.
 class _SearchService extends SignupAccessibility {
+  _SearchService({
+    this.hiddenClock = false,
+    this.keepsDrawer = false,
+    this.hiddenEditor = false,
+  });
+  final bool hiddenClock, keepsDrawer, hiddenEditor;
+  bool drawerClosed = false;
   DateTime clock = DateTime(2026);
   String state = 'feed';
   int video = 1;
@@ -375,7 +386,11 @@ class _SearchService extends SignupAccessibility {
         hint: 'trending phrase',
       ),
     ];
-    if (state == 'drawer' || state == 'typed') {
+    final drawerOpen =
+        state == 'drawer' ||
+        state == 'typed' ||
+        (keepsDrawer && state == 'results' && !drawerClosed);
+    if (drawerOpen) {
       nodes.add(
         _node('0.2', const Rect.fromLTWH(40, 60, 160, 20), text: 'Search'),
       );
@@ -389,8 +404,11 @@ class _SearchService extends SignupAccessibility {
           hint: 'trending phrase',
         ),
       );
+      nodes.add(
+        _button('0.8', const Rect.fromLTWH(190, 55, 15, 15), text: 'Close'),
+      );
     }
-    if (state == 'typed') {
+    if (state == 'typed' || (drawerOpen && state == 'results')) {
       nodes.add(
         _node(
           '0.4',
@@ -447,10 +465,19 @@ class _SearchService extends SignupAccessibility {
         ),
       ]);
     }
+    final hidden = nodes
+        .where(
+          (n) =>
+              (hiddenClock && n['id'] == '9.0.1') ||
+              (hiddenEditor && n['id'] == '9.3.0.1'),
+        )
+        .toList();
+    nodes.removeWhere((n) => hidden.contains(n));
     return SignupSnapshot({
       'ready': true,
       'webBounds': [vp.left, vp.top, vp.right, vp.bottom],
       'nodes': nodes,
+      'hidden': hidden,
     });
   }
 
@@ -466,7 +493,15 @@ class _SearchService extends SignupAccessibility {
     } else if (state == 'typed' && hit(40, 300, 160, 20)) {
       tapped.add('view-all');
       state = 'results';
-    } else if (state == 'results' && hit(160, 10, 30, 15)) {
+    } else if (state == 'results' &&
+        keepsDrawer &&
+        !drawerClosed &&
+        hit(190, 55, 15, 15)) {
+      tapped.add('close-search');
+      drawerClosed = true;
+    } else if (state == 'results' &&
+        (!keepsDrawer || drawerClosed) &&
+        hit(160, 10, 30, 15)) {
       tapped.add('videos-tab');
       state = 'videos';
     } else if (state == 'videos' && hit(40, 40, 350, 120)) {
@@ -765,7 +800,7 @@ void main() {
     });
 
     test(
-      'a like TikTok rolls back is reported, not counted or retried',
+      'a rolled-back like quietly continues without counting or retrying',
       () async {
         final service = _Service()
           ..likes = '35'
@@ -775,7 +810,7 @@ void main() {
         expect(service.likes, '35');
         expect(totals.likes, 0);
         expect(totals.fullVideos, 1);
-        expect(skipped.single, contains('hoàn lại'));
+        expect(skipped, isEmpty);
       },
     );
 
@@ -1142,7 +1177,32 @@ void main() {
     expect(service.posts, 1);
   });
 
+  test('a hidden feed comment draft is preserved before any gesture', () async {
+    final service = _Service()
+      ..hiddenEditor = true
+      ..panel = true
+      ..length = 5;
+    final runner = NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: ['Configured comment'],
+      isActive: () => true,
+      isTikTok: () async => true,
+      onProgress: (_, _) async {},
+      random: _Random(true),
+      now: () => service.clock,
+      delay: service.delay,
+    );
+    await expectLater(runner.start(), throwsStateError);
+    expect(
+      [service.taps, service.pastes, service.posts, service.swipes],
+      [0, 0, 0, 0],
+    );
+    expect(service.length, 5);
+  });
+
   for (final scenario in [
+    'hidden-empty-editor',
     'clock-reflow',
     'focus-not-ready',
     'late-panel',
@@ -1154,6 +1214,8 @@ void main() {
     test('nurture continues through $scenario without switching off', () async {
       final service = _Service();
       switch (scenario) {
+        case 'hidden-empty-editor':
+          service.hiddenEditor = true;
         case 'clock-reflow':
           service.missingClockAfterOpen = 3;
         case 'focus-not-ready':
@@ -1188,7 +1250,9 @@ void main() {
       await runner.start();
       expect(runner.totals.fullVideos, 1);
       expect(service.panel, isFalse);
-      if (scenario == 'focus-not-ready' || scenario == 'late-panel') {
+      if (scenario == 'focus-not-ready' ||
+          scenario == 'late-panel' ||
+          scenario == 'hidden-empty-editor') {
         expect(service.pastes, 0);
         expect(service.posts, 0);
         expect(skipped, hasLength(1));
@@ -1312,6 +1376,22 @@ void main() {
     expect(video.orientation, NurtureVideoOrientation.detail);
   });
 
+  test(
+    'reads the Gecko search player after its playback controls fade out',
+    () async {
+      final service = _SearchService(hiddenClock: true)
+        ..state = 'player'
+        ..clock = DateTime(2026).add(const Duration(seconds: 7));
+      final snapshot = await service.snapshot();
+      expect(snapshot.nodes.any((n) => n.id == '9.0.1'), isFalse);
+      final video = NurtureVideo.read(snapshot);
+      expect(video, isNotNull);
+      expect(video!.position, 7);
+      expect(video.duration, 30);
+      expect(video.key, 'detail|900001|30');
+    },
+  );
+
   test('the search-result player exposes its "N Likes" toggle', () async {
     final service = _SearchService()..state = 'player';
     for (final (label, count) in [('35 Likes', 35), ('97.8K Likes', null)]) {
@@ -1366,6 +1446,76 @@ void main() {
       ]);
       expect(totals!.skippedVideos, 1);
       expect(profile.points.keys, contains('detail/feed/next-video'));
+    },
+  );
+
+  test(
+    'closes the search drawer before tapping results and tracks a hidden clock',
+    () async {
+      final service = _SearchService(hiddenClock: true, keepsDrawer: true);
+      var active = true;
+      NurtureTotals? totals;
+      await NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: [],
+        searchKeyword: 'Cats',
+        isActive: () => active,
+        isTikTok: () async => true,
+        onProgress: (t, _) async {
+          totals = t;
+          if (t.videos > 0) active = false;
+        },
+        longWatchRate: 0,
+        commentRate: 0,
+        random: _Random(false),
+        now: () => service.clock,
+        delay: service.delay,
+      ).start();
+      expect(service.tapped, [
+        'open',
+        'view-all',
+        'close-search',
+        'videos-tab',
+        'result',
+        'next',
+      ]);
+      expect(totals!.skippedVideos, 1);
+      expect(totals!.watchMilliseconds, greaterThan(0));
+    },
+  );
+
+  test(
+    'an unavailable search comment editor does not stop viewing before any paste',
+    () async {
+      final service = _SearchService(hiddenClock: true, hiddenEditor: true);
+      var active = true;
+      final skipped = <String>[];
+      NurtureTotals? totals;
+      await NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: ['Configured comment'],
+        searchKeyword: 'Cats',
+        isActive: () => active,
+        isTikTok: () async => true,
+        onProgress: (t, _) async {
+          totals = t;
+          if (service.tapped.contains('next')) active = false;
+        },
+        onCommentSkipped: skipped.add,
+        likeRate: 0,
+        longWatchRate: 1,
+        commentRate: 1,
+        random: _Random(true),
+        now: () => service.clock,
+        delay: service.delay,
+      ).start();
+      expect(service.pasted, ['search:Cats']);
+      expect(skipped, hasLength(1));
+      expect(totals!.comments, 0);
+      expect(totals!.videos, 1);
+      expect(service.tapped.last, 'next');
     },
   );
 }

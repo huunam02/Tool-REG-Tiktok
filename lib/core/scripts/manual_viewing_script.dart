@@ -29,7 +29,7 @@ const manualViewingScript = r'''
     videos, full_videos: full, skipped_videos: skipped, comments});
   const emit = () => {
     const value = snapshot();
-    try { window.flutter_inappwebview?.callHandler(config.handler || 'FlutterManualViewingStats', value)?.catch?.(() => {}); } catch (_) {}
+    try { window.gecko_bridge?.callHandler(config.handler || 'FlutterManualViewingStats', value)?.catch?.(() => {}); } catch (_) {}
     lastEmit = Date.now();
     return value;
   };

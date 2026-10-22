@@ -45,7 +45,7 @@ function setup() {
     fetch,
     getSelection: () => ({ removeAllRanges: () => {}, addRange: () => {} }),
     scrollBy: (options) => scrolls.push(options),
-    flutter_inappwebview: {
+    gecko_bridge: {
       callHandler: (handler, message, nextIndex) => {
         messages.push({handler, message, nextIndex});
         return Promise.resolve(handler === 'FlutterCommentPaste' ? pasteBehavior(message) : undefined);

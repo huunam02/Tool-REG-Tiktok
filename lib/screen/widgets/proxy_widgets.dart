@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/proxy_store.dart';
@@ -268,7 +267,7 @@ class ProxyDetails extends StatelessWidget {
         const SizedBox(height: 10),
         _field(
           context,
-          'Múi giờ WebView',
+          'Múi giờ GeckoView',
           profile.timeZoneId.isEmpty ? 'Chưa xác định' : profile.timeZoneId,
           Icons.schedule,
           valueKey: Key('${keyPrefix}TimeZone'),
@@ -335,14 +334,6 @@ class ProxyDetails extends StatelessWidget {
           const Text(
             'Chưa có tài khoản. Bổ sung trong Quản lý cấu hình.',
             style: TextStyle(fontSize: 12, color: ProxyColors.muted),
-          ),
-        ],
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
-          const SizedBox(height: 6),
-          const Text(
-            'iOS dùng Safari desktop theo phiên bản WebKit của máy. '
-            'User-Agent lưu ở trên được giữ cho Android.',
-            style: TextStyle(fontSize: 11, color: ProxyColors.muted),
           ),
         ],
       ],

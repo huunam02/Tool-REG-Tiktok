@@ -57,6 +57,12 @@ final class SignupAccessibilityBridge {
 
     static AccessibilityNodeInfo webRoot(AccessibilityListener service) {
         if (service == null) return null;
+        // GeckoView can leave prefetched descendants from the previous feed
+        // item in Android's cache even after clearCache(). Read nodes without
+        // caching/prefetching so text, visibility and bounds match the screen.
+        if (Build.VERSION.SDK_INT >= 33 && service.isCacheEnabled()) {
+            service.setCacheEnabled(false);
+        }
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
         AccessibilityNodeInfo web = findWeb(root, service.getPackageName(), 0);
         if (web != null) return web;
@@ -86,6 +92,14 @@ final class SignupAccessibilityBridge {
         if (web == null) return result;
         Rect rect = new Rect();
         web.getBoundsInScreen(rect);
+        // GeckoView reports its document root at the unzoomed desktop layout
+        // size; the platform view hosting it bounds the visible viewport.
+        AccessibilityNodeInfo host = web.getParent();
+        if (host != null) {
+            Rect hostRect = new Rect();
+            host.getBoundsInScreen(hostRect);
+            rect.intersect(hostRect);
+        }
         result.put("webBounds", bounds(rect));
         List<Map<String, Object>> nodes = new ArrayList<>();
         // Nodes present but not visible (e.g. a video clock faded out with its
@@ -164,12 +178,16 @@ final class SignupAccessibilityBridge {
         if (focused != null) focused.performAction(AccessibilityNodeInfo.ACTION_CLEAR_FOCUS);
         if (!keyboardVisible(service)) { result.success(true); return; }
         // GLOBAL_ACTION_BACK can pop Flutter's route instead of consuming IME.
-        // Hide only the soft keyboard, then immediately restore normal policy.
+        // Hide only the soft keyboard. GeckoView ignores ACTION_CLEAR_FOCUS, so
+        // its editor keeps input focus and restoring AUTO at once reopens the
+        // IME (it flickers). Hold it hidden on the lease long enough to submit.
         boolean hidden = service.getSoftKeyboardController().setShowMode(android.accessibilityservice.AccessibilityService.SHOW_MODE_HIDDEN);
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            service.getSoftKeyboardController().setShowMode(android.accessibilityservice.AccessibilityService.SHOW_MODE_AUTO);
-            result.success(hidden);
-        }, 300);
+        if (hidden) {
+            keyboardOwner = service;
+            keyboardHandler.removeCallbacks(keyboardExpiry);
+            keyboardHandler.postDelayed(keyboardExpiry, 10000);
+        }
+        keyboardHandler.postDelayed(() -> result.success(hidden), 300);
     }
 
     private static List<Integer> bounds(Rect rect) {
@@ -235,6 +253,8 @@ final class SignupAccessibilityBridge {
     private static void collect(AccessibilityNodeInfo node, String path, List<Map<String, Object>> nodes,
             List<Map<String, Object>> hidden, int depth, AccessibilityNodeInfo web) {
         if (node == null || depth > 40 || nodes.size() >= 1200) return;
+        // Older Android versions cannot disable the accessibility cache.
+        if (Build.VERSION.SDK_INT < 33 && !node.refresh()) return;
         if (!node.isVisibleToUser() && hidden.size() < 600) {
             Rect rect = new Rect(); node.getBoundsInScreen(rect);
             Map<String, Object> item = new HashMap<>();
@@ -243,6 +263,10 @@ final class SignupAccessibilityBridge {
             item.put("bounds", bounds(rect));
             item.put("editable", node.isEditable());
             item.put("focused", node.isFocused());
+            // Preserve draft detection when Gecko marks an unfocused editor
+            // hidden. Only the length is exposed, never its input text.
+            CharSequence hiddenValue = node.isEditable() ? editorValue(node) : null;
+            item.put("length", hiddenValue == null ? 0 : hiddenValue.length());
             item.put("text", node.isEditable() || node.isPassword() ? "" : safe(node.getText()));
             item.put("description", node.isEditable() || node.isPassword() ? "" : safe(node.getContentDescription()));
             item.put("hint", node.isEditable() ? safe(editorHint(node)) : "");
@@ -344,6 +368,54 @@ final class SignupAccessibilityBridge {
         if (node == null || depth > 40) return;
         if (node.isEditable() && node.isEnabled() && node.isVisibleToUser()) fields.add(node);
         for (int i = 0; i < node.getChildCount(); i++) loginFields(node.getChild(i), fields, depth + 1);
+    }
+
+    /** Clear only the exact rejected OTP inserted by the current app attempt. */
+    static void clearOtp(String expected, MethodChannel.Result result) {
+        if (pasting || expected == null || !expected.matches("[0-9]{6}")) { result.success(false); return; }
+        AccessibilityListener service = AccessibilityListener.currentInstance();
+        AccessibilityNodeInfo web = webRoot(service);
+        List<AccessibilityNodeInfo> fields = new ArrayList<>();
+        collectOtpEditors(web, fields, 0);
+        if (fields.size() != 1 && fields.size() != 6) { result.success(false); return; }
+        StringBuilder value = new StringBuilder();
+        for (AccessibilityNodeInfo field : fields) {
+            if (!field.refresh()) { result.success(false); return; }
+            CharSequence text = editorValue(field);
+            if (text != null) value.append(text);
+        }
+        if (!expected.contentEquals(value)) { result.success(false); return; }
+        Bundle empty = new Bundle();
+        empty.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
+        for (int i = fields.size() - 1; i >= 0; i--) {
+            if (!fields.get(i).performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, empty)) { result.success(false); return; }
+        }
+        verifyClearedOtp(service, result, 0);
+    }
+
+    private static void verifyClearedOtp(AccessibilityListener service, MethodChannel.Result result, int retry) {
+        keyboardHandler.postDelayed(() -> {
+            List<AccessibilityNodeInfo> fields = new ArrayList<>();
+            collectOtpEditors(webRoot(service), fields, 0);
+            boolean empty = !fields.isEmpty();
+            for (AccessibilityNodeInfo field : fields) {
+                CharSequence text = editorValue(field);
+                if (text != null && text.length() > 0) empty = false;
+            }
+            if (empty || retry >= 19) result.success(empty);
+            else verifyClearedOtp(service, result, retry + 1);
+        }, 100);
+    }
+
+    private static void collectOtpEditors(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> fields, int depth) {
+        if (node == null || depth > 40) return;
+        if (node.isVisibleToUser() && node.isEditable() && node.isEnabled() && !node.isPassword()) {
+            String hint = safe(editorHint(node)).toLowerCase(java.util.Locale.ROOT);
+            int inputClass = node.getInputType() & InputType.TYPE_MASK_CLASS;
+            if (hint.contains("code") || hint.contains("otp") || hint.contains("mã") ||
+                    inputClass == InputType.TYPE_CLASS_NUMBER || inputClass == InputType.TYPE_CLASS_PHONE) fields.add(node);
+        }
+        for (int i = 0; i < node.getChildCount(); i++) collectOtpEditors(node.getChild(i), fields, depth + 1);
     }
 
     static void paste(String text, String field, MethodChannel.Result result) {

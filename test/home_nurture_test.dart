@@ -28,9 +28,10 @@ void main() {
   testWidgets(
     'Home uses remote lists for signup and login and ignores saved lists',
     (tester) async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      // Keep this remote-data test independent of native Android automation.
+      debugDefaultTargetPlatformOverride = TargetPlatform.fuchsia;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
-      const channel = MethodChannel('test_tiktok/webview_proxy');
+      const channel = MethodChannel('test_tiktok/profile_vpn');
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         channel,
         (_) async => null,

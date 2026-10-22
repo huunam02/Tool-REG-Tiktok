@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// This phone's `navigator.deviceMemory` in GB, as Chrome reports it; null
-/// until [loadDeviceMemory] succeeds (tests, iOS, unsupported devices).
+/// until [loadDeviceMemory] succeeds (tests or unsupported devices).
 double? deviceMemoryGb;
 
 const _channel = MethodChannel('test_tiktok/device');

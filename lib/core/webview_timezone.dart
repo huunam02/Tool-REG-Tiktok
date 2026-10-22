@@ -1,16 +1,8 @@
 import 'dart:convert';
 
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-
 // Applies to document/frame JavaScript, not Android or worker globals.
 String webViewTimeZoneScript(String timeZoneId) => webViewTimeZoneScriptTemplate
     .replaceAll('__PROXY_TIME_ZONE__', jsonEncode(timeZoneId));
-
-UserScript webViewTimeZoneUserScript(String timeZoneId) => UserScript(
-  source: webViewTimeZoneScript(timeZoneId),
-  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-  forMainFrameOnly: false,
-);
 
 const webViewTimeZoneScriptTemplate = r'''
 (() => {

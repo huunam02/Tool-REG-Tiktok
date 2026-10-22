@@ -1,14 +1,12 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-
 import 'app_configuration.dart';
+import 'gecko_browser.dart';
 
-const _proxyChannel = MethodChannel('test_tiktok/webview_proxy');
 Future<void>? _proxyQueue;
 WebViewProxy? _configuredProxy;
+String _configuredProfileId = 'default';
+String _configuredLabel = '';
 
 Future<T> _serializeProxy<T>(Future<T> Function() action) async {
   final previous = _proxyQueue;
@@ -23,12 +21,14 @@ Future<T> _serializeProxy<T>(Future<T> Function() action) async {
   }
 }
 
-/// Complete the native override before constructing or loading the WebView.
-Future<void> configureWebViewProxy(WebViewProxy? proxy) =>
-    _serializeProxy(() => _applyWebViewProxy(proxy));
+/// Switches the app-scoped Android VPN before constructing a GeckoSession.
+/// [label] names the configuration in the VPN notification.
+Future<void> configureWebViewProxy(
+  WebViewProxy? proxy, {
+  String profileId = 'default',
+  String label = '',
+}) => _serializeProxy(() => _applyProxy(proxy, profileId, label));
 
-/// Imported proxies are probed sequentially and never become the selection.
-/// Queue normal configuration changes until the original override is restored.
 Future<T> withTemporaryWebViewProxy<T>(
   WebViewProxy proxy,
   Future<T> Function() action, {
@@ -38,73 +38,42 @@ Future<T> withTemporaryWebViewProxy<T>(
     throw const FormatException('Đã hủy kiểm tra proxy.');
   }
   final original = _configuredProxy;
+  final originalId = _configuredProfileId;
+  final originalLabel = _configuredLabel;
   try {
-    await _applyWebViewProxy(proxy);
+    await _applyProxy(
+      proxy,
+      'temporary-${DateTime.now().microsecondsSinceEpoch}',
+      'Kiểm tra proxy',
+    );
     return await action();
   } finally {
-    await _applyWebViewProxy(original);
+    await _applyProxy(original, originalId, originalLabel);
   }
 });
 
-Future<void> _applyWebViewProxy(WebViewProxy? proxy) async {
-  await _configureNativeProxy(proxy);
+Future<void> _applyProxy(
+  WebViewProxy? proxy,
+  String profileId,
+  String label,
+) async {
+  if (proxy == null) {
+    await ProfileVpn.stop();
+  } else {
+    if (!const {'socks5', 'socks5h'}.contains(proxy.uri.scheme)) {
+      throw const FormatException(
+        'GeckoView dùng VpnService + hev-socks5-tunnel nên chỉ hỗ trợ proxy SOCKS5.',
+      );
+    }
+    await ProfileVpn.start(
+      profileId: profileId,
+      proxy: proxy.uri,
+      username: proxy.username,
+      password: proxy.password,
+      label: label.isEmpty ? proxy.uri.host : '$label · ${proxy.uri.host}',
+    );
+  }
   _configuredProxy = proxy;
-}
-
-Future<void> _configureNativeProxy(WebViewProxy? proxy) async {
-  if (defaultTargetPlatform == TargetPlatform.iOS && !kIsWeb) {
-    await _proxyChannel.invokeMethod<void>('configure', {
-      'host': proxy?.uri.host,
-      'port': proxy?.uri.port,
-      'scheme': proxy?.uri.scheme,
-      'username': proxy?.username,
-      'password': proxy?.password,
-    });
-    return;
-  }
-  if (defaultTargetPlatform == TargetPlatform.android && !kIsWeb) {
-    final supported = await WebViewFeature.isFeatureSupported(
-      WebViewFeature.PROXY_OVERRIDE,
-    );
-    if (!supported) {
-      if (proxy != null) {
-        throw PlatformException(
-          code: 'proxy_unsupported',
-          message: 'WebView trên thiết bị này không hỗ trợ cấu hình proxy.',
-        );
-      }
-      return;
-    }
-    // A late JavaScript fallback could expose ICE candidates before the guard.
-    if (proxy != null &&
-        !await WebViewFeature.isFeatureSupported(
-          WebViewFeature.DOCUMENT_START_SCRIPT,
-        )) {
-      throw PlatformException(
-        code: 'proxy_unsupported',
-        message:
-            'Không thể chặn WebRTC trước khi tải trang. '
-            'Hãy cập nhật Android System WebView rồi thử lại.',
-      );
-    }
-    final controller = ProxyController.instance();
-    if (proxy == null) {
-      await controller.clearProxyOverride();
-    } else {
-      await controller.setProxyOverride(
-        settings: ProxySettings(
-          proxyRules: [ProxyRule(url: '${proxy.uri}')],
-          // Do not let localhost/link-local requests bypass the proxy.
-          removeImplicitRules: true,
-        ),
-      );
-    }
-    return;
-  }
-  if (proxy != null) {
-    throw PlatformException(
-      code: 'proxy_unsupported',
-      message: 'Cấu hình proxy hiện hỗ trợ Android và iOS 17 trở lên.',
-    );
-  }
+  _configuredProfileId = profileId;
+  _configuredLabel = label;
 }

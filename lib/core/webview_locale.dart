@@ -1,5 +1,3 @@
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-
 // Temporarily use the device/browser language while diagnosing signup.
 const forceEnglishWebViewLocale = false;
 const englishWebViewHeaders = forceEnglishWebViewLocale
@@ -22,9 +20,3 @@ const englishWebViewLocaleScript = r'''
   }
 })();
 ''';
-
-UserScript englishWebViewLocaleUserScript() => UserScript(
-  source: englishWebViewLocaleScript,
-  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-  forMainFrameOnly: false,
-);

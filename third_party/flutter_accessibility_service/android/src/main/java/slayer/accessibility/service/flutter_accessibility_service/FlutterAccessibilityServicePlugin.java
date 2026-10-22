@@ -167,6 +167,8 @@ public class FlutterAccessibilityServicePlugin implements FlutterPlugin, Activit
             SignupAccessibilityBridge.setKeyboardSuppressed(Boolean.TRUE.equals(call.argument("suppressed")), result);
         } else if (call.method.equals("signupSubmitComment")) {
             result.success(SignupAccessibilityBridge.submitComment());
+        } else if (call.method.equals("signupClearOtp")) {
+            SignupAccessibilityBridge.clearOtp(call.argument("expected"), result);
         } else if (call.method.equals("signupDismissKeyboard")) {
             SignupAccessibilityBridge.dismissKeyboard(result);
         } else if (call.method.equals("signupSnapshot")) {

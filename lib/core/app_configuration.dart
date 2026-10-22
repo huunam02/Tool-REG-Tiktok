@@ -138,9 +138,9 @@ class WebViewProxy {
   }) {
     value = value.trim();
     if (value.isEmpty) return null;
-    final uri = Uri.tryParse(value.contains('://') ? value : 'http://$value');
+    final uri = Uri.tryParse(value.contains('://') ? value : 'socks5://$value');
     if (uri == null ||
-        !const ['http', 'https'].contains(uri.scheme) ||
+        !const ['socks5', 'socks5h', 'http', 'https'].contains(uri.scheme) ||
         uri.host.isEmpty ||
         RegExp(r'\s').hasMatch(value) ||
         !RegExp(r':\d+/?$').hasMatch(value) ||
@@ -150,7 +150,7 @@ class WebViewProxy {
         (uri.path.isNotEmpty && uri.path != '/') ||
         uri.hasQuery ||
         uri.hasFragment) {
-      throw const FormatException('Nhập proxy HTTP/HTTPS dạng host:port.');
+      throw const FormatException('Nhập proxy dạng host:port.');
     }
     return WebViewProxy(
       uri: uri.replace(path: ''),

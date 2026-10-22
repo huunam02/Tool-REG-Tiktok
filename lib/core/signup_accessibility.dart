@@ -150,11 +150,17 @@ class SignupSnapshot {
       ),
       nodes = ((data['nodes'] as List?) ?? [])
           .map((e) => SignupNode(Map<String, dynamic>.from(e)))
+          .toList(),
+      hiddenNodes = ((data['hidden'] as List?) ?? [])
+          .map((e) => SignupNode(Map<String, dynamic>.from(e)))
           .toList();
   final bool ready;
   final bool keyboardVisible;
   final SignupViewport viewport;
   final List<SignupNode> nodes;
+
+  /// Metadata for faded playback controls; never used as gesture targets.
+  final List<SignupNode> hiddenNodes;
   List<SignupNode> get editors =>
       nodes.where((n) => n.editable && n.enabled).toList()..sort(
         (a, b) => a.bounds.top != b.bounds.top
@@ -286,6 +292,9 @@ class SignupAccessibility {
 
   Future<bool> submitComment() =>
       _perform(FlutterAccessibilityService.signupSubmitComment);
+
+  Future<bool> clearOtp(String expected) =>
+      _perform(() => FlutterAccessibilityService.signupClearOtp(expected));
 
   Future<void> dismissKeyboard() => _perform(() async {
     if (!await FlutterAccessibilityService.signupDismissKeyboard()) {

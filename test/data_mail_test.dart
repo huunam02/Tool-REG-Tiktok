@@ -128,4 +128,91 @@ void main() {
       reader.close();
     },
   );
+
+  test('Data Mail OTP asks again until the mail arrives', () async {
+    var requests = 0;
+    final reader = OtpApiClient(
+      OtpApiConfiguration(
+        url: Uri.parse('https://example.com:2001/api/extract-otp'),
+        waitSeconds: 30,
+      ),
+      logOutput: (_) {},
+      dataMailPollInterval: const Duration(milliseconds: 10),
+      client: MockClient((request) async {
+        requests++;
+        return http.Response(
+          jsonEncode(
+            requests < 3
+                ? {'success': false, 'message': 'No OTP found'}
+                : {'success': true, 'otp': '654321'},
+          ),
+          200,
+        );
+      }),
+    );
+    expect(
+      await reader.fetchCode(email: 'person@example.com', password: mail),
+      '654321',
+    );
+    expect(requests, 3);
+    reader.close();
+  });
+
+  test('Data Mail OTP times out when the mail never arrives', () async {
+    final reader = OtpApiClient(
+      OtpApiConfiguration(
+        url: Uri.parse('https://example.com:2001/api/extract-otp'),
+        waitSeconds: 1,
+      ),
+      logOutput: (_) {},
+      dataMailPollInterval: const Duration(milliseconds: 200),
+      client: MockClient(
+        (_) async => http.Response(jsonEncode({'success': false}), 200),
+      ),
+    );
+    await expectLater(
+      reader.fetchCode(email: 'person@example.com', password: mail),
+      throwsA(
+        isA<OtpApiException>().having((e) => e.timedOut, 'timedOut', isTrue),
+      ),
+    );
+    reader.close();
+  });
+
+  test('Data Mail ignores older mail and previously rejected codes', () async {
+    var requests = 0;
+    final logs = <String>[];
+    final reader = OtpApiClient(
+      OtpApiConfiguration(
+        url: Uri.parse('https://example.com/api/extract-otp'),
+      ),
+      notBefore: DateTime.utc(2026, 10, 22, 11, 20),
+      rejectedCodes: {'111111'},
+      dataMailPollInterval: const Duration(milliseconds: 1),
+      logOutput: logs.add,
+      client: MockClient((_) async {
+        requests++;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'otp': requests == 3 ? '222222' : '111111',
+            'receivedAt': requests == 1
+                ? '2026-10-22T10:18:00Z'
+                : '2026-10-22T11:21:00Z',
+          }),
+          200,
+        );
+      }),
+    );
+    expect(
+      await reader.fetchCode(email: 'person@example.com', password: mail),
+      '222222',
+    );
+    expect(requests, 3);
+    expect(logs.join(), contains('staleCode'));
+    expect(logs.join(), contains('rejectedCode'));
+    expect(logs.join(), isNot(contains('111111')));
+    expect(logs.join(), isNot(contains(mail)));
+    reader.close();
+  });
 }

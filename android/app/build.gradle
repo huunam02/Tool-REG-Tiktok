@@ -10,16 +10,21 @@ plugins {
 
 android {
     namespace = "com.brisklane.browser"
-    compileSdk = flutter.compileSdkVersion
+    // GeckoView 158 requires compileSdk 37.2.
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8
+        jvmTarget = JavaVersion.VERSION_17
     }
 
     defaultConfig {
@@ -27,11 +32,30 @@ android {
         applicationId = "com.brisklane.browser"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = Math.max(flutter.minSdkVersion, 24)
+        // Android 9 (Galaxy S8). The hev-socks5-tunnel AAR declares API 29, but
+        // its native library only needs API 24 libc; the manifest overrides it.
+        minSdk = Math.max(flutter.minSdkVersion, 28)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // GeckoView bundles every ABI (~700 MB debug APK). When Flutter targets
+        // specific platforms (flutter run, --target-platform), ship only those.
+        def targetPlatform = project.findProperty("target-platform")
+        if (targetPlatform) {
+            def abis = [
+                "android-arm": "armeabi-v7a",
+                "android-arm64": "arm64-v8a",
+                "android-x86": "x86",
+                "android-x64": "x86_64",
+            ]
+            def filters = targetPlatform.toString().split(",").collect { abis[it] }.findAll()
+            // The Flutter Gradle plugin sets per-build-type filters; replace them.
+            buildTypes.configureEach {
+                ndk.abiFilters.clear()
+                ndk.abiFilters.addAll(filters)
+            }
+        }
     }
 
     buildTypes {
@@ -47,51 +71,9 @@ flutter {
     source = "../.."
 }
 
-// Exercise the exact Dart UserScript in a real WebView, without a copied fixture.
-def gpuPrivacyTestAssets = layout.buildDirectory.dir("generated/gpuPrivacyTestAssets")
-def generateGpuPrivacyTestAssets = tasks.register("generateGpuPrivacyTestAssets") {
-    def scriptFile = rootProject.file("../lib/core/webview_privacy.dart")
-    inputs.file(scriptFile)
-    outputs.dir(gpuPrivacyTestAssets)
-    doLast {
-        def directory = gpuPrivacyTestAssets.get().asFile
-        directory.mkdirs()
-        [pixelGpuInfoScript: "pixel_gpu_info.js", disableWebRtcScript: "disable_webrtc.js"].each { name, filename ->
-            def script = (scriptFile.getText("UTF-8") =~ /(?s)const ${name} = r'''(.*?)''';/)
-            if (!script.find()) throw new GradleException("Privacy UserScript not found: " + name)
-            new File(directory, filename).setText(script.group(1), "UTF-8")
-        }
-    }
-}
-android.sourceSets.androidTest.assets.srcDir(gpuPrivacyTestAssets)
-tasks.configureEach {
-    if (name.startsWith("merge") && name.endsWith("AndroidTestAssets")) {
-        dependsOn(generateGpuPrivacyTestAssets)
-    }
-}
-
-def timeZoneTestAssets = layout.buildDirectory.dir("generated/timeZoneTestAssets")
-android.sourceSets.androidTest.assets.srcDir(timeZoneTestAssets)
-def generateTimeZoneTestAsset = tasks.register("generateTimeZoneTestAsset") {
-    def scriptFile = rootProject.file("../lib/core/webview_timezone.dart")
-    inputs.file(scriptFile)
-    outputs.dir(timeZoneTestAssets)
-    doLast {
-        def script = (scriptFile.getText("UTF-8") =~ /(?s)const webViewTimeZoneScriptTemplate = r'''(.*?)''';/)
-        if (!script.find()) throw new GradleException("Timezone UserScript not found")
-        def directory = timeZoneTestAssets.get().asFile
-        directory.mkdirs()
-        new File(directory, "webview_timezone.js").setText(script.group(1), "UTF-8")
-    }
-}
-tasks.configureEach {
-    if (name.startsWith("merge") && name.endsWith("AndroidTestAssets")) {
-        dependsOn(generateTimeZoneTestAsset)
-    }
-}
-
 dependencies {
-    implementation "androidx.webkit:webkit:1.16.0"
+    implementation "org.mozilla.geckoview:geckoview:158.0.20261021001945"
+    implementation files("libs/hev-socks5-tunnel.aar")
     androidTestImplementation "androidx.test:runner:1.6.2"
     androidTestImplementation "androidx.test:rules:1.6.1"
     androidTestImplementation "androidx.test.ext:junit:1.2.1"

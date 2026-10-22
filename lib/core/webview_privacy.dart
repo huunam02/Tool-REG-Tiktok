@@ -1,5 +1,3 @@
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-
 import 'gpu_profile.dart';
 
 // Advertise a Pixel 9 Pro XL WebGL identity while preserving native rendering,
@@ -46,7 +44,6 @@ const pixelGpuInfoScript = r'''
   }
 })();
 ''';
-
 /// [pixelGpuInfoScript] reporting [profile]'s vendor and renderer instead.
 String gpuInfoScript(GpuProfile profile) {
   const vendor = "return 'Google Inc. (ARM)';",
@@ -62,28 +59,12 @@ String gpuInfoScript(GpuProfile profile) {
 }
 
 /// The configuration's phone GPU, in every document including frames.
-UserScript gpuInfoUserScript(GpuProfile profile) => UserScript(
-  source: gpuInfoScript(profile),
-  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-  forMainFrameOnly: false,
-  contentWorld: ContentWorld.PAGE,
-  allowedOriginRules: {'*'},
-);
-
-UserScript pixelGpuInfoUserScript() => UserScript(
-  source: pixelGpuInfoScript,
-  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-  forMainFrameOnly: false,
-  contentWorld: ContentWorld.PAGE,
-  allowedOriginRules: {'*'},
-);
-
 // Block ICE gathering entirely so no Local IP is ever exposed. Always applied
 // before page scripts in every document, including frames.
 //
 // Document-start scripts never run in a same-origin about:blank frame or
 // popup, whose fresh globals a page can use at once (verified leaking on
-// Android WebView). So every such window is blocked before the page can
+// browser engines). So every such window is blocked before the page can
 // reach it: on contentWindow/contentDocument, right after each DOM insertion,
 // before parser-inserted scripts (MutationObserver), on window.open and on
 // frame loads, recursively. Wrappers are Proxies so they stay native-looking.
@@ -171,10 +152,3 @@ const disableWebRtcScript = r'''
 })();
 ''';
 
-UserScript disableWebRtcUserScript() => UserScript(
-  source: disableWebRtcScript,
-  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-  forMainFrameOnly: false,
-  contentWorld: ContentWorld.PAGE,
-  allowedOriginRules: {'*'},
-);

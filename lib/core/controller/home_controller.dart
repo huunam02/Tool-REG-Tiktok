@@ -21,6 +21,7 @@ import '../otp_settings_store.dart';
 import '../proxy_store.dart';
 import '../signup_failure.dart';
 import '../webview_proxy.dart';
+import '../webview_proxy_ip.dart';
 import '../webview_user_agent.dart';
 import '../tiktok_flow_result.dart';
 import '../tiktok_launch_action.dart';
@@ -502,6 +503,7 @@ class HomeController extends AppController
   bool proxyLoadFailed = false;
   bool managingProxies = false;
   ProxyGeolocationLookup? _timeZoneLookup;
+  WebViewProxyIpChecker? _proxyProbe;
   late final ProxyStore proxyStore;
   bool get _actionBusy => opening || loadingProxy || managingProxies;
   bool selectingNurture = false;
@@ -668,6 +670,7 @@ class HomeController extends AppController
     _autoRunGeneration++;
     WidgetsBinding.instance.removeObserver(this);
     _timeZoneLookup?.cancel();
+    _proxyProbe?.cancel();
     tabs.dispose();
     super.onClose();
   }
@@ -816,6 +819,7 @@ class HomeController extends AppController
     }
     FocusManager.instance.primaryFocus?.unfocus();
     mutate(() => opening = true);
+    var vpnStarted = false;
     try {
       final profileId = currentProxy?.configurationId;
       if (action == TikTokLaunchAction.signup && profileId != null) {
@@ -843,8 +847,26 @@ class HomeController extends AppController
       }
       final proxy = currentProxy?.proxy;
       final otpApi = otpApiFor(action);
-      await configureWebViewProxy(proxy);
+      vpnStarted = proxy != null;
+      await configureWebViewProxy(
+        proxy,
+        profileId: profileId?.toString() ?? 'default',
+        label: currentProxy?.name ?? '',
+      );
       if (!active) return;
+      if (proxy != null) {
+        // Open the browser only once the proxy answers through the tunnel; a
+        // dead proxy or wrong credentials stop here instead of in TikTok.
+        final probe = WebViewProxyIpChecker();
+        _proxyProbe = probe;
+        final ip = await probe.check(userAgent: browserUserAgent);
+        if (!active) return;
+        if (ip == null) {
+          throw const FormatException(
+            'Proxy không kết nối được. Hãy kiểm tra lại proxy của cấu hình.',
+          );
+        }
+      }
       var timeZone = currentProxy?.timeZoneId ?? '';
       if (needsAndroidDesktopIdentity && proxy != null && timeZone.isEmpty) {
         final lookup = ProxyGeolocationLookup();
@@ -913,6 +935,8 @@ class HomeController extends AppController
       notify(
         error.code == 'proxy_unsupported'
             ? error.message ?? 'Thiết bị không hỗ trợ proxy.'
+            : error.code.startsWith('vpn_') && error.message != null
+            ? error.message!
             : 'Không thể áp dụng proxy. Hãy kiểm tra cấu hình rồi thử lại.',
       );
     } catch (_) {
@@ -921,6 +945,17 @@ class HomeController extends AppController
     } finally {
       _timeZoneLookup?.cancel();
       _timeZoneLookup = null;
+      _proxyProbe?.cancel();
+      _proxyProbe = null;
+      // The VPN only serves the browser; Home and the pause between automatic
+      // runs use the device network, and the next open starts it again.
+      if (vpnStarted) {
+        try {
+          await configureWebViewProxy(null);
+        } catch (_) {
+          // The next open replaces the tunnel anyway.
+        }
+      }
       if (active) mutate(() => opening = false);
     }
   }

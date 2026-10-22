@@ -57,7 +57,7 @@ function setup({ inputs = true, autoPaste = true, pasteResult = true, sendCodeAc
   const password = inputs ? add('input[type="password"]', '', 'INPUT') : null;
   const submit = add('button', 'Sign up', 'BUTTON');
   const window = {
-    flutter_inappwebview: {
+    gecko_bridge: {
       callHandler(...args) {
         requests.push(args);
         return new Promise((resolve) => {
@@ -115,7 +115,7 @@ test('manual fields preserve user input and still dispatch Send code, Sign up an
   env.config.useAccessibilityUsernameSkip = true;
   env.password.hidden = true;
   const send = env.add('button', 'Send code', 'BUTTON');
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     if (args[0] === 'FlutterSignupSendCode') {
       send.textContent = 'Resend code (60s)';
@@ -328,7 +328,7 @@ test('post-OTP Sign up waits ten seconds and dispatches a separate native gestur
   env.submit.getBoundingClientRect = () => ({left: 150, top: 240, width: 100, height: 40});
   env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
   env.document.elementFromPoint = () => env.submit;
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(true);
   };
@@ -381,7 +381,7 @@ test('failed Sign up gesture remains visible after Flutter latches final submiss
   env.config.otpRequestedAt = 0;
   env.config.useAccessibilityPasswordSubmit = true;
   env.password.value = env.config.password;
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(false);
   };
@@ -433,7 +433,7 @@ test('signup waits five seconds before the gesture; acknowledgement timeout star
   delete env.config.sendCodeDelayMs; // Use the production default.
   const send = env.add('button', 'Send code', 'BUTTON');
   await fill(env);
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(true);
   };
@@ -502,7 +502,7 @@ test('Android signup sends code via the gesture bridge exactly once after pastin
   await fill(env);
   assert.equal(env.email.value, env.config.email);
   assert.equal(env.password.value, env.config.password);
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(true);
   };
@@ -527,7 +527,7 @@ test('signup gesture failure stops without sending a DOM click or claiming an OT
   env.config.waitForOtpApi = true;
   const send = env.add('button', 'Send code', 'BUTTON');
   await fill(env);
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(false);
   };
@@ -549,7 +549,7 @@ test('signup native target handles viewport offsets and rejects another overlay 
   env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
   env.document.elementFromPoint = () => send;
   await fill(env);
-  env.window.flutter_inappwebview.callHandler = () => Promise.resolve(true);
+  env.window.gecko_bridge.callHandler = () => Promise.resolve(true);
   assert.equal(env.run(), 'requesting-verification');
   const state = env.window.__flutterAutoSignup;
   assert.deepEqual(JSON.parse(JSON.stringify(state.getSendCodeTarget(1))),
@@ -568,7 +568,7 @@ test('signup does not request another gesture when React replaces the button', a
   env.config.waitForOtpApi = true;
   const send = env.add('button', 'Send code', 'BUTTON');
   await fill(env);
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(true);
   };
@@ -636,7 +636,7 @@ test('Android skips username via a separate gesture once after the two-second de
     env.skip.getBoundingClientRect = () => ({left: 150, top: 240, width: 100, height: 40});
     env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
     env.document.elementFromPoint = () => env.skip;
-    env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.window.gecko_bridge.callHandler = (...args) => {
       env.requests.push(args);
       return Promise.resolve(true);
     };
@@ -672,7 +672,7 @@ test('a failed username Skip gesture stops without a DOM fallback or another ges
   for (const rejected of [false, true]) {
     const env = await reachUsernameScreen();
     env.config.useAccessibilityUsernameSkip = true;
-    env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.window.gecko_bridge.callHandler = (...args) => {
       env.requests.push(args);
       return rejected ? Promise.reject(new Error('gesture cancelled')) : Promise.resolve(false);
     };
@@ -695,7 +695,7 @@ test('the Skip gesture target rejects a stale modal, blocked control or cancelle
   env.skip.contains = () => false;
   env.window.visualViewport = {width: 400, height: 600};
   env.document.elementFromPoint = () => env.skip;
-  env.window.flutter_inappwebview.callHandler = () => Promise.resolve(true);
+  env.window.gecko_bridge.callHandler = () => Promise.resolve(true);
   assert.equal(env.run(false), 'waiting-username-skip');
   env.advance(2000);
   assert.equal(env.run(false), 'username-skipped');
@@ -1350,7 +1350,7 @@ test('post-OTP password stays focused until an acknowledged native paste reaches
   assert.equal(env.document.activeElement, null);
   assert.equal(env.submit.clicks, 0);
   env.advance(350);
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(true);
   };

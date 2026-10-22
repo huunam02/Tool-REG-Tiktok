@@ -359,7 +359,7 @@ class _ProxyFormView extends StatelessWidget {
       'Thông tin cấu hình',
       logic.hasMultipleImports
           ? 'Cấu hình ${index + 1}. Proxy, tài khoản và User-Agent riêng.'
-          : 'Nhập proxy HTTP/HTTPS có cổng, User-Agent và tài khoản TikTok dùng cho đăng ký, đăng nhập và lấy OTP email.',
+          : 'Nhập proxy SOCKS5 có cổng, User-Agent và tài khoản TikTok dùng cho đăng ký, đăng nhập và lấy OTP email.',
       Icons.tune,
       [
         _fieldLabel('Địa chỉ proxy'),
@@ -452,8 +452,7 @@ class _ProxyFormView extends StatelessWidget {
           decoration: InputDecoration(
             hintText: 'Nhập User-Agent trên một dòng',
             helperText: needsAndroidDesktopIdentity
-                ? 'Mặc định TikTok và kiểm tra proxy dùng Chrome theo WebView đang cài. '
-                      'Mẫu lưu ở đây chỉ dùng khi chọn User-Agent đã chọn (thủ công) trong màn TikTok.'
+                ? 'TikTok và kiểm tra proxy dùng GeckoView với User-Agent đã lưu cho cấu hình này.'
                 : null,
             helperMaxLines: 4,
           ),
@@ -486,7 +485,7 @@ class _ProxyFormView extends StatelessWidget {
           ),
         const SizedBox(height: 20),
         _fieldLabel(
-          'Múi giờ WebView',
+          'Múi giờ GeckoView',
           action: TextButton.icon(
             key: _configurationKey('detectProxyTimeZone', index),
             onPressed: !logic.canDetectTimeZone || fields.detectingTimeZone
@@ -513,7 +512,7 @@ class _ProxyFormView extends StatelessWidget {
           onChanged: (_) => logic.mutate(() => fields.timeZoneError = null),
           decoration: const InputDecoration(
             hintText: 'America/New_York',
-            helperText: 'Mã múi giờ IANA. Để trống để tự tra khi mở WebView.',
+            helperText: 'Mã múi giờ IANA. Để trống để tự tra khi mở GeckoView.',
             helperMaxLines: 2,
             prefixIcon: Icon(Icons.schedule, size: 20),
           ),
@@ -570,11 +569,10 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedAccountEmail', index),
           controller: fields.accountEmail,
-          readOnly: true,
           autocorrect: false,
           keyboardType: TextInputType.emailAddress,
           decoration: const InputDecoration(
-            hintText: 'Tự tách từ Data Mail',
+            hintText: 'Nhập email hoặc tự lấy từ Data Mail',
             prefixIcon: Icon(Icons.alternate_email, size: 20),
           ),
           validator: (value) => OtpApiConfiguration.isEmail(value?.trim() ?? '')
@@ -594,7 +592,8 @@ class _ProxyFormView extends StatelessWidget {
           maxLines: 8,
           decoration: const InputDecoration(
             hintText: 'email|mật khẩu|refresh token|client ID|email phụ',
-            helperText: 'Email đăng ký được lấy từ phần đầu của Data Mail.',
+            helperText:
+                'Email đăng ký tự điền từ phần đầu của Data Mail, có thể sửa tay.',
             helperMaxLines: 2,
             prefixIcon: Icon(Icons.mail_outline, size: 20),
           ),

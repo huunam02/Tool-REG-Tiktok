@@ -7,10 +7,10 @@ void main() {
 
   test('imports proxy and all account credentials as one record', () {
     final data = ImportedConfiguration.parse(record);
-    expect(data.proxy.uri.host, '192.0.2.7');
-    expect(data.proxy.uri.port, 6149);
-    expect(data.proxy.username, 'proxy-user');
-    expect(data.proxy.password, 'proxy-pass');
+    expect(data.proxy!.uri.host, '192.0.2.7');
+    expect(data.proxy!.uri.port, 6149);
+    expect(data.proxy!.username, 'proxy-user');
+    expect(data.proxy!.password, 'proxy-pass');
     expect(data.account.email, 'person@example.com');
     expect(data.account.password, 'TikTok-password');
     expect(data.account.mailboxPassword, 'Mailbox-password');
@@ -33,7 +33,7 @@ void main() {
     final data = ImportedConfiguration.parse(
       '\r\n192.0.2.7:8080:user:pass:word|person@example.com|  tiktok password  | mailbox password \r\n',
     );
-    expect(data.proxy.password, 'pass:word');
+    expect(data.proxy!.password, 'pass:word');
     expect(data.account.password, '  tiktok password  ');
     expect(data.account.mailboxPassword, ' mailbox password ');
   });

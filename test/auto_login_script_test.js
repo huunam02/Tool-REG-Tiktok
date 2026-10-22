@@ -62,7 +62,7 @@ function setup({ autoPaste = true, pasteResult = true, sendCodeAcknowledged = tr
   };
   elements.push(submit);
   const window = {
-    flutter_inappwebview: {
+    gecko_bridge: {
       callHandler(...args) {
         requests.push(args);
         return new Promise(resolve => pending.push(() => {
@@ -116,7 +116,7 @@ test('Android sends code through accessibility once and waits for TikTok feedbac
   env.password.value = env.config.password;
   new env.Input('input[name="code"]');
   const send = env.add('button', 'Send code');
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(true);
   };
@@ -144,7 +144,7 @@ test('accessibility failure stops without claiming a requested OTP or repeating 
   env.email.value = env.config.email;
   env.password.value = env.config.password;
   const send = env.add('button', 'Send code');
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(false);
   };
@@ -172,7 +172,7 @@ test('DOM target accounts for the visual viewport and rejects covered or offscre
     assert.equal(y, 260);
     return covered ? null : send;
   };
-  env.window.flutter_inappwebview.callHandler = () => Promise.resolve(true);
+  env.window.gecko_bridge.callHandler = () => Promise.resolve(true);
   assert.equal(env.run(), 'requesting-verification');
   const state = env.window.__flutterAutoLogin;
   assert.deepEqual(JSON.parse(JSON.stringify(state.getSendCodeTarget(1))),
@@ -201,7 +201,7 @@ test('identity Email selection can require a separate accessibility Send code cl
   assert.equal(env.run(false), 'email-verification-selected');
   identity.showCode();
   send.hidden = false;
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(true);
   };
@@ -308,7 +308,7 @@ test('Android Continue uses the live point inside the login modal after native p
     env.submit.getBoundingClientRect = () => ({left: 150, top: 240, width: 100, height: 40});
     env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
     env.document.elementFromPoint = () => env.submit;
-    env.window.flutter_inappwebview.callHandler = (...args) => {
+    env.window.gecko_bridge.callHandler = (...args) => {
       env.requests.push(args);
       return Promise.resolve(true);
     };
@@ -351,8 +351,8 @@ test('identity Email verification uses a gesture for OTP Next once the native pa
     };
     env.window.visualViewport = {width: 400, height: 600};
     env.document.elementFromPoint = () => identity.verify;
-    const pasteHandler = env.window.flutter_inappwebview.callHandler;
-    env.window.flutter_inappwebview.callHandler = (...args) => {
+    const pasteHandler = env.window.gecko_bridge.callHandler;
+    env.window.gecko_bridge.callHandler = (...args) => {
       if (args[0] === 'FlutterLoginPaste') return pasteHandler(...args);
       env.requests.push(args);
       return Promise.resolve(true);
@@ -400,7 +400,7 @@ test('password and OTP Continue dispatch independent gestures even when sharing 
   env.submit.getBoundingClientRect = () => ({left: 50, top: 100, width: 100, height: 40});
   env.window.visualViewport = {width: 400, height: 600};
   env.document.elementFromPoint = () => env.submit;
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(true);
   };
@@ -437,7 +437,7 @@ test('Continue/Next gesture failures remain visible after either login submissio
         env.config.otpRequestedAt = 0;
         new env.Input('input[name="code"]').value = env.config.otp;
       }
-      env.window.flutter_inappwebview.callHandler = (...args) => {
+      env.window.gecko_bridge.callHandler = (...args) => {
         env.requests.push(args);
         return rejected ? Promise.reject(new Error('gesture cancelled')) : Promise.resolve(false);
       };
@@ -464,7 +464,7 @@ test('Continue rejects a changed password form, blocked button or stopped attemp
   env.submit.contains = () => false;
   env.window.visualViewport = {width: 400, height: 600};
   env.document.elementFromPoint = () => env.submit;
-  env.window.flutter_inappwebview.callHandler = () => Promise.resolve(true);
+  env.window.gecko_bridge.callHandler = () => Promise.resolve(true);
   assert.equal(env.run(), 'submitted');
   const state = env.window.__flutterAutoLogin;
   const target = () => state.getPasswordContinueTarget(1);
@@ -500,7 +500,7 @@ test('identity Email waits five seconds, reads its live point and awaits native 
   env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
   env.document.elementFromPoint = () => identity.email;
   let complete;
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return new Promise(resolve => { complete = resolve; });
   };
@@ -538,7 +538,7 @@ test('native Email target rejects stale, covered, hidden and cancelled identity 
   identity.email.getBoundingClientRect = () => ({left: 150, top: 240, width: 100, height: 40});
   env.window.visualViewport = {offsetLeft: 100, offsetTop: 200, width: 400, height: 600};
   env.document.elementFromPoint = () => identity.email;
-  env.window.flutter_inappwebview.callHandler = () => new Promise(() => {});
+  env.window.gecko_bridge.callHandler = () => new Promise(() => {});
   assert.equal(env.run(false), 'requesting-email-verification');
   const state = env.window.__flutterAutoLogin;
   const target = () => state.getEmailVerificationTarget(1);
@@ -578,7 +578,7 @@ test('failed native Email gesture neither repeats the touch nor starts OTP', asy
   env.config.useAccessibilityEmailVerification = true;
   env.config.waitForOtpApi = true;
   const identity = identityDialog(env);
-  env.window.flutter_inappwebview.callHandler = (...args) => {
+  env.window.gecko_bridge.callHandler = (...args) => {
     env.requests.push(args);
     return Promise.resolve(false);
   };

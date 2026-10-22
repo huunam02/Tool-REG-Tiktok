@@ -434,7 +434,7 @@ const String autoLoginStepScript = r'''
     };
     const handler = stage === 'password' ? 'FlutterLoginPasswordContinue' : 'FlutterLoginOtpContinue';
     try {
-      const request = window.flutter_inappwebview?.callHandler(handler, config.attempt);
+      const request = window.gecko_bridge?.callHandler(handler, config.attempt);
       if (!request?.then) current.failed = true;
       else request.then(tapped => {
         if (state.active && state.continueRequests[stage] === current) current.failed = tapped !== true;
@@ -453,7 +453,7 @@ const String autoLoginStepScript = r'''
     state.actions.add('send-code');
     const current = state.codeRequest;
     try {
-      const request = window.flutter_inappwebview?.callHandler('FlutterLoginSendCode', config.attempt);
+      const request = window.gecko_bridge?.callHandler('FlutterLoginSendCode', config.attempt);
       if (!request?.then) current.failed = true;
       else request.then(clicked => {
         if (state.active && state.codeRequest === current) current.failed = clicked !== true;
@@ -545,7 +545,7 @@ const String autoLoginStepScript = r'''
       at: null, pending: true, failed: false, selectedReported: false,
     };
     try {
-      const request = window.flutter_inappwebview?.callHandler('FlutterLoginEmailVerification', config.attempt);
+      const request = window.gecko_bridge?.callHandler('FlutterLoginEmailVerification', config.attempt);
       if (!request?.then) {
         current.pending = false;
         current.failed = true;
@@ -649,7 +649,7 @@ const String autoLoginStepScript = r'''
 
     try {
 
-      request = window.flutter_inappwebview?.callHandler('FlutterLoginPaste', config.attempt, field);
+      request = window.gecko_bridge?.callHandler('FlutterLoginPaste', config.attempt, field);
 
     } catch (_) {}
 

@@ -358,10 +358,18 @@ class ConfigurationFormFields {
       });
     }
     timeZoneId.addListener(() => revision++);
+    var dataMailEmail = AccountCredentials.emailFromDataMail(
+      mailboxPassword.text,
+    );
     mailboxPassword.addListener(() {
-      accountEmail.text = AccountCredentials.emailFromDataMail(
-        mailboxPassword.text,
-      );
+      final email = AccountCredentials.emailFromDataMail(mailboxPassword.text);
+      if (email == dataMailEmail) return;
+      // Follow Data Mail unless the email was typed by hand.
+      final current = accountEmail.text.trim();
+      if (current.isEmpty || current == dataMailEmail) {
+        accountEmail.text = email;
+      }
+      dataMailEmail = email;
     });
   }
 
@@ -398,9 +406,10 @@ class ConfigurationFormFields {
   void applyImport(ImportedConfiguration data) {
     timeZoneId.clear();
     timeZoneError = null;
-    url.text = proxyAddress(data.proxy);
-    username.text = data.proxy.username;
-    password.text = data.proxy.password;
+    final proxy = data.proxy;
+    url.text = proxy == null ? '' : proxyAddress(proxy);
+    username.text = proxy?.username ?? '';
+    password.text = proxy?.password ?? '';
     accountPassword.text = data.account.password.trim().isEmpty
         ? generateAccountPassword()
         : data.account.password;

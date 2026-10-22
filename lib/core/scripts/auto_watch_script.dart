@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 // Set inline playback before TikTok calls play(), including before automation
-// is enabled. Native iOS fullscreen hides the page's comment controls.
+// is enabled.
 const String inlineVideoScript = r'''
 (() => {
   const originalPlay = HTMLMediaElement.prototype.play;
@@ -19,7 +19,7 @@ String buildAutoWatchScript(List<String> comments) =>
     'window.__flutterAutoWatchConfig = ${jsonEncode({'comments': comments})};\n'
     '$autoWatchStartScript';
 
-/// Runs inside the WebView. Calling it again replaces the previous watcher.
+/// Runs inside GeckoView. Calling it again replaces the previous watcher.
 const String autoWatchStartScript = r'''
 (() => {
   window.__flutterAutoWatch?.stop();
@@ -68,7 +68,7 @@ const String autoWatchStartScript = r'''
   const notifyFlutter = (message) => {
     if (reportedMessages.has(message)) return;
     reportedMessages.add(message);
-    const result = window.flutter_inappwebview?.callHandler('FlutterAutoWatch', message);
+    const result = window.gecko_bridge?.callHandler('FlutterAutoWatch', message);
     result?.catch(() => {});
   };
   const visibleArea = (element, allowTransparent = false) => {
@@ -405,7 +405,7 @@ const String autoWatchStartScript = r'''
     } else {
       editor.select();
     }
-    const request = window.flutter_inappwebview?.callHandler(
+    const request = window.gecko_bridge?.callHandler(
       'FlutterCommentPaste', attempt.text
     );
     if (!request?.then) { failComment('comment-paste-failed'); return; }
@@ -484,7 +484,7 @@ const String autoWatchStartScript = r'''
     if (comment.stage === 'confirmed') {
       const finished = comment;
       comment = null;
-      window.flutter_inappwebview?.callHandler(
+      window.gecko_bridge?.callHandler(
         'FlutterAutoWatch', 'comment-sent'
       )?.catch(() => {});
       finished.editor.blur();
@@ -556,7 +556,7 @@ const String autoWatchStartScript = r'''
       processComment();
       if (!running || comment) return;
     }
-    // WKWebView also requires playsinline on the actual video element; the
+    // Keep inline playback on the actual video element; the
     // Flutter allowsInlineMediaPlayback setting alone is insufficient.
     for (const candidate of document.querySelectorAll('video')) {
       candidate.playsInline = true;

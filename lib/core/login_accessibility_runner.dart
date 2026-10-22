@@ -22,9 +22,12 @@ class LoginAccessibilityRunner {
     required this.onStatus,
     required this.profile,
     this.cancelOtpRequest,
+    this.onOtpRejected,
+    Future<void> Function(Duration)? delay,
     DateTime Function()? now,
     Random? random,
-  }) : now = now ?? DateTime.now,
+  }) : _delay = delay,
+       now = now ?? DateTime.now,
        _random = random ?? Random();
 
   final SignupAccessibility accessibility;
@@ -34,11 +37,15 @@ class LoginAccessibilityRunner {
   final Future<bool> Function() isTikTok;
   final Future<String> Function() getOtp;
   final void Function()? cancelOtpRequest;
+  final void Function(String)? onOtpRejected;
+  final Future<void> Function(Duration)? _delay;
   final void Function(String) onStatus;
   final DateTime Function() now;
   final Random _random;
   final Set<String> _actions = {};
   bool _cancelled = false;
+  bool _recoveringOtp = false;
+  DateTime? otpRequestedAt;
   bool alreadyLoggedIn = false;
 
   void cancel() {
@@ -57,7 +64,8 @@ class LoginAccessibilityRunner {
   }
 
   Future<void> _pause(int milliseconds) async {
-    await Future<void>.delayed(Duration(milliseconds: milliseconds));
+    final duration = Duration(milliseconds: milliseconds);
+    await (_delay?.call(duration) ?? Future<void>.delayed(duration));
     await _guard();
   }
 
@@ -198,10 +206,20 @@ class LoginAccessibilityRunner {
         'TikTok yêu cầu CAPTCHA. Hãy hoàn tất trên trang đăng nhập.',
       );
     }
+    if (!_recoveringOtp &&
+        _has(
+          snapshot,
+          RegExp(
+            r'verification code.*(?:expired|incorrect)|expired or incorrect|incorrect verification code|invalid verification code|mã.*(?:hết hạn|không chính xác)',
+            caseSensitive: false,
+          ),
+        )) {
+      throw LoginOtpRejected();
+    }
     if (_has(
       snapshot,
       RegExp(
-        'incorrect password|wrong password|invalid password|username or password doesn.t match|expired or incorrect|incorrect verification code|account doesn.t exist|couldn.t find.*account|sai mật khẩu|mã.*không chính xác',
+        'incorrect password|wrong password|invalid password|username or password doesn.t match|account doesn.t exist|couldn.t find.*account|sai mật khẩu',
         caseSensitive: false,
       ),
     )) {
@@ -229,6 +247,11 @@ class LoginAccessibilityRunner {
       'viewport=${snapshot.viewport.bounds} dialogs=${snapshot.nodes.where((n) => n.className.endsWith('Dialog')).map((n) => n.className).toSet()}',
     );
     await _guard();
+    if (action == 'select-verification-email' ||
+        action == 'send-code' ||
+        action == 'resend-code') {
+      otpRequestedAt = now();
+    }
     await accessibility.tap(snapshot.viewport, point);
     await _pause(fast ? 250 : 2000 + _random.nextInt(5001));
   }
@@ -408,238 +431,267 @@ class LoginAccessibilityRunner {
     DateTime? loginTappedAt;
     String? otp;
     while (now().isBefore(deadline)) {
-      final snapshot = await _snapshot();
-      if (!isPageReady() || !snapshot.ready || !snapshot.viewport.valid) {
-        readySince = null;
-        await _pause(300);
-        continue;
-      }
-      readySince ??= now();
-      if (now().difference(readySince) < const Duration(seconds: 5)) {
-        await _pause(300);
-        continue;
-      }
-      if (_authenticated(snapshot)) {
-        alreadyLoggedIn = !_actions.contains('submit-password') && !otpFetched;
-        return;
-      }
-
-      final cookie = CookieConsentAccessibility.button(snapshot);
-      if (cookie != null && !_actions.contains('accept-cookies')) {
-        await _tap('accept-cookies', snapshot, cookie);
-        continue;
-      }
-
-      final identity = _has(snapshot, _identity);
-      final editors = snapshot.editors
-          .where(
-            (n) => !RegExp(
-              r'^search|^tìm kiếm',
-              caseSensitive: false,
-            ).hasMatch(n.hint),
-          )
-          .toList();
-      final password = editors.where((n) => n.password).firstOrNull;
-      final email = editors
-          .where((n) => !n.password && _emailHint.hasMatch(n.hint))
-          .firstOrNull;
-      final switchEmail = _find(
-        snapshot,
-        _exact(
-          'use (email|username)|email / username|username or email|email or username|sử dụng email|tên người dùng hoặc email',
-        ),
-      );
-      if (!identity &&
-          password == null &&
-          switchEmail != null &&
-          !_actions.contains('use-email') &&
-          !_actions.contains('submit-password')) {
-        await _tap('use-email', snapshot, switchEmail);
-        continue;
-      }
-      final otpEditors = editors
-          .where((n) => !n.password && _otpHint.hasMatch(n.hint))
-          .toList();
-      final codeScreen =
-          _has(snapshot, _codeTitle) ||
-          otpEditors.isNotEmpty ||
-          (_actions.contains('select-verification-email') &&
-              (_has(snapshot, _sendCode) || _has(snapshot, _delivery))) ||
-          (editors.length == 6 && password == null && email == null);
-
-      if (identity && !codeScreen) {
-        final method = _find(
-          snapshot,
-          RegExp(r'^e-?mail(?:\s+.*)?$', caseSensitive: false),
-        );
-        if (method != null && !_actions.contains('select-verification-email')) {
-          if (emailBounds != method.bounds) {
-            emailBounds = method.bounds;
-            emailStableSince = now();
-          }
-          onStatus('Đang chờ 5 giây trước khi chọn Email xác minh…');
-          if (now().difference(emailStableSince!) >=
-              const Duration(seconds: 5)) {
-            await _tap(
-              'select-verification-email',
-              snapshot,
-              method,
-              fast: true,
-            );
-            deadline = now().add(const Duration(seconds: 45));
-          }
-        } else if (method == null) {
-          emailStableSince = null;
-          emailBounds = null;
-        }
-      } else if (codeScreen) {
-        final send = _find(snapshot, _sendCode, requireClickable: true);
-        final otpVisible =
-            otpEditors.isNotEmpty ||
-            (password == null && email == null && editors.isNotEmpty);
-        final acknowledged =
-            (otpVisible && !_has(snapshot, _sendCode)) ||
-            _has(snapshot, _delivery);
-        if (send != null &&
-            !acknowledged &&
-            !_actions.contains('send-code') &&
-            !otpFetched) {
-          onStatus('Đang gửi mã xác minh bằng Accessibility…');
-          await _tap('send-code', snapshot, send, fast: true);
-          deadline = now().add(const Duration(seconds: 15));
-        } else if (acknowledged) {
-          // An OTP form without an active Send code, or a resend/countdown,
-          // acknowledges delivery. Never fetch from API just for a gesture.
-          if (!otpFetched) {
-            onStatus('Đang lấy OTP đăng nhập…');
-            try {
-              otp = await _readOtp();
-            } on LoginOtpTimeout {
-              cancelOtpRequest?.call();
-              await _resendOtpOnce();
-              deadline = now().add(const Duration(seconds: 45));
-              continue;
-            }
-            await _guard();
-            if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
-              throw StateError('OTP không đủ 6 số.');
-            }
-            otpFetched = true;
-            deadline = now().add(const Duration(seconds: 45));
-            continue; // Read fresh nodes after the API wait.
-          }
-          if (!_actions.contains('filled-otp')) {
-            final editor =
-                otpEditors.firstOrNull ??
-                editors.where((n) => !n.password).firstOrNull;
-            if (editor != null) {
-              onStatus('Đang dán OTP bằng Accessibility…');
-              await _fill('otp', otp!, snapshot, editor);
-              deadline = now().add(const Duration(seconds: 45));
-              continue;
-            }
-          } else if (!_actions.contains('submit-otp')) {
-            if (snapshot.keyboardVisible) {
-              await accessibility.dismissKeyboard();
-              await _pause(250);
-              continue;
-            }
-            final next = _find(
-              snapshot,
-              _continue,
-              requireClickable: true,
-              action: 'submit-otp',
-            );
-            final enteredLength = editors
-                .where((n) => !n.password)
-                .fold<int>(0, (sum, node) => sum + node.length);
-            if (next != null && enteredLength == 6) {
-              await _tap('submit-otp', snapshot, next, fast: true);
-              deadline = now().add(const Duration(seconds: 45));
-            }
-          }
-        }
-      } else if (!identity &&
-          password != null &&
-          !_actions.contains('submit-password')) {
-        onStatus('Đang nhập tài khoản và mật khẩu bằng Accessibility…');
-        if (!_actions.contains('filled-email') && email != null) {
-          await _fill(
-            'email',
-            configuration.loginUsername.trim(),
-            snapshot,
-            email,
-          );
-          continue;
-        }
-        if (!_actions.contains('filled-password')) {
-          await _fill(
-            'password',
-            configuration.loginPassword,
-            snapshot,
-            password,
-          );
-          continue;
-        }
-        if (email == null ||
-            email.length != configuration.loginUsername.trim().length ||
-            password.length != configuration.loginPassword.length) {
-          throw StateError(
-            'Chưa xác nhận đủ tài khoản và mật khẩu; đã dừng trước khi gửi.',
-          );
-        }
-        if (snapshot.keyboardVisible) {
-          await accessibility.dismissKeyboard();
+      try {
+        final snapshot = await _snapshot();
+        if (!isPageReady() || !snapshot.ready || !snapshot.viewport.valid) {
+          readySince = null;
           await _pause(300);
           continue;
         }
-        final submit = _find(
-          snapshot,
-          _continue,
-          requireClickable: true,
-          action: 'submit-password',
-        );
-        if (submit != null) {
-          await _tap('submit-password', snapshot, submit, fast: true);
-          deadline = now().add(const Duration(seconds: 45));
-          onStatus('Đang chờ kết quả đăng nhập…');
+        readySince ??= now();
+        if (now().difference(readySince) < const Duration(seconds: 5)) {
+          await _pause(300);
+          continue;
         }
-      } else if (!_actions.contains('submit-password') && !otpFetched) {
-        final useEmail = _find(
+        if (_authenticated(snapshot)) {
+          alreadyLoggedIn =
+              !_actions.contains('submit-password') && !otpFetched;
+          return;
+        }
+
+        final cookie = CookieConsentAccessibility.button(snapshot);
+        if (cookie != null && !_actions.contains('accept-cookies')) {
+          await _tap('accept-cookies', snapshot, cookie);
+          continue;
+        }
+
+        final identity = _has(snapshot, _identity);
+        final editors = snapshot.editors
+            .where(
+              (n) => !RegExp(
+                r'^search|^tìm kiếm',
+                caseSensitive: false,
+              ).hasMatch(n.hint),
+            )
+            .toList();
+        final password = editors.where((n) => n.password).firstOrNull;
+        final email = editors
+            .where((n) => !n.password && _emailHint.hasMatch(n.hint))
+            .firstOrNull;
+        final switchEmail = _find(
           snapshot,
           _exact(
             'use (email|username)|email / username|username or email|email or username|sử dụng email|tên người dùng hoặc email',
           ),
         );
-        final phoneEmail = _find(
-          snapshot,
-          _exact(
-            'use phone( number)?( /| or) email|sử dụng số điện thoại hoặc email',
-          ),
-        );
-        final login = _find(
-          snapshot,
-          _login,
-          requireClickable: true,
-          action: 'open-login',
-        );
-        if (useEmail != null && !_actions.contains('use-email')) {
-          await _tap('use-email', snapshot, useEmail);
-        } else if (phoneEmail != null && !_actions.contains('phone-email')) {
-          await _tap('phone-email', snapshot, phoneEmail);
-        } else if (login != null &&
-            loginTaps < _maxOpenLoginTaps &&
-            (loginTappedAt == null ||
-                now().difference(loginTappedAt) >= _openLoginRetryAfter)) {
-          // TikTok can drop a tap while the page still hydrates. Opening the
-          // login dialog submits nothing, so a bounded retry is safe.
-          _actions.remove('open-login');
-          loginTaps++;
-          loginTappedAt = now();
-          await _tap('open-login', snapshot, login);
+        if (!identity &&
+            password == null &&
+            switchEmail != null &&
+            !_actions.contains('use-email') &&
+            !_actions.contains('submit-password')) {
+          await _tap('use-email', snapshot, switchEmail);
+          continue;
         }
+        final otpEditors = editors
+            .where((n) => !n.password && _otpHint.hasMatch(n.hint))
+            .toList();
+        final codeScreen =
+            _has(snapshot, _codeTitle) ||
+            otpEditors.isNotEmpty ||
+            (_actions.contains('select-verification-email') &&
+                (_has(snapshot, _sendCode) || _has(snapshot, _delivery))) ||
+            (editors.length == 6 && password == null && email == null);
+
+        if (identity && !codeScreen) {
+          final method = _find(
+            snapshot,
+            RegExp(r'^e-?mail(?:\s+.*)?$', caseSensitive: false),
+          );
+          if (method != null &&
+              !_actions.contains('select-verification-email')) {
+            if (emailBounds != method.bounds) {
+              emailBounds = method.bounds;
+              emailStableSince = now();
+            }
+            onStatus('Đang chờ 5 giây trước khi chọn Email xác minh…');
+            if (now().difference(emailStableSince!) >=
+                const Duration(seconds: 5)) {
+              await _tap(
+                'select-verification-email',
+                snapshot,
+                method,
+                fast: true,
+              );
+              deadline = now().add(const Duration(seconds: 45));
+            }
+          } else if (method == null) {
+            emailStableSince = null;
+            emailBounds = null;
+          }
+        } else if (codeScreen) {
+          final send = _find(snapshot, _sendCode, requireClickable: true);
+          final otpVisible =
+              otpEditors.isNotEmpty ||
+              (password == null && email == null && editors.isNotEmpty);
+          final acknowledged =
+              (otpVisible && !_has(snapshot, _sendCode)) ||
+              _has(snapshot, _delivery);
+          if (send != null &&
+              !acknowledged &&
+              !_actions.contains('send-code') &&
+              !otpFetched) {
+            onStatus('Đang gửi mã xác minh bằng Accessibility…');
+            await _tap('send-code', snapshot, send, fast: true);
+            deadline = now().add(const Duration(seconds: 15));
+          } else if (acknowledged) {
+            // An OTP form without an active Send code, or a resend/countdown,
+            // acknowledges delivery. Never fetch from API just for a gesture.
+            if (!otpFetched) {
+              onStatus('Đang lấy OTP đăng nhập…');
+              try {
+                otp = await _readOtp();
+              } on LoginOtpTimeout {
+                cancelOtpRequest?.call();
+                await _resendOtpOnce();
+                deadline = now().add(const Duration(seconds: 45));
+                continue;
+              }
+              await _guard();
+              if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
+                throw StateError('OTP không đủ 6 số.');
+              }
+              otpFetched = true;
+              deadline = now().add(const Duration(seconds: 45));
+              continue; // Read fresh nodes after the API wait.
+            }
+            if (!_actions.contains('filled-otp')) {
+              final editor =
+                  otpEditors.firstOrNull ??
+                  editors.where((n) => !n.password).firstOrNull;
+              if (editor != null) {
+                onStatus('Đang dán OTP bằng Accessibility…');
+                await _fill('otp', otp!, snapshot, editor);
+                deadline = now().add(const Duration(seconds: 45));
+                continue;
+              }
+            } else if (!_actions.contains('submit-otp')) {
+              if (snapshot.keyboardVisible) {
+                await accessibility.dismissKeyboard();
+                await _pause(250);
+                continue;
+              }
+              final next = _find(
+                snapshot,
+                _continue,
+                requireClickable: true,
+                action: 'submit-otp',
+              );
+              final enteredLength = editors
+                  .where((n) => !n.password)
+                  .fold<int>(0, (sum, node) => sum + node.length);
+              if (next != null && enteredLength == 6) {
+                await _tap('submit-otp', snapshot, next, fast: true);
+                deadline = now().add(const Duration(seconds: 45));
+              }
+            }
+          }
+        } else if (!identity &&
+            password != null &&
+            !_actions.contains('submit-password')) {
+          onStatus('Đang nhập tài khoản và mật khẩu bằng Accessibility…');
+          if (!_actions.contains('filled-email') && email != null) {
+            await _fill(
+              'email',
+              configuration.loginUsername.trim(),
+              snapshot,
+              email,
+            );
+            continue;
+          }
+          if (!_actions.contains('filled-password')) {
+            await _fill(
+              'password',
+              configuration.loginPassword,
+              snapshot,
+              password,
+            );
+            continue;
+          }
+          if (email == null ||
+              email.length != configuration.loginUsername.trim().length ||
+              password.length != configuration.loginPassword.length) {
+            throw StateError(
+              'Chưa xác nhận đủ tài khoản và mật khẩu; đã dừng trước khi gửi.',
+            );
+          }
+          if (snapshot.keyboardVisible) {
+            await accessibility.dismissKeyboard();
+            await _pause(300);
+            continue;
+          }
+          final submit = _find(
+            snapshot,
+            _continue,
+            requireClickable: true,
+            action: 'submit-password',
+          );
+          if (submit != null) {
+            await _tap('submit-password', snapshot, submit, fast: true);
+            deadline = now().add(const Duration(seconds: 45));
+            onStatus('Đang chờ kết quả đăng nhập…');
+          }
+        } else if (!_actions.contains('submit-password') && !otpFetched) {
+          final useEmail = _find(
+            snapshot,
+            _exact(
+              'use (email|username)|email / username|username or email|email or username|sử dụng email|tên người dùng hoặc email',
+            ),
+          );
+          final phoneEmail = _find(
+            snapshot,
+            _exact(
+              'use phone( number)?( /| or) email|sử dụng số điện thoại hoặc email',
+            ),
+          );
+          final login = _find(
+            snapshot,
+            _login,
+            requireClickable: true,
+            action: 'open-login',
+          );
+          if (useEmail != null && !_actions.contains('use-email')) {
+            await _tap('use-email', snapshot, useEmail);
+          } else if (phoneEmail != null && !_actions.contains('phone-email')) {
+            await _tap('phone-email', snapshot, phoneEmail);
+          } else if (login != null &&
+              loginTaps < _maxOpenLoginTaps &&
+              (loginTappedAt == null ||
+                  now().difference(loginTappedAt) >= _openLoginRetryAfter)) {
+            // TikTok can drop a tap while the page still hydrates. Opening the
+            // login dialog submits nothing, so a bounded retry is safe.
+            _actions.remove('open-login');
+            loginTaps++;
+            loginTappedAt = now();
+            await _tap('open-login', snapshot, login);
+          }
+        }
+        await _pause(300);
+      } on LoginOtpRejected {
+        if (!otpFetched ||
+            otp == null ||
+            !_actions.contains('filled-otp') ||
+            _actions.contains('resend-code')) {
+          rethrow;
+        }
+        onStatus('OTP sai hoặc hết hạn. Đang chuẩn bị gửi lại mã một lần…');
+        onOtpRejected?.call(otp);
+        _recoveringOtp = true;
+        try {
+          if (!await accessibility.clearOtp(otp)) {
+            throw StateError(
+              'Ô OTP đã thay đổi. Đã giữ nội dung, không gửi lại mã.',
+            );
+          }
+          cancelOtpRequest?.call();
+          await _resendOtpOnce();
+        } finally {
+          _recoveringOtp = false;
+        }
+        _actions.removeAll(['focus-otp', 'filled-otp', 'submit-otp']);
+        otpFetched = false;
+        otp = null;
+        deadline = now().add(const Duration(seconds: 45));
       }
-      await _pause(300);
     }
     throw StateError(
       'Chưa xác nhận được đăng nhập qua Accessibility. Hãy kiểm tra màn TikTok.',
@@ -653,6 +705,11 @@ class LoginAccessibilityCancelled implements Exception {
 
 class LoginOtpTimeout extends StateError {
   LoginOtpTimeout([super.message = 'Hết thời gian chờ OTP đăng nhập.']);
+}
+
+class LoginOtpRejected extends StateError {
+  LoginOtpRejected()
+    : super('OTP không hợp lệ. Đã dừng, không gửi lại mã quá một lần.');
 }
 
 class LoginAccessibilityRateLimited implements Exception {

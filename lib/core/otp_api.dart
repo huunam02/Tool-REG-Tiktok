@@ -80,10 +80,19 @@ class OtpApiClient implements OtpCodeReader {
     this.configuration, {
     http.Client? client,
     void Function(String)? logOutput,
+    this.dataMailPollInterval = const Duration(seconds: 5),
+    this.notBefore,
+    Set<String> rejectedCodes = const {},
   }) : _client = client ?? _otpHttpClient(configuration),
+       _rejectedCodes = Set.of(rejectedCodes),
        _logOutput = logOutput ?? ((message) => debugPrint(message));
 
   final OtpApiConfiguration configuration;
+
+  /// The Data Mail endpoint answers at once, before TikTok's mail may arrive.
+  final Duration dataMailPollInterval;
+  final DateTime? notBefore;
+  final Set<String> _rejectedCodes;
   final http.Client _client;
   final _abort = Completer<void>();
   final void Function(String) _logOutput;
@@ -232,7 +241,30 @@ class OtpApiClient implements OtpCodeReader {
       path: '/api/extract-otp',
       queryParameters: {'rawInput': dataMail},
     );
-    // Never log the query or response body: both can contain mail secrets.
+    final deadline = DateTime.now().add(
+      Duration(seconds: configuration.waitSeconds),
+    );
+    while (true) {
+      final code = await _readDataMailOnce(url);
+      if (code != null) return code;
+      // No code yet: TikTok's mail has not reached the mailbox. Ask again
+      // until the configured wait ends; the caller then resends the code.
+      if (!DateTime.now().add(dataMailPollInterval).isBefore(deadline)) {
+        throw const OtpApiException(
+          'API chưa tìm thấy OTP trong thời gian chờ.',
+          timedOut: true,
+        );
+      }
+      await Future.any([
+        Future<void>.delayed(dataMailPollInterval),
+        _abort.future,
+      ]);
+    }
+  }
+
+  /// The code, or null when the mailbox has none yet.
+  Future<String?> _readDataMailOnce(Uri url) async {
+    // Never log the query or response values: both can contain mail secrets.
     _log('REQUEST', {
       'method': 'GET',
       'url': '${url.origin}${url.path}',
@@ -247,14 +279,15 @@ class OtpApiClient implements OtpCodeReader {
     final rawBody = await const Utf8Decoder(
       allowMalformed: true,
     ).bind(response.stream).join();
-    _log('RESPONSE', {'statusCode': response.statusCode});
     if (response.statusCode == 408 || response.statusCode == 504) {
+      _log('RESPONSE', {'statusCode': response.statusCode});
       throw const OtpApiException(
         'API chưa tìm thấy OTP trong thời gian chờ.',
         timedOut: true,
       );
     }
     if (response.statusCode != 200) {
+      _log('RESPONSE', {'statusCode': response.statusCode});
       throw const OtpApiException(
         'API lấy OTP đang lỗi. Hãy kiểm tra Data Mail và thử lại.',
       );
@@ -263,6 +296,7 @@ class OtpApiClient implements OtpCodeReader {
     try {
       body = jsonDecode(rawBody);
     } catch (_) {
+      _log('RESPONSE', {'statusCode': response.statusCode});
       throw const OtpApiException('API lấy OTP trả về dữ liệu không hợp lệ.');
     }
     String? readCode(dynamic value) {
@@ -279,10 +313,36 @@ class OtpApiClient implements OtpCodeReader {
     }
 
     final code = readCode(body);
-    if (code == null) {
-      throw const OtpApiException('API chưa trả về mã OTP 6 chữ số hợp lệ.');
+    DateTime? receivedAt(dynamic value) {
+      if (value is Map) {
+        return receivedAt(value['receivedAt']) ?? receivedAt(value['data']);
+      }
+      if (value is num || value is String && RegExp(r'^\d+$').hasMatch(value)) {
+        final epoch = num.tryParse('$value');
+        if (epoch == null) return null;
+        return DateTime.fromMillisecondsSinceEpoch(
+          (epoch < 100000000000 ? epoch * 1000 : epoch).round(),
+          isUtc: true,
+        );
+      }
+      return value is String ? DateTime.tryParse(value) : null;
     }
-    return code;
+
+    final received = receivedAt(body);
+    final stale =
+        notBefore != null && received != null && received.isBefore(notBefore!);
+    final rejected = code != null && _rejectedCodes.contains(code);
+    _log('RESPONSE', {
+      'statusCode': response.statusCode,
+      // Field names and flags only: enough to tell "no mail yet" from errors.
+      if (body is Map) 'fields': body.keys.map((key) => '$key').toList(),
+      if (body is Map && body['ok'] is bool) 'ok': body['ok'],
+      if (body is Map && body['success'] is bool) 'success': body['success'],
+      'hasCode': code != null,
+      if (stale) 'staleCode': true,
+      if (rejected) 'rejectedCode': true,
+    });
+    return stale || rejected ? null : code;
   }
 
   void _log(String event, Map<String, dynamic> data) {

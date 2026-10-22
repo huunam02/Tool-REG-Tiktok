@@ -9,36 +9,29 @@ import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/device_memory.dart';
 import 'package:test_tiktok/core/gpu_profile.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
-import 'package:test_tiktok/core/webview_privacy.dart';
 
 void main() {
-  test('every phone has a unique id and a real Android GPU vendor', () {
-    expect(GpuProfile.all.length, greaterThanOrEqualTo(50));
+  test('every phone is a Snapdragon phone with a unique id', () {
+    expect(GpuProfile.all.length, greaterThanOrEqualTo(40));
     expect(
       GpuProfile.all.map((p) => p.id).toSet(),
       hasLength(GpuProfile.all.length),
     );
     for (final profile in GpuProfile.all) {
-      expect(['ARM', 'Qualcomm'], contains(profile.vendor), reason: profile.id);
-      expect(
-        profile.renderer,
-        profile.vendor == 'ARM'
-            ? startsWith('Mali-G')
-            : startsWith('Adreno (TM) '),
-        reason: profile.id,
-      );
-      // The ANGLE format of Chrome on a real Android phone.
-      expect(profile.webGlVendor, 'Google Inc. (${profile.vendor})');
-      expect(
-        profile.webGlRenderer,
-        'ANGLE (${profile.vendor}, ${profile.renderer}, OpenGL ES 3.2)',
-      );
+      expect(profile.vendor, 'Qualcomm', reason: profile.id);
+      expect(profile.renderer, startsWith('Adreno (TM) '), reason: profile.id);
+      // Firefox on a real Android phone: the driver's vendor and a
+      // bucketed renderer (dom/canvas/SanitizeRenderer.cpp).
+      expect(profile.webGlVendor, profile.vendor);
+      expect(profile.webGlRenderer, endsWith(', or similar'));
     }
     expect(
       GpuProfile.byId('redmi-note-12').webGlRenderer,
-      'ANGLE (Qualcomm, Adreno (TM) 610, OpenGL ES 3.2)',
+      'Adreno (TM) 650, or similar',
     );
-    expect(GpuProfile.byId('xiaomi-13t').renderer, 'Mali-G610 MC6');
+    expect(GpuProfile.byId('redmi-note-12').webGlVendor, 'Qualcomm');
+    // Mali phones were dropped; their ids now fall back.
+    expect(GpuProfile.isKnown('galaxy-a14'), isFalse);
     expect(GpuProfile.byId('unknown'), GpuProfile.fallback);
     expect(GpuProfile.find(' Samsung Galaxy S23 ')!.id, 'galaxy-s23');
     for (final profile in GpuProfile.all) {
@@ -67,13 +60,13 @@ void main() {
       containsAll([
         'redmi-note-11',
         'redmi-note-12',
-        'galaxy-a14',
-        'galaxy-a15',
-        'realme-c55',
+        'redmi-10c',
+        'galaxy-a23',
+        'moto-g62',
       ]),
     );
     expect(low, isNot(contains('galaxy-s23')));
-    expect(low, isNot(contains('pixel-9-pro-xl')));
+    expect(low, isNot(contains('galaxy-s24-ultra')));
     final high = GpuProfile.forDevice(8).map((p) => p.id).toSet();
     expect(high, containsAll(['galaxy-s23', 'redmi-note-12']));
     expect(high, isNot(contains('redmi-note-11')));
@@ -88,22 +81,17 @@ void main() {
     }
   });
 
-  test('the GPU script reports the configuration\'s phone', () {
-    expect(gpuInfoScript(GpuProfile.fallback), pixelGpuInfoScript);
-    final s23 = gpuInfoScript(GpuProfile.byId('galaxy-s23'));
-    expect(
-      s23,
-      contains("if (key === 0x9245) return 'Google Inc. (Qualcomm)';"),
-    );
-    expect(
-      s23,
-      contains(
-        "if (key === 0x9246) return 'ANGLE (Qualcomm, Adreno (TM) 740, OpenGL ES 3.2)';",
-      ),
-    );
-    expect(s23, isNot(contains('Mali-G715')));
-    // Only the reported strings change; WebGPU stays disabled.
-    expect(s23, contains("Object.defineProperty(target, 'gpu'"));
+  test('renderers bucket like Firefox', () {
+    for (final (renderer, bucket) in [
+      ('Adreno (TM) 750', 'Adreno (TM) 650'),
+      ('Adreno (TM) 610', 'Adreno (TM) 650'),
+      ('Adreno (TM) 540', 'Adreno (TM) 540'),
+      ('Adreno (TM) 642L', 'Adreno (TM) 650'),
+      ('Adreno (TM) 430', 'Adreno (TM) 430'),
+    ]) {
+      expect(firefoxRendererBucket(renderer), bucket, reason: renderer);
+    }
+    expect(() => firefoxRendererBucket('Mali-G52'), throwsArgumentError);
   });
 
   group('store', () {
@@ -145,8 +133,8 @@ void main() {
       await store.useSaved(id);
       expect((await store.getCurrentProfile())!.gpuProfileId, gpu);
 
-      await store.save(id: id, name: 'A', proxy: null, gpuProfileId: 'pixel-7');
-      expect((await store.list()).single.gpuProfile.device, 'Google Pixel 7');
+      await store.save(id: id, name: 'A', proxy: null, gpuProfileId: 'pixel-5');
+      expect((await store.list()).single.gpuProfile.device, 'Google Pixel 5');
       await expectLater(
         store.save(id: id, name: 'A', proxy: null, gpuProfileId: 'iphone'),
         throwsFormatException,
@@ -200,6 +188,32 @@ void main() {
       final ids = [for (final entry in await store.list()) entry.gpuProfileId];
       expect(ids, hasLength(2));
       expect(ids.every(GpuProfile.isKnown), isTrue);
+    });
+
+    test('v19 Mali phones are replaced by Snapdragon phones', () async {
+      final kept = await store.save(
+        name: 'A',
+        proxy: WebViewProxy.parse('192.0.2.7:8080')!,
+        gpuProfileId: 'galaxy-s23',
+      );
+      final mali = await store.save(
+        name: 'B',
+        proxy: WebViewProxy.parse('192.0.2.8:8080')!,
+      );
+      await store.close();
+      final old = await databaseFactoryFfi.openDatabase(filename);
+      await old.update('configurations', {
+        'gpu_profile': 'galaxy-a14',
+      }, where: 'id = $mali');
+      await old.setVersion(19);
+      await old.close();
+      store = openStore();
+      final gpu = {
+        for (final entry in await store.list()) entry.id: entry.gpuProfile,
+      };
+      expect(gpu[kept]!.id, 'galaxy-s23');
+      expect(gpu[mali]!.vendor, 'Qualcomm');
+      expect(GpuProfile.isKnown(gpu[mali]!.id), isTrue);
     });
   });
 }

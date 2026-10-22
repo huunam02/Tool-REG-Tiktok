@@ -10,6 +10,8 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
 import org.json.JSONArray
 import org.json.JSONObject
+import org.mozilla.geckoview.GeckoPreferenceController
+import org.mozilla.geckoview.GeckoPreferenceController.SetGeckoPreference
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
@@ -43,6 +45,7 @@ class GeckoPlatformView(
     private val pending = ConcurrentHashMap<String, (Any?, String?) -> Unit>()
     private val initialScripts = (args["initialScripts"] as? List<*>)?.mapNotNull { it as? String }.orEmpty()
     private val initialUrl = (args["initialUrl"] as? String)?.takeIf { it.isNotBlank() }
+    private lateinit var gpuReady: GeckoResult<*>
     private var currentUrl: String? = null
     private var disposed = false
 
@@ -64,9 +67,25 @@ class GeckoPlatformView(
         session = GeckoSession(settings)
         bindDelegates()
         session.open(GeckoRuntimeHolder.runtime(context))
+        gpuReady = applyGpu()
         geckoView.setSession(session)
         GeckoRuntimeHolder.whenExtensionReady(context) { extension ->
             if (!disposed) bindExtension(extension)
+        }
+    }
+
+    // The configuration's phone GPU, as Firefox's own WebGL overrides: every
+    // document, frame and worker reports it natively from the first script.
+    private fun applyGpu(): GeckoResult<*> {
+        val vendor = (args["webGlVendor"] as? String).orEmpty()
+        val renderer = (args["webGlRenderer"] as? String).orEmpty()
+        val branch = GeckoPreferenceController.PREF_BRANCH_USER
+        return GeckoPreferenceController.setGeckoPrefs(listOf(
+            SetGeckoPreference.setStringPref("webgl.override-unmasked-vendor", vendor, branch),
+            SetGeckoPreference.setStringPref("webgl.override-unmasked-renderer", renderer, branch),
+        )).map { applied ->
+            if (applied?.values?.all { it } != true) Log.e(TAG, "WebGL GPU not applied: $applied")
+            applied
         }
     }
 
@@ -160,7 +179,9 @@ class GeckoPlatformView(
         when (message.optString("type")) {
             "ready" -> {
                 if (message.optBoolean("top")) topPort = port
-                if (false) initialScripts.forEach { source -> postEval(port, source, true, null) } // TMPEXP
+                // Every document and frame announces itself at document_start;
+                // the configuration's time zone and WebRTC scripts follow.
+                initialScripts.forEach { source -> postEval(port, source, true, null) }
                 emit("javascriptReady", mapOf("top" to message.optBoolean("top")))
             }
             "evalResult" -> {
@@ -194,7 +215,14 @@ class GeckoPlatformView(
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "start" -> { initialUrl?.let(session::loadUri); result.success(null) }
+            "start" -> {
+                // Never load a page before the GPU overrides are in place.
+                gpuReady.accept(
+                    { initialUrl?.takeUnless { disposed }?.let(session::loadUri) },
+                    { error -> Log.e(TAG, "WebGL GPU not applied", error) },
+                )
+                result.success(null)
+            }
             "loadUrl" -> {
                 val url = call.argument<String>("url")
                 if (url.isNullOrBlank()) result.error("invalid_url", "URL is empty", null)

@@ -280,6 +280,63 @@ public class AccessibilityListener extends AccessibilityService {
     public void onInterrupt() {
     }
 
+    /**
+     * One finger that stays down across [segments] (press-hold, move, hold),
+     * each continuing the previous stroke; the finger lifts after the last.
+     * Each segment's path starts where the previous one ended.
+     */
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public static void performContinuousGesture(List<Object> segments, MethodChannel.Result result) {
+        if (instance == null || segments == null || segments.isEmpty()) {
+            result.success(false);
+            return;
+        }
+        dispatchSegment(instance, segments, 0, null, result);
+    }
+
+    @SuppressWarnings("unchecked")
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private static void dispatchSegment(AccessibilityListener service, List<Object> segments, int index,
+            GestureDescription.StrokeDescription previous, MethodChannel.Result result) {
+        try {
+            Map<String, Object> segment = (Map<String, Object>) segments.get(index);
+            List<Object> pointObjs = (List<Object>) segment.get("path");
+            int duration = ((Number) segment.get("duration")).intValue();
+            Path path = new Path();
+            Map<String, Object> first = (Map<String, Object>) pointObjs.get(0);
+            path.moveTo(((Number) first.get("x")).floatValue(), ((Number) first.get("y")).floatValue());
+            for (int i = 1; i < pointObjs.size(); i++) {
+                Map<String, Object> pt = (Map<String, Object>) pointObjs.get(i);
+                path.lineTo(((Number) pt.get("x")).floatValue(), ((Number) pt.get("y")).floatValue());
+            }
+            boolean more = index + 1 < segments.size();
+            GestureDescription.StrokeDescription stroke = previous == null
+                ? new GestureDescription.StrokeDescription(path, 0, duration, more)
+                : previous.continueStroke(path, 0, duration, more);
+            boolean sent = service.dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(),
+                new AccessibilityService.GestureResultCallback() {
+                    @Override
+                    public void onCompleted(GestureDescription gestureDescription) {
+                        if (more) dispatchSegment(service, segments, index + 1, stroke, result);
+                        else new Handler(Looper.getMainLooper()).post(() -> result.success(true));
+                    }
+
+                    @Override
+                    public void onCancelled(GestureDescription gestureDescription) {
+                        Log.w("GESTURE", "continuous gesture cancelled at segment " + index + "/" + segments.size());
+                        new Handler(Looper.getMainLooper()).post(() -> result.success(false));
+                    }
+                }, null);
+            if (!sent) {
+                Log.w("GESTURE", "continuous gesture not sent at segment " + index + "/" + segments.size());
+                result.success(false);
+            }
+        } catch (Exception e) {
+            Log.e("GESTURE", "performContinuousGesture: " + e.getMessage());
+            result.success(false);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     @RequiresApi(api = Build.VERSION_CODES.N)
     public static void performDispatchGesture(List<Object> strokes, MethodChannel.Result result) {

@@ -7,7 +7,7 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
-import 'package:test_tiktok/core/chrome_user_agent.dart';
+import 'package:test_tiktok/core/firefox_user_agent.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -390,7 +390,7 @@ void main() {
       final registered = rows.singleWhere((row) => row.id == id);
       expect(registered.statusAccount, AccountStatus.registered);
       expect(registered.name, 'Signup');
-      expect(registered.userAgent, 'signup-agent');
+      expect(registered.userAgent, firefoxDesktopUserAgent);
       expect(sameAccount(registered.account, account), isTrue);
       final current = (await store.getCurrentProfile())!;
       expect(current.configurationId, otherId);
@@ -489,12 +489,12 @@ void main() {
       expect(selected.configurationId, id);
       expect(selected.proxy!.username, 'user');
       expect(selected.proxy!.password, 'pass');
-      expect(selected.userAgent, 'custom-agent');
+      expect(selected.userAgent, firefoxDesktopUserAgent);
       expect(selected.hasBeenUsed, isTrue);
       expect(selected.timeZoneId, isEmpty);
       await store.close();
       final migrated = await databaseFactoryFfi.openDatabase(filename);
-      expect(await migrated.getVersion(), 19);
+      expect(await migrated.getVersion(), 20);
       expect(
         (await migrated.rawQuery(
           'PRAGMA table_info(configurations)',
@@ -570,7 +570,7 @@ void main() {
   );
 
   test(
-    'version 6 upgrades generated UAs and preserves accounts and custom UAs',
+    'version 6 upgrades every saved UA to Firefox and preserves accounts',
     () async {
       const oldAgent =
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -605,7 +605,8 @@ void main() {
       await previous.close();
       store = openStore();
       final selected = (await store.getCurrentProfile())!;
-      final expected = windowsChromeUserAgent;
+      // GeckoView sends only Firefox with "Desktop site" on.
+      const expected = firefoxDesktopUserAgent;
       expect(selected.configurationId, id);
       expect(selected.userAgent, expected);
       expect(selected.account!.email, account.email);
@@ -620,7 +621,7 @@ void main() {
       );
       expect(
         saved.singleWhere((row) => row.name == 'Custom').userAgent,
-        custom,
+        expected,
       );
       await store.close();
       store = openStore();
@@ -657,7 +658,10 @@ void main() {
       saved.singleWhere((entry) => entry.id == ids.last).statusAccount,
       AccountStatus.unregistered,
     );
-    expect(saved.every((entry) => entry.userAgent == 'batch-agent'), isTrue);
+    expect(
+      saved.every((entry) => entry.userAgent == firefoxDesktopUserAgent),
+      isTrue,
+    );
     expect(await store.getCurrentProfile(), isNull);
     await expectLater(
       store.saveDrafts([
@@ -667,12 +671,16 @@ void main() {
           'changed-agent',
           account: drafts.first.account,
         ),
-        ProxyDraft('invalid', drafts.last.proxy, ''),
+        // An unknown phone fails the batch after the first row was written.
+        ProxyDraft('invalid', drafts.last.proxy, '', gpuProfileId: 'unknown'),
       ]),
       throwsFormatException,
     );
     final after = await store.list();
-    expect(after.every((entry) => entry.userAgent == 'batch-agent'), isTrue);
+    expect(
+      after.every((entry) => entry.userAgent == firefoxDesktopUserAgent),
+      isTrue,
+    );
     expect(
       after.singleWhere((entry) => entry.id == ids.first).name,
       'first@example.com',
@@ -880,7 +888,7 @@ void main() {
     await db.close();
     final current = (await store.getCurrentProfile())!;
     expect(current.proxy!.password, 'pass');
-    expect(current.userAgent, 'legacy-agent');
+    expect(current.userAgent, firefoxDesktopUserAgent);
     expect(current.account, isNull);
     const account = AccountCredentials(
       email: 'person@example.com',
@@ -900,7 +908,7 @@ void main() {
       sameAccount((await store.getCurrentProfile())!.account, account),
       isTrue,
     );
-    expect((await store.list()).single.userAgent, 'legacy-agent');
+    expect((await store.list()).single.userAgent, firefoxDesktopUserAgent);
   });
 
   test(
@@ -965,7 +973,7 @@ void main() {
   );
 
   test(
-    'switching between proxies restores their distinct User-Agents',
+    'every proxy shares the Firefox User-Agent across switches and edits',
     () async {
       final first = WebViewProxy.parse('first.example.com:8080')!;
       final second = WebViewProxy.parse('second.example.com:8080')!;
@@ -975,7 +983,9 @@ void main() {
       final firstAgent = (await store.getCurrentProfile())!.userAgent;
       await store.setCurrent(second);
       final secondAgent = (await store.getCurrentProfile())!.userAgent;
-      expect(secondAgent, isNot(firstAgent));
+      // GeckoView sends only Firefox with "Desktop site" on.
+      expect(firstAgent, firefoxDesktopUserAgent);
+      expect(secondAgent, firstAgent);
       await store.setCurrent(first);
       expect((await store.getCurrentProfile())!.userAgent, firstAgent);
       await store.save(id: firstId, name: 'Renamed', proxy: first);
@@ -1173,7 +1183,7 @@ void main() {
       final current = (await store.getCurrentProfile())!;
       expect(current.name, 'Active');
       expect(current.proxy!.password, 'secret');
-      expect(current.userAgent, 'legacy-agent');
+      expect(current.userAgent, firefoxDesktopUserAgent);
       expect(nextAgent, 0);
     },
   );

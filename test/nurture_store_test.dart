@@ -60,7 +60,7 @@ void main() {
       expect((await store.nurture.listAccounts()).single.email, account.email);
       await store.close();
       final migrated = await databaseFactoryFfi.openDatabase(filename);
-      expect(await migrated.getVersion(), 19);
+      expect(await migrated.getVersion(), 20);
       expect(await migrated.query('configurations'), before);
       expect(await migrated.rawQuery('PRAGMA foreign_key_check'), isEmpty);
       await migrated.close();

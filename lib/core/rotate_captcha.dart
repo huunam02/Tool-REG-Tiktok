@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 
+import 'firefox_user_agent.dart';
 import 'signup_accessibility.dart';
 
 class RotateCaptchaChallenge {
@@ -126,6 +129,7 @@ class RotateCaptchaSolver {
   RotateCaptchaSolver({http.Client? client})
     : _client = client ?? http.Client();
   final http.Client _client;
+  final _random = math.Random();
   final _abort = Completer<void>();
   bool _closed = false;
   Timer? _pauseTimer;
@@ -163,7 +167,10 @@ class RotateCaptchaSolver {
         uri.userInfo.isNotEmpty) {
       throw StateError('Không hỗ trợ URL ảnh CAPTCHA này.');
     }
-    final request = http.Request('GET', uri)..followRedirects = false;
+    // TikTok's CDN sees the same browser as the page, not dart:io.
+    final request = http.Request('GET', uri)
+      ..followRedirects = false
+      ..headers['User-Agent'] = firefoxDesktopUserAgent;
     final response = await _client
         .send(request)
         .timeout(const Duration(seconds: 15));
@@ -352,6 +359,10 @@ class RotateCaptchaSolver {
     await guard();
     final solution = await angle(challenge, licenseKey);
     await guard();
+    // A person looks at the puzzle before dragging. The puzzle is re-read
+    // after the pause, so a change meanwhile still stops the drag.
+    await _pause(800 + _random.nextInt(1201));
+    await guard();
     final current = await read();
     final snapshot = await accessibility.snapshot();
     await guard();
@@ -370,9 +381,14 @@ class RotateCaptchaSolver {
     final bounds = snapshot.viewport.bounds;
     final from = current.screenPoint(bounds, 0),
         to = current.screenPoint(bounds, solution);
+    debugPrint(
+      '[Diag captcha] angle=$solution travel=${current.travel} '
+      'viewport=${current.viewportWidth}x${current.viewportHeight} '
+      'handle=(${current.x}, ${current.y}) webView=$bounds from=$from to=$to',
+    );
     onStatus('Đang kéo CAPTCHA bằng Trợ năng…');
     await guard();
-    await accessibility.swipeScreen(bounds, from, to);
+    await accessibility.dragScreen(bounds, from, to);
     await guard();
     final deadline = DateTime.now().add(const Duration(seconds: 12));
     var absent = 0;

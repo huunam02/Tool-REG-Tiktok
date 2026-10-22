@@ -15,7 +15,7 @@ import '../nurture_data.dart';
 import '../proxy_time_zone.dart';
 import '../proxy_time_zone_detector.dart';
 import '../webview_user_agent.dart';
-import '../chrome_user_agent.dart';
+import '../firefox_user_agent.dart';
 import 'app_controller.dart';
 
 class ProxyFormController extends AppController {
@@ -82,16 +82,9 @@ class ProxyFormController extends AppController {
     try {
       await previous;
       if (!active || fields.disposed) return;
-      var generatedAgent = normalizeDesktopUserAgentForPlatform(
-        await selectUserAgent(),
-      );
+      // The store hands out the Firefox identity and normalizes on save.
+      final generatedAgent = await selectUserAgent();
       if (!active || fields.disposed) return;
-      if (generatedAgent == fields.userAgent.text) {
-        generatedAgent = normalizeDesktopUserAgentForPlatform(
-          await selectUserAgent(),
-        );
-        if (!active || fields.disposed) return;
-      }
       fields.userAgent.text = generatedAgent;
       mutate(() => fields.generationFailed = false);
     } catch (_) {
@@ -104,32 +97,6 @@ class ProxyFormController extends AppController {
     }
   }
 
-  void useMiuiUserAgentFor(ConfigurationFormFields fields) {
-    if (!active ||
-        fields.disposed ||
-        fields.generating ||
-        !needsAndroidDesktopIdentity) {
-      return;
-    }
-    mutate(() {
-      fields.userAgent.text = miuiBrowserUserAgent;
-      fields.generationFailed = false;
-    });
-  }
-
-  void useWindowsUserAgentFor(ConfigurationFormFields fields) {
-    if (!active ||
-        fields.disposed ||
-        fields.generating ||
-        !needsAndroidDesktopIdentity) {
-      return;
-    }
-    mutate(() {
-      fields.userAgent.text = windowsChromeUserAgent;
-      fields.generationFailed = false;
-    });
-  }
-
   @override
   void onClose() {
     _timeZoneDetector.cancel();
@@ -138,12 +105,6 @@ class ProxyFormController extends AppController {
       fields.dispose();
     }
     super.onClose();
-  }
-
-  void normalizeUserAgentFor(ConfigurationFormFields fields) {
-    final agent = normalizeDesktopUserAgentForPlatform(fields.userAgent.text);
-    if (agent != fields.userAgent.text) fields.userAgent.text = agent;
-    update();
   }
 
   Future<List<ProxyDraft>?> save() async {

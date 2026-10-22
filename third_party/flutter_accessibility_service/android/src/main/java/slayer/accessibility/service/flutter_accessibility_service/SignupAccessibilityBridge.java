@@ -27,6 +27,21 @@ final class SignupAccessibilityBridge {
     private static boolean pasting;
     private static boolean pasteCancelled;
 
+    // GeckoView acknowledges ACTION_PASTE but may read the clipboard seconds
+    // later (the first paste of a session took over 2s). Restoring the
+    // user's clip right after a failed check let that late paste insert the
+    // user's own clipboard, so the restore waits while our text stays put.
+    private static final int PASTE_EMPTY_RETRIES = 79;
+    private static final long FAILED_RESTORE_DELAY_MS = 10000;
+    private static final Handler clipboardHandler = new Handler(Looper.getMainLooper());
+    private static ClipboardManager deferredClipboard;
+    private static ClipData deferredClip;
+    private static String deferredText;
+    private static final Runnable deferredRestore = () -> {
+        if (deferredClipboard != null) restoreClipboard(deferredClipboard, deferredClip, deferredText);
+        deferredClipboard = null; deferredClip = null; deferredText = null;
+    };
+
     private static AccessibilityListener keyboardOwner;
     private static final Handler keyboardHandler = new Handler(Looper.getMainLooper());
     private static final Runnable keyboardExpiry = () -> restoreKeyboard();
@@ -473,7 +488,14 @@ final class SignupAccessibilityBridge {
             result.success(status(text.contentEquals(previous), "draft-exists")); return;
         }
         ClipboardManager clipboard = (ClipboardManager) service.getSystemService(Context.CLIPBOARD_SERVICE);
-        ClipData oldClip = clipboard.getPrimaryClip();
+        ClipData currentClip = clipboard.getPrimaryClip();
+        // A failed paste may still hold the clipboard: keep the user's clip
+        // unless they copied something new in the meantime.
+        boolean held = deferredClipboard != null && currentClip != null && currentClip.getItemCount() > 0 &&
+            deferredText.contentEquals(currentClip.getItemAt(0).getText());
+        ClipData oldClip = held ? deferredClip : currentClip;
+        clipboardHandler.removeCallbacks(deferredRestore);
+        deferredClipboard = null; deferredClip = null; deferredText = null;
         ClipData clip = ClipData.newPlainText("", text);
         PersistableBundle extras = new PersistableBundle();
         extras.putBoolean("android.content.extra.IS_SENSITIVE", true);
@@ -537,7 +559,7 @@ final class SignupAccessibilityBridge {
                     } else failPaste(clipboard, oldClip, text, result, "paste-not-inserted");
                 } : null);
         } catch (Exception ignored) {
-            restoreClipboard(clipboard, oldClip, text); pasting = false;
+            restoreClipboardLater(clipboard, oldClip, text); pasting = false;
             result.success(status(false, "paste-failed"));
         }
     }
@@ -618,8 +640,14 @@ final class SignupAccessibilityBridge {
 
     private static void failPaste(ClipboardManager clipboard, ClipData oldClip, String text,
             MethodChannel.Result result, String reason) {
-        restoreClipboard(clipboard, oldClip, text); pasting = false;
+        restoreClipboardLater(clipboard, oldClip, text); pasting = false;
         result.success(status(false, reason));
+    }
+
+    private static void restoreClipboardLater(ClipboardManager clipboard, ClipData oldClip, String text) {
+        clipboardHandler.removeCallbacks(deferredRestore);
+        deferredClipboard = clipboard; deferredClip = oldClip; deferredText = text;
+        clipboardHandler.postDelayed(deferredRestore, FAILED_RESTORE_DELAY_MS);
     }
 
     /** ACTION_CLICK on the Post control beside the filled comment editor. */
@@ -716,21 +744,24 @@ final class SignupAccessibilityBridge {
                 boolean otpAdvanced = field.equals("otp") && web != null &&
                     (!attached || !editor.isEditable() || editableCount(web, 0) == 0 || hasPasswordEditor(web, 0));
                 boolean splitMatched = field.equals("otp") && text.equals(editableText(web, 0));
+                boolean empty = attached && (value == null || value.length() == 0);
+                // An empty field may still receive a slow GeckoView paste.
+                int retries = empty ? PASTE_EMPTY_RETRIES : 19;
                 // Acknowledged but nothing inserted: one real-menu attempt.
                 // Any partial value is never pasted over.
-                if (!exact && !otpAdvanced && !splitMatched && retry >= 19 && emptyFallback != null &&
-                        attached && (value == null || value.length() == 0)) {
+                if (!exact && !otpAdvanced && !splitMatched && retry >= retries && emptyFallback != null && empty) {
                     emptyFallback.run(); return;
                 }
-                if (exact || passwordLength || otpAdvanced || splitMatched || retry >= 19) {
-                    restoreClipboard(clipboard, oldClip, text); pasting = false;
-                    boolean empty = attached && (value == null || value.length() == 0);
-                    result.success(status(exact || passwordLength || otpAdvanced || splitMatched,
+                if (exact || passwordLength || otpAdvanced || splitMatched || retry >= retries) {
+                    boolean ok = exact || passwordLength || otpAdvanced || splitMatched;
+                    if (ok) restoreClipboard(clipboard, oldClip, text); else restoreClipboardLater(clipboard, oldClip, text);
+                    pasting = false;
+                    result.success(status(ok,
                         exact || splitMatched ? "value-matched" : passwordLength ? "password-length-matched" : otpAdvanced ? "otp-view-replaced" :
                         (field.equals("comment") || field.equals("search")) && empty ? "paste-not-inserted" : "value-not-confirmed"));
                 } else verifyPaste(editor, text, field, clipboard, oldClip, result, retry + 1, emptyFallback);
             } catch (Exception ignored) {
-                restoreClipboard(clipboard, oldClip, text); pasting = false;
+                restoreClipboardLater(clipboard, oldClip, text); pasting = false;
                 result.success(status(false, "verification-failed"));
             }
         }, 100);

@@ -5,7 +5,7 @@ import 'app_configuration.dart';
 import 'configuration_data.dart';
 import 'proxy_draft.dart';
 import 'desktop_user_agents.dart';
-import 'chrome_user_agent.dart';
+import 'firefox_user_agent.dart';
 import 'proxy_time_zone.dart';
 import 'device_memory.dart';
 import 'gpu_profile.dart';
@@ -250,7 +250,7 @@ class ProxyStore {
       db = await factory.openDatabase(
         filename,
         options: OpenDatabaseOptions(
-          version: 19,
+          version: 20,
           onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
           onOpen: (db) async {
             await db.update('nurture_sessions', {
@@ -465,7 +465,9 @@ class ProxyStore {
       : AccountStatus.unregistered;
   static ProxyProfile _readProfile(Map<String, Object?> row) => ProxyProfile(
     proxy: _readProxy(row),
-    userAgent: row['user_agent'] as String,
+    userAgent: normalizeDesktopUserAgentForPlatform(
+      row['user_agent'] as String,
+    ),
     name: row['name'] as String,
     account: _readAccount(row),
     statusAccount: _readStatus(row),
@@ -617,7 +619,9 @@ class ProxyStore {
     id: row['id'] as int,
     name: row['name'] as String,
     proxy: _readProxy(row),
-    userAgent: row['user_agent'] as String,
+    userAgent: normalizeDesktopUserAgentForPlatform(
+      row['user_agent'] as String,
+    ),
     timeZoneId: row['time_zone_id'] as String? ?? '',
     account: _readAccount(row),
     statusAccount: _readStatus(row),

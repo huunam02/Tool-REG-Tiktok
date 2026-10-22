@@ -411,38 +411,12 @@ class _ProxyFormView extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        _fieldLabel(
-          'User-Agent',
-          action: Tooltip(
-            message: 'Tạo User-Agent mới',
-            child: OutlinedButton.icon(
-              key: _configurationKey('generateProxyUserAgent', index),
-              onPressed: fields.generating
-                  ? null
-                  : () => logic.generateUserAgentFor(fields),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(0, 32),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              icon: const Icon(Icons.refresh, size: 15),
-              label: Text(fields.generating ? 'Đang lấy…' : 'Đổi User-Agent'),
-            ),
-          ),
-        ),
+        _fieldLabel('User-Agent'),
         TextFormField(
           key: _configurationKey('savedProxyUserAgent', index),
           controller: fields.userAgent,
-          onChanged: (_) => logic.normalizeUserAgentFor(fields),
+          // GeckoView sends only Firefox with "Desktop site" on.
+          readOnly: true,
           enabled: !fields.generating,
           autocorrect: false,
           enableSuggestions: false,
@@ -450,9 +424,8 @@ class _ProxyFormView extends StatelessWidget {
           maxLines: 6,
           style: const TextStyle(fontSize: 12, height: 1.6),
           decoration: InputDecoration(
-            hintText: 'Nhập User-Agent trên một dòng',
             helperText: needsAndroidDesktopIdentity
-                ? 'TikTok và kiểm tra proxy dùng GeckoView với User-Agent đã lưu cho cấu hình này.'
+                ? 'Firefox trên điện thoại, bật chế độ trang web cho máy tính (GeckoView).'
                 : null,
             helperMaxLines: 4,
           ),
@@ -463,18 +436,6 @@ class _ProxyFormView extends StatelessWidget {
               ? 'Nhập User-Agent hợp lệ trên một dòng.'
               : null,
         ),
-        if (needsAndroidDesktopIdentity)
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              key: _configurationKey('useMiuiUserAgent', index),
-              onPressed: fields.generating
-                  ? null
-                  : () => logic.useMiuiUserAgentFor(fields),
-              icon: const Icon(Icons.phone_android, size: 16),
-              label: const Text('Dùng Miui Browser 14 (Desktop)'),
-            ),
-          ),
         if (fields.generationFailed)
           const Padding(
             padding: EdgeInsets.only(top: 10),

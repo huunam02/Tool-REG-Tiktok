@@ -38,7 +38,7 @@ class UsageGuidePage extends StatelessWidget {
         ),
         (
           'Thông tin của mỗi cấu hình',
-          'Proxy SOCKS5; User-Agent (bấm Đổi User-Agent để lấy mới); '
+          'Proxy SOCKS5; User-Agent (Firefox bật chế độ máy tính, cố định); '
               'Múi giờ GeckoView (Tra theo proxy, hoặc để trống để tự tra khi '
               'mở); Thiết bị (GPU) điện thoại được chọn ngẫu nhiên và giữ cố '
               'định, bấm Đổi để chọn máy khác; công tắc Đã đăng ký; ô Nuôi '

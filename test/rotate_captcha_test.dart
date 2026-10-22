@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,7 +33,10 @@ void main() {
               'webBounds': [50, 100, 850, 1700],
             };
           }
-          if (call.method == 'dispatchGesture') gestures.add(call);
+          if (call.method == 'dispatchGesture' ||
+              call.method == 'dispatchContinuousGesture') {
+            gestures.add(call);
+          }
           return true;
         });
   });
@@ -67,18 +71,31 @@ void main() {
       );
       expect(solved, isTrue);
       expect(confirmations, 3); // A remaining CAPTCHA never counts as solved.
-      expect(gestures.single.arguments, {
-        'strokes': [
-          {
-            'path': [
-              {'x': 210.0, 'y': 500.0},
-              {'x': 450.0, 'y': 500.0},
-            ],
-            'startTime': 0,
-            'duration': 450,
-          },
-        ],
-      });
+      // Press, move along a human-like track, hold, release; the track
+      // ends exactly on the computed target.
+      expect(gestures.single.method, 'dispatchContinuousGesture');
+      final raw = (gestures.single.arguments as Map)['segments'] as List;
+      final segments = [
+        for (final s in raw)
+          [
+            for (final p in s['path'] as List)
+              Offset((p['x'] as num).toDouble(), (p['y'] as num).toDouble()),
+          ],
+      ];
+      expect(segments.first, [const Offset(210, 500)]);
+      expect(segments.last, [const Offset(450, 500)]);
+      for (var i = 1; i < segments.length; i++) {
+        expect(segments[i].first, segments[i - 1].last); // One finger.
+      }
+      final track = segments.expand((s) => s);
+      final overshoot = track.map((p) => p.dx).reduce(max) - 450;
+      expect(overshoot, inInclusiveRange(3, 9));
+      expect(track.every((p) => (p.dy - 500).abs() <= 3), isTrue);
+      final duration = raw.fold<int>(
+        0,
+        (sum, s) => sum + (s['duration'] as int),
+      );
+      expect(duration, inInclusiveRange(800, 2000));
     },
   );
 
@@ -93,7 +110,9 @@ void main() {
                 'webBounds': [0, 0, 318, 636],
               };
             }
-            if (call.method == 'dispatchGesture') gestures.add(call);
+            if (call.method == 'dispatchContinuousGesture') {
+              gestures.add(call);
+            }
             return true;
           });
       final c = RotateCaptchaChallenge.fromResult({
@@ -119,12 +138,13 @@ void main() {
         ),
         isTrue,
       );
-      final strokes = (gestures.single.arguments as Map)['strokes'] as List;
-      final points = strokes.single['path'] as List;
-      expect(points[0]['x'], closeTo(107.484, .001));
-      expect(points[0]['y'], closeTo(361.884, .001));
-      expect(points[1]['x'], closeTo(152.64, .001));
-      expect(points[1]['y'], closeTo(361.884, .001));
+      final segments = (gestures.single.arguments as Map)['segments'] as List;
+      final first = (segments.first['path'] as List).single;
+      final last = (segments.last['path'] as List).single;
+      expect(first['x'], closeTo(107.484, .001));
+      expect(first['y'], closeTo(361.884, .001));
+      expect(last['x'], closeTo(152.64, .001));
+      expect(last['y'], closeTo(361.884, .001));
     },
   );
 

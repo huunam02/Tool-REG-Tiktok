@@ -279,6 +279,68 @@ class SignupAccessibility {
         }
       });
 
+  /// A slider drag as in tiktok_rotate_captcha_guide.md (press, move, hold,
+  /// release) that ends exactly on [to]. A fast fling is taken by GeckoView
+  /// as a pan and the slider stops part-way. TikTok also scores the track:
+  /// a straight constant-speed line is rejected even on the right angle, so
+  /// the hand speeds up and slows down, wobbles, and settles from a small
+  /// overshoot.
+  Future<void> dragScreen(
+    Rect bounds,
+    Offset from,
+    Offset to, {
+    math.Random? random,
+  }) => _perform(() async {
+    if (!bounds.isFinite ||
+        bounds.isEmpty ||
+        !from.dx.isFinite ||
+        !from.dy.isFinite ||
+        !to.dx.isFinite ||
+        !to.dy.isFinite ||
+        !bounds.contains(from) ||
+        !bounds.contains(to)) {
+      throw StateError('Điểm kéo nằm ngoài khung WebView.');
+    }
+    final r = random ?? math.Random();
+    double between(double a, double b) => a + r.nextDouble() * (b - a);
+    GesturePoint at(Offset p) => GesturePoint(
+      p.dx.clamp(bounds.left, bounds.right - 1),
+      p.dy.clamp(bounds.top, bounds.bottom - 1),
+    );
+    final dx = to.dx - from.dx;
+    final overshoot = dx.sign * between(3, 9);
+    final steps = 18 + r.nextInt(8);
+    final stepMs = between(700, 1200) / steps;
+    final track = <Offset>[from];
+    var wobble = 0.0;
+    for (var i = 1; i <= steps; i++) {
+      // Equal time slices over an ease-in-out curve: slow, fast, slow.
+      final t = i / steps;
+      final eased = t < .5 ? 4 * t * t * t : 1 - math.pow(-2 * t + 2, 3) / 2;
+      wobble = (wobble + between(-1.2, 1.2)).clamp(-3.0, 3.0);
+      track.add(Offset(from.dx + (dx + overshoot) * eased, from.dy + wobble));
+    }
+    track
+      ..add(Offset.lerp(track.last, to, .6)!)
+      ..add(to);
+    final completed =
+        await FlutterAccessibilityService.dispatchContinuousGesture([
+          // Below Gecko's long-press delay, so no context menu or drag.
+          GestureStroke(path: [at(from)], duration: between(80, 180).round()),
+          for (var i = 1; i < track.length; i++)
+            GestureStroke(
+              path: [at(track[i - 1]), at(track[i])],
+              duration: i > steps
+                  ? between(60, 120).round()
+                  : math.max(8, (stepMs * between(.8, 1.2)).round()),
+            ),
+          GestureStroke(path: [at(to)], duration: between(150, 350).round()),
+        ]);
+    if (!completed) {
+      throw StateError('Accessibility chưa hoàn tất thao tác kéo.');
+    }
+  });
+
   Future<Map<String, dynamic>> paste(String text, String field) => _perform(
     () => FlutterAccessibilityService.signupPasteFocused(text, field),
   );

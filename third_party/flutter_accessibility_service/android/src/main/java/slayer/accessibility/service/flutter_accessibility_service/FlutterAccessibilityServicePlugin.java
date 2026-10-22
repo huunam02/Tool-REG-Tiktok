@@ -215,6 +215,13 @@ public class FlutterAccessibilityServicePlugin implements FlutterPlugin, Activit
             }
             List<Object> strokes = call.argument("strokes");
             AccessibilityListener.performDispatchGesture(strokes, result);
+        } else if (call.method.equals("dispatchContinuousGesture")) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                result.success(false);
+                return;
+            }
+            List<Object> segments = call.argument("segments");
+            AccessibilityListener.performContinuousGesture(segments, result);
         } else {
             result.notImplemented();
         }

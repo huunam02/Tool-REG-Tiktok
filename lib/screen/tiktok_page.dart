@@ -343,13 +343,13 @@ class _TikTokView extends StatelessWidget {
                       ? 'profile-${logic.configuration.userAgent.hashCode}'
                       : geckoProfileContextId(logic.configuration.configurationId!),
                   userAgent: logic.configuration.userAgent,
+                  // Every mode reports the configuration's phone GPU.
+                  gpu: logic.configuration.gpuProfile,
                   initialScripts: [
                     if (!logic.useNativeWebView &&
                         needsAndroidDesktopIdentity &&
                         logic.configuration.webViewTimeZone != null)
                       webViewTimeZoneScript(logic.configuration.webViewTimeZone!),
-                    // Every mode reports the configuration's phone GPU.
-                    gpuInfoScript(logic.configuration.gpuProfile),
                     disableWebRtcScript,
                     if (forceEnglishWebViewLocale && !logic.useNativeWebView)
                       englishWebViewLocaleScript,

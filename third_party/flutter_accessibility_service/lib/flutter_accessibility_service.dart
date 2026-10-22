@@ -241,6 +241,25 @@ class FlutterAccessibilityService {
     }
   }
 
+  /// Dispatches one finger that stays down across [segments], each continuing
+  /// the previous stroke (Android 8.0+). A single-point segment holds still
+  /// for its duration. Each segment must start where the previous one ended;
+  /// [GestureStroke.startTime] is ignored.
+  static Future<bool> dispatchContinuousGesture(
+    List<GestureStroke> segments,
+  ) async {
+    try {
+      return await _methodChannel.invokeMethod<bool?>(
+            'dispatchContinuousGesture',
+            {'segments': segments.map((s) => s.toJson()).toList()},
+          ) ??
+          false;
+    } on PlatformException catch (error) {
+      log("$error");
+      return false;
+    }
+  }
+
   /// Performs a global action.
   /// Such an action can be performed at any moment regardless of the current application or user location in that application
   /// For example going back, going home, opening recents, etc.

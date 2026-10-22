@@ -363,7 +363,7 @@ class LoginAccessibilityRunner {
         'Hết thời gian chờ OTP sau khi đã gửi lại 1 lần. Đã dừng, không bấm Resend code thêm.',
       );
     }
-    onStatus('Hết thời gian chờ OTP. Đang chờ Resend code được bật…');
+    onStatus('Đang chờ Resend code được bật để gửi lại mã một lần…');
     final deadline = now().add(const Duration(seconds: 75));
     while (now().isBefore(deadline)) {
       final snapshot = await _snapshot();
@@ -561,6 +561,7 @@ class LoginAccessibilityRunner {
               if (editor != null) {
                 onStatus('Đang dán OTP bằng Accessibility…');
                 await _fill('otp', otp!, snapshot, editor);
+                _recoveringOtp = false;
                 deadline = now().add(const Duration(seconds: 45));
                 continue;
               }
@@ -682,10 +683,12 @@ class LoginAccessibilityRunner {
               'Ô OTP đã thay đổi. Đã giữ nội dung, không gửi lại mã.',
             );
           }
+          await accessibility.dismissKeyboard();
           cancelOtpRequest?.call();
           await _resendOtpOnce();
-        } finally {
+        } catch (_) {
           _recoveringOtp = false;
+          rethrow;
         }
         _actions.removeAll(['focus-otp', 'filled-otp', 'submit-otp']);
         otpFetched = false;

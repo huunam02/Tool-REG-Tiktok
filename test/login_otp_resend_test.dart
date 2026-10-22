@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
@@ -12,6 +11,7 @@ class _OtpForm extends SignupAccessibility {
   late DateTime resendReadyAt = clock.add(const Duration(seconds: 25));
   bool rejected = false, authenticated = false, focused = false;
   bool rejectRetry = false, changeDraft = false, wrongPassword = false;
+  bool retainErrorAfterResend = false;
   String value = '';
   int resends = 0, clears = 0, pastes = 0;
 
@@ -67,7 +67,7 @@ class _OtpForm extends SignupAccessibility {
     if (point.dy >= 350 && point.dy < 380) {
       expect(clock.isBefore(resendReadyAt), isFalse);
       resends++;
-      rejected = false;
+      if (!retainErrorAfterResend) rejected = false;
       resendReadyAt = clock.add(const Duration(seconds: 25));
     } else {
       focused = true;
@@ -141,6 +141,13 @@ void main() {
   test('a second invalid OTP stops without another resend', () async {
     final form = _OtpForm()..rejectRetry = true;
     await expectLater(runner(form).run(), throwsA(isA<LoginOtpRejected>()));
+    expect([form.clears, form.resends, form.pastes], [1, 1, 2]);
+  });
+
+  test('an old error after resend does not interrupt the fresh OTP', () async {
+    final form = _OtpForm()..retainErrorAfterResend = true;
+    await runner(form).run();
+    expect(form.authenticated, isTrue);
     expect([form.clears, form.resends, form.pastes], [1, 1, 2]);
   });
 

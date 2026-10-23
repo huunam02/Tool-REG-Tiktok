@@ -107,8 +107,8 @@ class ProxyManagementController extends AppController {
 
   Future<void> delete(SavedProxy entry) async {
     await _perform(() async {
-      await store.delete(entry.id);
       await AccountSessions.delete(entry.id);
+      await store.delete(entry.id);
       await reload();
     });
   }

@@ -110,7 +110,7 @@ String proxyLabel(WebViewProxy? proxy) =>
 
 /// All configurations and the active selection live in one table.
 /// An unlisted active row preserves the selected snapshot when its saved entry
-/// is edited or deleted. It is removed when another configuration is selected.
+/// is edited. Deleting a configuration physically removes its stored data.
 class ProxyStore {
   ProxyStore({
     DatabaseFactory? factory,
@@ -876,16 +876,75 @@ class ProxyStore {
         whereArgs: [id],
       );
       if (rows.isEmpty) return;
-      if (rows.single['is_current'] == 1) {
-        await txn.update(
+      final accountKey = nurtureAccountKey(
+        rows.single['account_email'] as String? ?? '',
+      );
+      final ids = <int>[id];
+      if (accountKey.isNotEmpty) {
+        final shared = await txn.query(
           'configurations',
-          {'listed': 0},
-          where: 'id = ?',
-          whereArgs: [id],
+          columns: ['id'],
+          where: 'id != ? AND listed = 1 AND lower(trim(account_email)) = ?',
+          whereArgs: [id, accountKey],
+          limit: 1,
         );
-      } else {
-        await txn.delete('configurations', where: 'id = ?', whereArgs: [id]);
+        if (shared.isEmpty) {
+          // Editing the selected account can leave an unlisted snapshot.
+          // Remove those copies too when its last saved configuration goes.
+          final snapshots = await txn.query(
+            'configurations',
+            columns: ['id'],
+            where: 'id != ? AND listed = 0 AND lower(trim(account_email)) = ?',
+            whereArgs: [id, accountKey],
+          );
+          ids.addAll(snapshots.map((row) => row['id'] as int));
+        }
       }
+      final targets = '(${List.filled(ids.length, '?').join(',')})';
+      final selected = await txn.query(
+        'configurations',
+        columns: ['id'],
+        where: 'id IN $targets AND is_current = 1',
+        whereArgs: ids,
+        limit: 1,
+      );
+      if (selected.isNotEmpty) {
+        await txn.insert('app_settings', {
+          'key': 'current_configuration_logged_in',
+          'value': 'false',
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      // Delete history before the FK's SET NULL can detach it from this ID.
+      await txn.delete(
+        'nurture_sessions',
+        where: 'configuration_id IN $targets',
+        whereArgs: ids,
+      );
+      await txn.delete(
+        'configurations',
+        where: 'id IN $targets',
+        whereArgs: ids,
+      );
+      if (accountKey.isEmpty) return;
+      final remaining = await txn.query(
+        'configurations',
+        columns: ['id'],
+        where: 'lower(trim(account_email)) = ?',
+        whereArgs: [accountKey],
+        limit: 1,
+      );
+      if (remaining.isNotEmpty) return;
+      // Also remove old history with a null configuration ID for this account.
+      await txn.delete(
+        'nurture_sessions',
+        where: 'account_key = ?',
+        whereArgs: [accountKey],
+      );
+      await txn.delete(
+        'nurture_accounts',
+        where: 'account_key = ?',
+        whereArgs: [accountKey],
+      );
     });
   }
 

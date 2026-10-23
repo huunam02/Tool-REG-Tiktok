@@ -850,10 +850,8 @@ void main() {
         isTrue,
       );
       await store.delete(firstId);
-      expect(
-        sameAccount((await store.getCurrentProfile())!.account, first),
-        isTrue,
-      );
+      expect(await store.getCurrentProfile(), isNull);
+      expect(await store.canReuseCurrentAccountSession(), isFalse);
       await store.setCurrent(null);
       expect(await store.getCurrentProfile(), isNull);
     },

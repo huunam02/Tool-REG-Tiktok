@@ -135,7 +135,7 @@ void main() {
   );
 
   test(
-    'deleting a configuration retains statistics without a dangling foreign key',
+    'deleting the last configuration removes its account and history',
     () async {
       final id = await store.save(
         name: 'Existing',
@@ -159,15 +159,12 @@ void main() {
         ),
       );
       await store.delete(id);
-      final remaining = (await store.nurture.listAccounts()).single;
-      expect(remaining.configurationId, isNull);
-      expect(remaining.totals.videos, 1);
+      expect(await store.nurture.listAccounts(), isEmpty);
       await store.close();
       final db = await databaseFactoryFfi.openDatabase(filename);
-      expect(
-        (await db.query('nurture_sessions')).single['configuration_id'],
-        isNull,
-      );
+      expect(await db.query('configurations'), isEmpty);
+      expect(await db.query('nurture_sessions'), isEmpty);
+      expect(await db.query('nurture_accounts'), isEmpty);
       expect(await db.rawQuery('PRAGMA foreign_key_check'), isEmpty);
       await db.close();
       store = openStore();
@@ -175,7 +172,7 @@ void main() {
   );
 
   test(
-    'deleted active snapshot remains on Home but cannot be selected from statistics',
+    'deleting the selected account clears Home and nurture statistics',
     () async {
       final id = await store.save(
         name: 'Active',
@@ -184,10 +181,8 @@ void main() {
       );
       await store.useSaved(id);
       await store.delete(id);
-      expect((await store.getCurrentProfile())!.account!.email, account.email);
-      final entry = (await store.nurture.listAccounts()).single;
-      expect(entry.configurationId, isNull);
-      expect(entry.configurationName, isEmpty);
+      expect(await store.getCurrentProfile(), isNull);
+      expect(await store.nurture.listAccounts(), isEmpty);
     },
   );
 

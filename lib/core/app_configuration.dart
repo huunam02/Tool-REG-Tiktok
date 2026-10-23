@@ -115,19 +115,19 @@ class WebViewProxy {
   static WebViewProxy parseImport(String value) {
     final line = value.replaceAll(RegExp(r'^[\r\n]+|[\r\n]+$'), '');
     final match = RegExp(
-      r'^([^:\r\n]+):(\d+):([^:\r\n]+):([^\r\n]+)$',
+      r'^(?:(socks5h?|https?)://)?([^:/\r\n]+):(\d+):([^:\r\n]+):([^\r\n]+)$',
     ).firstMatch(line);
     if (match == null ||
-        match.group(3)!.trim().isEmpty ||
-        match.group(4)!.trim().isEmpty) {
+        match.group(4)!.trim().isEmpty ||
+        match.group(5)!.trim().isEmpty) {
       throw const FormatException(
         'Nhập một dòng proxy dạng host:port:username:password.',
       );
     }
     return parse(
-      '${match.group(1)!.trim()}:${match.group(2)}',
-      username: match.group(3)!,
-      password: match.group(4)!,
+      '${match.group(1) ?? 'http'}://${match.group(2)!.trim()}:${match.group(3)}',
+      username: match.group(4)!,
+      password: match.group(5)!,
     )!;
   }
 
@@ -138,7 +138,7 @@ class WebViewProxy {
   }) {
     value = value.trim();
     if (value.isEmpty) return null;
-    final uri = Uri.tryParse(value.contains('://') ? value : 'socks5://$value');
+    final uri = Uri.tryParse(value.contains('://') ? value : 'http://$value');
     if (uri == null ||
         !const ['socks5', 'socks5h', 'http', 'https'].contains(uri.scheme) ||
         uri.host.isEmpty ||

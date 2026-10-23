@@ -23,3 +23,10 @@ wrong-otp-field. That failure now reports the row and page counts.
 SignupAccessibilityBridge.java: the long press that opens the Paste menu
 lasts the device's long-press timeout plus 450ms (at least 850ms), so a
 Medium/Long "Touch & hold delay" setting still opens the menu.
+
+AccessibilityListener.java: continuous gestures round coordinates to Android's
+screen pixels and hold the existing pointer through stationary intermediate
+segments. Android 9 cancels a continued stroke when subpixel movement produces
+no touch events. A press-only callback can also finish before its requested
+duration; the next segment now waits for the remaining hold time. Native
+instrumentation tests cover both cases with one DOWN/UP pair and no CANCEL.

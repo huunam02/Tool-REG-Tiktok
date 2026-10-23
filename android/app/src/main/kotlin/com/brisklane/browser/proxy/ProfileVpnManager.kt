@@ -25,7 +25,7 @@ class ProfileVpnManager(private val activity: Activity) : MethodChannel.MethodCa
             main.post {
                 val result = requests.remove(request) ?: return@post
                 if (error == null) result.success(true)
-                else result.error("vpn_failed", "Không thể bật proxy SOCKS5: $error", null)
+                else result.error("vpn_failed", "Không thể bật proxy: $error", null)
             }
         }
     }
@@ -38,7 +38,7 @@ class ProfileVpnManager(private val activity: Activity) : MethodChannel.MethodCa
             "stop" -> if (!ProfileVpnService.hasTunnel) result.success(true)
                 else send(Intent(activity, ProfileVpnService::class.java).setAction(ProfileVpnService.ACTION_STOP),
                     result, foreground = false)
-            "status" -> result.success(mapOf("running" to (ProfileVpnService.runningProfile != null),
+            "status" -> result.success(mapOf("running" to ProfileVpnService.isRunning,
                 "profileId" to ProfileVpnService.runningProfile))
             else -> result.notImplemented()
         }
@@ -47,17 +47,18 @@ class ProfileVpnManager(private val activity: Activity) : MethodChannel.MethodCa
     private fun start(call: MethodCall, result: MethodChannel.Result) {
         val raw = call.argument<String>("proxy")?.trim().orEmpty()
         val profile = call.argument<String>("profileId")?.trim().orEmpty()
-        val uri = try { URI(if (raw.contains("://")) raw else "socks5://$raw") }
+        val uri = try { URI(if (raw.contains("://")) raw else "http://$raw") }
         catch (_: Exception) { null }
-        if (uri == null || uri.scheme.lowercase() !in setOf("socks5", "socks5h") ||
+        if (uri == null || uri.scheme.lowercase() !in setOf("socks5", "socks5h", "http", "https") ||
             uri.host.isNullOrBlank() || uri.port !in 1..65535 || profile.isBlank()) {
-            result.error("invalid_socks5_proxy", "Proxy phải có dạng socks5://user:pass@host:port", null)
+            result.error("invalid_proxy", "Proxy phải dùng HTTP, HTTPS hoặc SOCKS5 và có cổng hợp lệ.", null)
             return
         }
         val userInfo = uri.rawUserInfo?.split(':', limit = 2).orEmpty()
         val service = Intent(activity, ProfileVpnService::class.java)
             .setAction(ProfileVpnService.ACTION_START)
             .putExtra(ProfileVpnService.EXTRA_HOST, uri.host)
+            .putExtra(ProfileVpnService.EXTRA_SCHEME, uri.scheme.lowercase())
             .putExtra(ProfileVpnService.EXTRA_PORT, uri.port)
             .putExtra(ProfileVpnService.EXTRA_USERNAME, userInfo.getOrNull(0)?.decodeUri().orEmpty())
             .putExtra(ProfileVpnService.EXTRA_PASSWORD, userInfo.getOrNull(1)?.decodeUri().orEmpty())
@@ -83,7 +84,7 @@ class ProfileVpnManager(private val activity: Activity) : MethodChannel.MethodCa
             else activity.startService(service)
         } catch (error: Exception) {
             requests.remove(request)
-            result.error("vpn_failed", "Không thể bật proxy SOCKS5: ${error.message}", null)
+            result.error("vpn_failed", "Không thể bật proxy: ${error.message}", null)
         }
     }
 

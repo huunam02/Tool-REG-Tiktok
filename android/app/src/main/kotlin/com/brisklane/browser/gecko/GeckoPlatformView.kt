@@ -1,6 +1,8 @@
 package com.brisklane.browser.gecko
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -19,7 +21,6 @@ import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.WebExtension
 import org.mozilla.geckoview.WebRequestError
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
 class GeckoPlatformView(
     context: Context,
@@ -42,7 +43,11 @@ class GeckoPlatformView(
     private val session: GeckoSession
     private val ports = mutableSetOf<WebExtension.Port>()
     private var topPort: WebExtension.Port? = null
-    private val pending = ConcurrentHashMap<String, (Any?, String?) -> Unit>()
+    private val handler = Handler(Looper.getMainLooper())
+    private val pending = PendingGeckoEvaluations<WebExtension.Port>(
+        schedule = { task, delay -> handler.postDelayed(task, delay); Unit },
+        cancel = { task -> handler.removeCallbacks(task) },
+    )
     private val initialScripts = (args["initialScripts"] as? List<*>)?.mapNotNull { it as? String }.orEmpty()
     private val initialUrl = (args["initialUrl"] as? String)?.takeIf { it.isNotBlank() }
     private lateinit var gpuReady: GeckoResult<*>
@@ -157,7 +162,7 @@ class GeckoPlatformView(
             object : WebExtension.MessageDelegate {
                 override fun onConnect(port: WebExtension.Port) {
                     synchronized(ports) { ports += port }
-                    if (port.sender.isTopLevel) topPort = port
+                    if (port.sender.isTopLevel) setTopPort(port)
                     port.setDelegate(object : WebExtension.PortDelegate {
                         override fun onPortMessage(message: Any, source: WebExtension.Port) {
                             handleExtensionMessage(message, source)
@@ -166,6 +171,7 @@ class GeckoPlatformView(
                         override fun onDisconnect(source: WebExtension.Port) {
                             synchronized(ports) { ports -= source }
                             if (topPort === source) topPort = null
+                            pending.disconnect(source, "The page document bridge disconnected")
                         }
                     })
                 }
@@ -174,11 +180,19 @@ class GeckoPlatformView(
         )
     }
 
+    private fun setTopPort(port: WebExtension.Port) {
+        val previous = topPort
+        topPort = port
+        if (previous != null && previous !== port) {
+            pending.disconnect(previous, "The page document was replaced")
+        }
+    }
+
     private fun handleExtensionMessage(raw: Any, port: WebExtension.Port) {
         val message = raw as? JSONObject ?: return
         when (message.optString("type")) {
             "ready" -> {
-                if (message.optBoolean("top")) topPort = port
+                if (message.optBoolean("top")) setTopPort(port)
                 // Every document and frame announces itself at document_start;
                 // the configuration's time zone and WebRTC scripts follow.
                 initialScripts.forEach { source -> postEval(port, source, true, null) }
@@ -186,9 +200,8 @@ class GeckoPlatformView(
             }
             "evalResult" -> {
                 val id = message.optString("id")
-                val callback = pending.remove(id) ?: return
-                if (message.optBoolean("ok")) callback(toFlutter(message.opt("value")), null)
-                else callback(null, message.optString("error"))
+                if (message.optBoolean("ok")) pending.reply(id, port, toFlutter(message.opt("value")), null)
+                else pending.reply(id, port, null, message.optString("error"))
             }
             "handler" -> {
                 val id = message.optString("id")
@@ -236,7 +249,8 @@ class GeckoPlatformView(
             "evaluateJavascript" -> {
                 val source = call.argument<String>("source")
                 if (source == null) result.error("invalid_script", "JavaScript source is missing", null)
-                else evaluate(source, call.argument<Boolean>("pageWorld") == true) { value, error ->
+                else evaluate(source, call.argument<Boolean>("pageWorld") == true,
+                    (call.argument<Number>("timeoutMs")?.toLong() ?: 30_000L).coerceIn(1L, 120_000L)) { value, error ->
                     if (error == null) result.success(value)
                     else result.error("javascript_error", error, null)
                 }
@@ -246,17 +260,26 @@ class GeckoPlatformView(
     }
 
     fun evaluateNative(source: String, callback: (Any?, String?) -> Unit) =
-        evaluate(source, false, callback)
+        evaluate(source, false, callback = callback)
 
-    private fun evaluate(source: String, pageWorld: Boolean, callback: (Any?, String?) -> Unit) {
+    private fun evaluate(
+        source: String,
+        pageWorld: Boolean,
+        timeoutMs: Long = 30_000L,
+        callback: (Any?, String?) -> Unit,
+    ) {
         val port = topPort
         if (port == null) {
             callback(null, "The top-level document bridge is not ready")
             return
         }
         val id = UUID.randomUUID().toString()
-        pending[id] = callback
-        postEval(port, source, pageWorld, id)
+        pending.add(id, port, timeoutMs, callback)
+        try {
+            postEval(port, source, pageWorld, id)
+        } catch (_: Exception) {
+            pending.finish(id, null, "The page document bridge is unavailable")
+        }
     }
 
     private fun postEval(port: WebExtension.Port, source: String, pageWorld: Boolean, id: String?) {
@@ -292,8 +315,7 @@ class GeckoPlatformView(
     override fun dispose() {
         disposed = true
         channel.setMethodCallHandler(null)
-        pending.values.forEach { it(null, "GeckoView was disposed") }
-        pending.clear()
+        pending.close()
         synchronized(ports) { ports.forEach { it.disconnect() }; ports.clear() }
         geckoView.releaseSession()
         session.close()

@@ -13,7 +13,9 @@ class ProxyGeolocation {
   final String timeZoneId;
 
   factory ProxyGeolocation.fromJson(dynamic data) {
-    final zone = data is Map && data['timezone'] is Map ? data['timezone']['id'] : null;
+    final zone = data is Map && data['timezone'] is Map
+        ? data['timezone']['id']
+        : null;
     final ip = data is Map ? data['ip'] : null;
     if (data is! Map ||
         data['success'] != true ||
@@ -56,15 +58,19 @@ class ProxyGeolocationLookup {
           .timeout(timeout);
       if (_cancelled) throw const FormatException('Đã hủy kiểm tra múi giờ.');
       if (response.statusCode != 200) {
-        throw FormatException('API múi giờ trả về HTTP ${response.statusCode}.');
+        throw FormatException(
+          'API múi giờ trả về HTTP ${response.statusCode}.',
+        );
       }
       return ProxyGeolocation.fromJson(jsonDecode(response.body));
     } on TimeoutException {
-      throw const FormatException('Kiểm tra múi giờ qua proxy quá thời gian chờ.');
+      throw const FormatException(
+        'Kiểm tra múi giờ qua proxy quá thời gian chờ.',
+      );
     } on FormatException {
       rethrow;
     } catch (_) {
-      throw const FormatException('Không thể kiểm tra múi giờ qua proxy SOCKS5.');
+      throw const FormatException('Không thể kiểm tra múi giờ qua proxy.');
     }
   }
 }

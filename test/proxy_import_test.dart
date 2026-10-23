@@ -26,7 +26,7 @@ void main() {
 
   test('imports proxy address, port and separate credentials', () {
     final proxy = WebViewProxy.parseImport(record);
-    expect(proxy.uri.toString(), 'socks5://192.0.2.7:9323');
+    expect(proxy.uri.toString(), 'http://192.0.2.7:9323');
     expect(proxy.uri.userInfo, isEmpty);
     expect(proxy.username, 'proxy-user');
     expect(proxy.password, 'proxy-password');
@@ -182,7 +182,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('savedProxyName')), findsNothing);
     expect(text(tester, 'savedAccountEmail'), 'person@example.com');
-    expect(text(tester, 'savedProxyUrl'), 'socks5://192.0.2.7:9323');
+    expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
     expect(text(tester, 'savedProxyUsername'), 'proxy-user');
     expect(text(tester, 'savedProxyPassword'), 'proxy-password');
     expect(text(tester, 'savedProxyTimeZone'), 'America/New_York');
@@ -233,7 +233,7 @@ void main() {
         suffix == '|1' || suffix == '|2',
       );
       expect(text(tester, 'savedAccountEmail'), 'person@example.com');
-      expect(text(tester, 'savedProxyUrl'), 'socks5://192.0.2.7:9323');
+      expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
       expect(text(tester, 'savedMailboxPassword'), 'Mailbox-password');
       if (suffix == '|2') {
         expect(
@@ -285,7 +285,7 @@ void main() {
     expect(text(tester, 'proxyImportData'), isEmpty);
     expect(find.byKey(const Key('savedProxyName')), findsNothing);
     expect(text(tester, 'savedAccountEmail'), 'person@example.com');
-    expect(text(tester, 'savedProxyUrl'), 'socks5://192.0.2.7:9323');
+    expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
     expect(text(tester, 'savedProxyUsername'), 'proxy-user');
     expect(text(tester, 'savedProxyPassword'), 'proxy-password');
     expect(tester.takeException(), isNull);
@@ -520,7 +520,7 @@ void main() {
       await tester.ensureVisible(find.byKey(Key(entry.key)));
       await tester.enterText(find.byKey(Key(entry.key)), entry.value);
     }
-    expect(text(tester, 'savedProxyUrl'), 'socks5://192.0.2.7:9323');
+    expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
     expect(text(tester, 'savedAccountPassword'), 'TikTok-password');
     expect(text(tester, 'savedMailboxPassword'), 'Mailbox-password');
     await tester.tap(find.byKey(const Key('saveProxyEntry')));
@@ -651,10 +651,7 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('applyProxyImportData')));
       await tester.pumpAndSettle();
-      expect(
-        find.text('Dòng 1: Nhập proxy dạng host:port.'),
-        findsOneWidget,
-      );
+      expect(find.text('Dòng 1: Nhập proxy dạng host:port.'), findsOneWidget);
       for (final entry in originals.entries) {
         expect(text(tester, entry.key), entry.value);
       }
@@ -663,16 +660,13 @@ void main() {
         combinedRecord,
       );
       await tester.pumpAndSettle();
-      expect(
-        find.text('Dòng 1: Nhập proxy dạng host:port.'),
-        findsNothing,
-      );
+      expect(find.text('Dòng 1: Nhập proxy dạng host:port.'), findsNothing);
       await tester.tap(find.byKey(const Key('applyProxyImportData')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('savedProxyName')), findsNothing);
       expect(text(tester, 'savedAccountEmail'), 'person@example.com');
       expect(text(tester, 'savedProxyUserAgent'), 'test-agent');
-      expect(text(tester, 'savedProxyUrl'), 'socks5://192.0.2.7:9323');
+      expect(text(tester, 'savedProxyUrl'), 'http://192.0.2.7:9323');
       expect(tester.takeException(), isNull);
     },
   );

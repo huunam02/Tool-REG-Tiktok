@@ -385,8 +385,8 @@ class NurtureAccessibilityRunner {
   static const defaultLongWatchRate = .5;
 
   /// Search-mode nurture: the keyword is entered and submitted through
-  /// Accessibility, then a result from the Videos tab is watched. Null or
-  /// empty watches the For You feed.
+  /// Accessibility, then a non-LIVE video result is watched. Null or empty
+  /// watches the For You feed.
   final String? searchKeyword;
   final Random _random;
   final DateTime Function() _now;
@@ -401,6 +401,8 @@ class NurtureAccessibilityRunner {
   NurtureVideo? _previous;
   DateTime? _sampledAt;
   Future<void>? _done;
+  int _runEpoch = 0;
+  Completer<SignupSnapshot>? _snapshotWaiter;
   NurtureTotals get totals => NurtureTotals(
     watchMilliseconds: _watchMs,
     videos: _full + _skipped,
@@ -437,6 +439,7 @@ class NurtureAccessibilityRunner {
     if (_running) return _done!;
     _running = true;
     _cancelled = false;
+    _runEpoch++;
     _previous = null;
     _sampledAt = null; // A background gap is never playback time.
     return _done = _run().whenComplete(() => _running = false);
@@ -444,6 +447,10 @@ class NurtureAccessibilityRunner {
 
   void cancel() {
     _cancelled = true;
+    final reader = _snapshotWaiter;
+    if (reader != null && !reader.isCompleted) {
+      reader.completeError(NurtureCancelled());
+    }
     _sleepTimer?.cancel();
     _sleepTimer = null;
     final sleeper = _sleepCompleter;
@@ -513,12 +520,40 @@ class NurtureAccessibilityRunner {
   Future<void> _emit() => onProgress(totals, ++_sequence);
 
   Future<SignupSnapshot> _snapshot() async {
-    _check();
+    final reader = _snapshotWaiter = Completer<SignupSnapshot>();
+    // A document bridge may disappear during a read. Cancelling must release
+    // the runner immediately, even if the underlying platform call is pending.
+    // Consume late results/errors without letting an old run change totals.
+    unawaited(
+      _readSnapshot(_runEpoch).then(
+        (value) {
+          if (!reader.isCompleted) reader.complete(value);
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!reader.isCompleted) reader.completeError(error, stack);
+        },
+      ),
+    );
+    try {
+      return await reader.future;
+    } finally {
+      if (identical(_snapshotWaiter, reader)) _snapshotWaiter = null;
+    }
+  }
+
+  Future<SignupSnapshot> _readSnapshot(int epoch) async {
+    void check() {
+      _check();
+      if (epoch != _runEpoch) throw NurtureCancelled();
+    }
+
+    check();
     if (!await isTikTok()) {
       throw StateError('Đã rời TikTok; dừng nuôi tài khoản.');
     }
-    _check();
+    check();
     var s = await accessibility.snapshot();
+    check();
     // The WebView node is briefly missing while Flutter rebuilds semantics
     // (button state, snackbar). Only a persistent absence stops nurture.
     final until = _now().add(const Duration(seconds: 3));
@@ -526,7 +561,7 @@ class NurtureAccessibilityRunner {
       await _sleep(200);
       s = await accessibility.snapshot();
     }
-    _check();
+    check();
     if (!s.ready || !s.viewport.valid) {
       throw StateError('Khung nuôi cần cố định 400×800.');
     }
@@ -556,7 +591,7 @@ class NurtureAccessibilityRunner {
         }
         await _sleep(1000);
         final next = await accessibility.snapshot();
-        _check();
+        check();
         if (next.ready && next.viewport.valid) s = next;
         continue;
       }
@@ -581,7 +616,7 @@ class NurtureAccessibilityRunner {
       }
       await _sleep(500);
       final next = await accessibility.snapshot();
-      _check();
+      check();
       if (next.ready && next.viewport.valid) s = next;
     }
     final current = NurtureVideo.read(s);
@@ -855,12 +890,7 @@ class NurtureAccessibilityRunner {
     // Like/Favorite buttons); wait for its clock instead.
     if (s.nodes.any((n) => n.className.endsWith('Dialog'))) return null;
     final videosTab = s.nodes
-        .where(
-          (n) =>
-              n.clickable &&
-              n.className.endsWith('Button') &&
-              n.text.trim() == 'Videos',
-        )
+        .where((n) => n.clickable && n.enabled && n.name == 'Videos')
         .firstOrNull;
     final query = keyword.toLowerCase();
     final viewAll = s.nodes
@@ -883,7 +913,9 @@ class NurtureAccessibilityRunner {
     if (drawer != null) {
       // Gecko can keep the search drawer open after submitting. The results
       // behind it are still accessible, but their tap targets are covered.
-      if ((fired['view-all'] ?? 0) > 0 && videosTab != null) {
+      // Some search layouts have no Videos tab at all. Once submitted, close
+      // the drawer independently of the tabs so it cannot cover the grid.
+      if ((fired['view-all'] ?? 0) > 0) {
         final close = s.nodes
             .where(
               (n) =>
@@ -905,21 +937,32 @@ class NurtureAccessibilityRunner {
     if (videosTab != null) {
       // The Top tab mixes in users and LIVE rooms; Videos holds only posts.
       if ((fired['videos-tab'] ?? 0) == 0) return ('videos-tab', videosTab);
-      final tiles = s.nodes
-          .where(
-            (n) =>
-                n.clickable &&
-                n.enabled &&
-                n.name == 'Watch in full screen' &&
-                v.contains(n.bounds.topLeft) &&
-                n.bounds.bottom <= v.bottom,
-          )
-          .toList();
-      if (tiles.isNotEmpty) {
-        return ('result', tiles[_random.nextInt(min(tiles.length, 8))]);
-      }
-      return null;
     }
+    // Gecko also exposes a combined results page without tab controls. Its
+    // video tiles have the same accessible button as the Videos grid, but
+    // LIVE previews reuse it too: exclude any tile containing a LIVE badge.
+    final tiles = s.nodes
+        .where(
+          (n) =>
+              n.clickable &&
+              n.enabled &&
+              n.name == 'Watch in full screen' &&
+              v.contains(n.bounds.topLeft) &&
+              n.bounds.bottom <= v.bottom &&
+              !s.nodes.any(
+                (child) =>
+                    child.id.startsWith('${n.id}.') &&
+                    RegExp(
+                      r'^(LIVE|LIVE now|Watch LIVE|Click to watch LIVE|Join my LIVE)$',
+                      caseSensitive: false,
+                    ).hasMatch(child.name),
+              ),
+        )
+        .toList();
+    if (tiles.isNotEmpty) {
+      return ('result', tiles[_random.nextInt(min(tiles.length, 8))]);
+    }
+    if (videosTab != null) return null;
     if (viewAll != null) return ('view-all', viewAll);
     final sidebar = s.nodes
         .where((n) => n.editable && n.bounds.center.dx < v.left + v.width * .1)

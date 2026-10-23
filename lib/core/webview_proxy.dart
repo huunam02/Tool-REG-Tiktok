@@ -60,10 +60,13 @@ Future<void> _applyProxy(
   if (proxy == null) {
     await ProfileVpn.stop();
   } else {
-    if (!const {'socks5', 'socks5h'}.contains(proxy.uri.scheme)) {
-      throw const FormatException(
-        'GeckoView dùng VpnService + hev-socks5-tunnel nên chỉ hỗ trợ proxy SOCKS5.',
-      );
+    if (!const {
+      'socks5',
+      'socks5h',
+      'http',
+      'https',
+    }.contains(proxy.uri.scheme)) {
+      throw const FormatException('Proxy phải dùng HTTP, HTTPS hoặc SOCKS5.');
     }
     await ProfileVpn.start(
       profileId: profileId,

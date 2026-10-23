@@ -11,6 +11,7 @@ import '../app_session.dart';
 import '../account_sessions.dart';
 import '../account_proxy.dart';
 import '../device_memory.dart';
+import '../gecko_browser.dart';
 import '../gpu_profile.dart';
 import '../nurture_data.dart';
 import '../proxy_geolocation.dart';
@@ -893,6 +894,10 @@ class HomeController extends AppController
       }
       final gpuProfile = await _runGpuProfile();
       if (!active) return;
+      if (proxy != null) {
+        await ProfileVpn.requireRunning(profileId?.toString() ?? 'default');
+        if (!active) return;
+      }
       final configuration = AppConfiguration(
         configurationId: currentProxy?.configurationId,
         userAgent: browserUserAgent,

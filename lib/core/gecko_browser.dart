@@ -27,10 +27,19 @@ class GeckoController {
   Future<dynamic> evaluateJavascript({
     required String source,
     bool pageWorld = false,
-  }) => _channel.invokeMethod<dynamic>('evaluateJavascript', {
-    'source': source,
-    'pageWorld': pageWorld,
-  });
+    Duration timeout = const Duration(seconds: 30),
+  }) => _channel
+      .invokeMethod<dynamic>('evaluateJavascript', {
+        'source': source,
+        'pageWorld': pageWorld,
+        'timeoutMs': timeout.inMilliseconds,
+      })
+      .timeout(
+        timeout + const Duration(seconds: 1),
+        onTimeout: () => throw StateError(
+          'Trang không phản hồi trong thời gian chờ; hãy tải lại TikTok.',
+        ),
+      );
 
   Future<void> start() => _channel.invokeMethod<void>('start');
 
@@ -247,7 +256,6 @@ class ProfileVpn {
     String label = '',
   }) async {
     final uri = proxy.replace(
-      scheme: proxy.scheme == 'socks5h' ? 'socks5h' : 'socks5',
       userInfo: username.isEmpty
           ? ''
           : '${Uri.encodeComponent(username)}:${Uri.encodeComponent(password)}',
@@ -261,6 +269,19 @@ class ProfileVpn {
 
   static Future<void> stop() => _invoke('stop');
 
+  /// A successful IP response is insufficient if the tunnel disappeared or
+  /// another profile replaced it before the browser was opened.
+  static Future<void> requireRunning(String profileId) async {
+    final status = await _channel
+        .invokeMapMethod<String, dynamic>('status')
+        .timeout(const Duration(seconds: 5));
+    if (status?['running'] != true || status?['profileId'] != profileId) {
+      throw const FormatException(
+        'Proxy chưa sẵn sàng hoặc đã bị ngắt. Đã chặn mở WebView; hãy thử lại.',
+      );
+    }
+  }
+
   /// Native replies once the tunnel carries this profile's traffic (or has
   /// stopped); the timeout leaves room for the VPN permission dialog.
   static Future<void> _invoke(String method, [Object? arguments]) => _channel
@@ -269,7 +290,7 @@ class ProfileVpn {
         const Duration(seconds: 60),
         onTimeout: () => throw PlatformException(
           code: 'vpn_failed',
-          message: 'Proxy SOCKS5 không phản hồi. Hãy thử lại.',
+          message: 'Proxy không phản hồi. Hãy thử lại.',
         ),
       );
 }

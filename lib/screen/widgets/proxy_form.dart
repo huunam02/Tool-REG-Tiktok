@@ -359,9 +359,32 @@ class _ProxyFormView extends StatelessWidget {
       'Thông tin cấu hình',
       logic.hasMultipleImports
           ? 'Cấu hình ${index + 1}. Proxy, tài khoản và User-Agent riêng.'
-          : 'Nhập proxy SOCKS5 có cổng, User-Agent và tài khoản TikTok dùng cho đăng ký, đăng nhập và lấy OTP email.',
+          : 'Chọn đúng giao thức HTTP, HTTPS hoặc SOCKS5 do nhà cung cấp proxy cung cấp, rồi nhập địa chỉ và tài khoản.',
       Icons.tune,
       [
+        _fieldLabel('Giao thức proxy'),
+        DropdownButtonFormField<String>(
+          key: ValueKey('proxyProtocol-$index-${fields.proxyProtocol}'),
+          initialValue: fields.proxyProtocol,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.settings_ethernet),
+          ),
+          items: const [
+            DropdownMenuItem(value: 'http', child: Text('HTTP')),
+            DropdownMenuItem(value: 'https', child: Text('HTTPS')),
+            DropdownMenuItem(value: 'socks5', child: Text('SOCKS5')),
+            DropdownMenuItem(value: 'socks5h', child: Text('SOCKS5H')),
+          ],
+          onChanged: fields.detectingTimeZone
+              ? null
+              : (value) {
+                  if (value != null) {
+                    logic.mutate(() => fields.setProxyProtocol(value));
+                  }
+                },
+        ),
+        const SizedBox(height: 16),
         _fieldLabel('Địa chỉ proxy'),
         TextFormField(
           key: _configurationKey('savedProxyUrl', index),
@@ -376,7 +399,7 @@ class _ProxyFormView extends StatelessWidget {
           ),
           validator: (value) {
             try {
-              WebViewProxy.parse(value ?? '');
+              fields.parseProxy(value ?? '');
               return null;
             } on FormatException catch (error) {
               return error.message;

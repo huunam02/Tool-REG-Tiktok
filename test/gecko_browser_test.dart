@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/gecko_browser.dart';
@@ -36,12 +38,54 @@ void main() {
 
     expect(evaluated, isTrue);
     expect(url, Uri.parse('https://www.tiktok.com/'));
-    expect(
-      calls.map((call) => call.method),
-      ['start', 'loadUrl', 'evaluateJavascript', 'getUrl', 'reload'],
-    );
+    expect(calls.map((call) => call.method), [
+      'start',
+      'loadUrl',
+      'evaluateJavascript',
+      'getUrl',
+      'reload',
+    ]);
     expect(calls[1].arguments, {'url': 'https://example.com/'});
-    expect(calls[2].arguments, {'source': '1 + 1', 'pageWorld': false});
+    expect(calls[2].arguments, {
+      'source': '1 + 1',
+      'pageWorld': false,
+      'timeoutMs': 30000,
+    });
     controller.dispose();
   });
+
+  testWidgets(
+    'a lost document reply times out and does not block later reads',
+    (tester) async {
+      final lostReply = Completer<dynamic>();
+      var count = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            expect((call.arguments as Map)['timeoutMs'], 30000);
+            if (++count == 1) return await lostReply.future;
+            return true;
+          });
+      final controller = GeckoController.test(42);
+      final failure = expectLater(
+        controller.evaluateJavascript(source: 'read page state'),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('Trang không phản hồi'),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 31));
+      await failure;
+      expect(
+        await controller.evaluateJavascript(source: 'read new page'),
+        isTrue,
+      );
+      // An eventual reply for the old document is consumed exactly once.
+      lostReply.completeError(PlatformException(code: 'document_disconnected'));
+      await tester.pump();
+      controller.dispose();
+    },
+  );
 }

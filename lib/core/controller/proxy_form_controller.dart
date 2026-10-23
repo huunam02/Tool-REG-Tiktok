@@ -229,11 +229,7 @@ class ProxyFormController extends AppController {
       fields.timeZoneError = null;
     });
     try {
-      final proxy = WebViewProxy.parse(
-        fields.url.text,
-        username: fields.username.text,
-        password: fields.password.text,
-      );
+      final proxy = fields.parseProxy();
       if (proxy == null) {
         throw const FormatException('Nhập proxy trước khi tra múi giờ.');
       }
@@ -335,6 +331,43 @@ class ConfigurationFormFields {
   }
 
   final TextEditingController url;
+  String _proxyProtocol = 'http';
+  String get proxyProtocol {
+    final scheme = Uri.tryParse(url.text.trim())?.scheme;
+    return const {'http', 'https', 'socks5', 'socks5h'}.contains(scheme)
+        ? scheme!
+        : _proxyProtocol;
+  }
+
+  void setProxyProtocol(String protocol) {
+    if (!const {'http', 'https', 'socks5', 'socks5h'}.contains(protocol)) {
+      return;
+    }
+    _proxyProtocol = protocol;
+    final address = url.text.trim().replaceFirst(
+      RegExp(r'^[A-Za-z0-9]+://'),
+      '',
+    );
+    if (address.isNotEmpty) {
+      url.text = '$protocol://$address';
+    } else {
+      revision++;
+      timeZoneId.clear();
+      timeZoneError = null;
+    }
+  }
+
+  WebViewProxy? parseProxy([String? value]) {
+    final address = (value ?? url.text).trim();
+    return WebViewProxy.parse(
+      address.isEmpty || address.contains('://')
+          ? address
+          : '$proxyProtocol://$address',
+      username: username.text,
+      password: password.text,
+    );
+  }
+
   final TextEditingController username;
   final TextEditingController password;
   final TextEditingController userAgent;
@@ -405,11 +438,7 @@ class ConfigurationFormFields {
 
   ProxyDraft toDraft() => ProxyDraft(
     accountEmail.text.trim(),
-    WebViewProxy.parse(
-      url.text,
-      username: username.text,
-      password: password.text,
-    ),
+    parseProxy(),
     normalizeDesktopUserAgentForPlatform(userAgent.text.trim()),
     account: AccountCredentials(
       email: accountEmail.text.trim(),

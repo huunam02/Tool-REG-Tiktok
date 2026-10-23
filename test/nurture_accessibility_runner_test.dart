@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
@@ -216,8 +217,12 @@ class _Service extends SignupAccessibility {
 
   /// A popup outside the card is exposed until this time.
   DateTime? dialogUntil;
+  Completer<SignupSnapshot>? blockedSnapshot;
+  final snapshotEntered = Completer<void>();
   @override
   Future<SignupSnapshot> snapshot() async {
+    if (!snapshotEntered.isCompleted) snapshotEntered.complete();
+    if (blockedSnapshot case final pending?) return pending.future;
     if (unreadyFrames > 0) {
       unreadyFrames--;
       return SignupSnapshot({'ready': false});
@@ -354,8 +359,10 @@ class _SearchService extends SignupAccessibility {
     this.hiddenClock = false,
     this.keepsDrawer = false,
     this.hiddenEditor = false,
+    this.hasVideosTab = true,
+    this.liveResult = false,
   });
-  final bool hiddenClock, keepsDrawer, hiddenEditor;
+  final bool hiddenClock, keepsDrawer, hiddenEditor, hasVideosTab, liveResult;
   bool drawerClosed = false;
   DateTime clock = DateTime(2026);
   String state = 'feed';
@@ -421,9 +428,25 @@ class _SearchService extends SignupAccessibility {
       nodes.add(
         _button('0.5', const Rect.fromLTWH(60, 10, 20, 15), text: 'Top'),
       );
-      nodes.add(
-        _button('0.6', const Rect.fromLTWH(160, 10, 30, 15), text: 'Videos'),
-      );
+      if (hasVideosTab) {
+        nodes.add(
+          _button('0.6', const Rect.fromLTWH(160, 10, 30, 15), text: 'Videos'),
+        );
+      }
+      if (liveResult) {
+        nodes.addAll([
+          _button(
+            '0.7.live',
+            const Rect.fromLTWH(40, 180, 80, 120),
+            text: 'Watch in full screen',
+          ),
+          _node(
+            '0.7.live.0',
+            const Rect.fromLTWH(45, 185, 30, 15),
+            text: 'LIVE',
+          ),
+        ]);
+      }
       for (var i = 0; i < 4; i++) {
         nodes.add(
           _button(
@@ -504,7 +527,9 @@ class _SearchService extends SignupAccessibility {
         hit(160, 10, 30, 15)) {
       tapped.add('videos-tab');
       state = 'videos';
-    } else if (state == 'videos' && hit(40, 40, 350, 120)) {
+    } else if ((state == 'videos' ||
+            (!hasVideosTab && state == 'results' && drawerClosed)) &&
+        hit(40, 40, 350, 120)) {
       tapped.add('result');
       state = 'player';
     } else if (state == 'player' && hit(230, 500, 20, 20)) {
@@ -532,6 +557,92 @@ class _SearchService extends SignupAccessibility {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final blockedUrl in [false, true]) {
+    test(
+      'stop releases a pending ${blockedUrl ? 'URL' : 'snapshot'} read',
+      () async {
+        final service = _Service();
+        final lostSnapshot = Completer<SignupSnapshot>();
+        final lostUrl = Completer<bool>();
+        final urlEntered = Completer<void>();
+        if (!blockedUrl) service.blockedSnapshot = lostSnapshot;
+        var reads = 0;
+        NurtureTotals? totals;
+        final runner = NurtureAccessibilityRunner(
+          accessibility: service,
+          profile: NurtureCoordinateProfile({}),
+          comments: ['Configured comment'],
+          isActive: () => true,
+          isTikTok: () async {
+            reads++;
+            if (!urlEntered.isCompleted) urlEntered.complete();
+            return blockedUrl ? lostUrl.future : true;
+          },
+          onProgress: (t, _) async => totals = t,
+          now: () => service.clock,
+          delay: service.delay,
+        );
+        final running = runner.start();
+        await (blockedUrl ? urlEntered.future : service.snapshotEntered.future);
+        await runner.stop().timeout(const Duration(seconds: 1));
+        await running;
+        expect(reads, 1);
+        expect(totals!.watchMilliseconds, 0);
+        expect(service.taps + service.swipes + service.posts, 0);
+        // Losing the document later must not produce an unhandled error or tap.
+        if (blockedUrl) {
+          lostUrl.completeError(StateError('old document disconnected'));
+        } else {
+          lostSnapshot.completeError(StateError('old document disconnected'));
+        }
+        await Future<void>.delayed(Duration.zero);
+        expect(service.taps + service.swipes + service.posts, 0);
+      },
+    );
+  }
+
+  test(
+    'a late snapshot from a cancelled run cannot replace the new video',
+    () async {
+      final service = _Service();
+      final oldRead = Completer<SignupSnapshot>();
+      service.blockedSnapshot = oldRead;
+      var active = true;
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: [],
+        isActive: () => active && !service.moved,
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        longWatchRate: 0,
+        commentRate: 0,
+        random: _Random(false),
+        now: () => service.clock,
+        delay: (d) async {
+          if (!oldRead.isCompleted) {
+            oldRead.complete(
+              SignupSnapshot(_frame(position: 299, duration: 300)),
+            );
+          }
+          await service.delay(d);
+          if (service.clock.difference(DateTime(2026)).inSeconds > 10) {
+            active = false;
+          }
+        },
+      );
+      final first = runner.start();
+      await service.snapshotEntered.future;
+      await runner.stop().timeout(const Duration(seconds: 1));
+      await first;
+      service.blockedSnapshot = null;
+      await runner.start();
+      expect(service.swipes, 1);
+      expect(runner.totals.watchMilliseconds, inInclusiveRange(2000, 4000));
+      expect(service.posts, 0);
+    },
+  );
 
   test('real portrait feed and open panel retain identity and orientation', () {
     final recording =
@@ -1482,6 +1593,46 @@ void main() {
       ]);
       expect(totals!.skippedVideos, 1);
       expect(totals!.watchMilliseconds, greaterThan(0));
+    },
+  );
+
+  test(
+    'opens a non-LIVE result when the submitted search keeps its drawer and has no Videos tab',
+    () async {
+      final service = _SearchService(
+        keepsDrawer: true,
+        hasVideosTab: false,
+        liveResult: true,
+      );
+      var active = true;
+      NurtureTotals? totals;
+      await NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: [],
+        searchKeyword: 'Cats',
+        isActive: () => active,
+        isTikTok: () async => true,
+        onProgress: (t, _) async {
+          totals = t;
+          if (t.videos > 0) active = false;
+        },
+        likeRate: 0,
+        longWatchRate: 0,
+        commentRate: 0,
+        random: _Random(false),
+        now: () => service.clock,
+        delay: service.delay,
+      ).start();
+      expect(service.pasted, ['search:Cats']);
+      expect(service.tapped, [
+        'open',
+        'view-all',
+        'close-search',
+        'result',
+        'next',
+      ]);
+      expect(totals!.skippedVideos, 1);
     },
   );
 

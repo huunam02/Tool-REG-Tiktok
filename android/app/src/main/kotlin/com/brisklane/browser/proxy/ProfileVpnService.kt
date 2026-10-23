@@ -25,6 +25,7 @@ class ProfileVpnService : VpnService() {
         const val ACTION_START = "com.brisklane.browser.proxy.START"
         const val ACTION_STOP = "com.brisklane.browser.proxy.STOP"
         const val EXTRA_HOST = "host"
+        const val EXTRA_SCHEME = "scheme"
         const val EXTRA_PORT = "port"
         const val EXTRA_USERNAME = "username"
         const val EXTRA_PASSWORD = "password"
@@ -49,7 +50,10 @@ class ProfileVpnService : VpnService() {
 
         /** Whether a tunnel is up; Dart awaits each request, so none is in flight here. */
         val hasTunnel: Boolean get() = tunnelFd >= 0
+        val isRunning: Boolean get() =
+            runningProfile != null && hasTunnel && TProxyService.TProxyIsRunning()
         private var tunnelOwner: ProfileVpnService? = null
+        private var httpBridge: HttpConnectSocksBridge? = null
     }
 
     override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
@@ -73,7 +77,7 @@ class ProfileVpnService : VpnService() {
             action()
             null
         } catch (error: Exception) {
-            android.util.Log.e("ProfileVpn", "Cannot apply SOCKS5 tunnel", error)
+            android.util.Log.e("ProfileVpn", "Cannot apply proxy tunnel", error)
             stopTunnel()
             error.message ?: error.javaClass.simpleName
         }
@@ -110,10 +114,17 @@ class ProfileVpnService : VpnService() {
         tunnelFd = fd
         tunnelOwner = this
 
+        val scheme = intent.getStringExtra(EXTRA_SCHEME) ?: "socks5"
+        val username = intent.getStringExtra(EXTRA_USERNAME).orEmpty()
+        val password = intent.getStringExtra(EXTRA_PASSWORD).orEmpty()
+        val bridge = if (scheme == "http" || scheme == "https") {
+            HttpConnectSocksBridge(proxyAddress.hostAddress!!, host, port, scheme == "https", username, password)
+                .also { httpBridge = it }
+        } else null
         val config = File(filesDir, "hev-${profile.hashCode().toUInt()}.yml")
-        config.writeText(buildConfig(proxyAddress.hostAddress!!, port,
-            intent.getStringExtra(EXTRA_USERNAME).orEmpty(),
-            intent.getStringExtra(EXTRA_PASSWORD).orEmpty()))
+        config.writeText(buildConfig(
+            if (bridge == null) proxyAddress.hostAddress!! else "127.0.0.1",
+            bridge?.port ?: port, bridge?.username ?: username, bridge?.password ?: password))
         Thread({ TProxyService.TProxyStartService(config.absolutePath, fd) }, "hev-socks5-$profile").start()
         val deadline = SystemClock.elapsedRealtime() + startTimeoutMs
         while (!TProxyService.TProxyIsRunning()) {
@@ -145,6 +156,8 @@ class ProfileVpnService : VpnService() {
 
     private fun closeTunnel() {
         if (TProxyService.TProxyIsRunning()) TProxyService.TProxyStopService()
+        httpBridge?.close()
+        httpBridge = null
         if (tunnelFd >= 0) {
             try { ParcelFileDescriptor.adoptFd(tunnelFd).close() } catch (_: Exception) {}
             tunnelFd = -1
@@ -178,7 +191,7 @@ class ProfileVpnService : VpnService() {
         )
         return NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.launcher_icon)
-            .setContentTitle("Proxy SOCKS5 đang hoạt động")
+            .setContentTitle("Proxy đang hoạt động")
             .setContentText(profile)
             .setContentIntent(open)
             .setOngoing(true)

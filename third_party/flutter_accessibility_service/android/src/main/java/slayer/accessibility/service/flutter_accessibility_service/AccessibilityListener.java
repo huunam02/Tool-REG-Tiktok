@@ -15,6 +15,7 @@ import android.graphics.Rect;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.util.LruCache;
 import android.view.Gravity;
@@ -291,34 +292,64 @@ public class AccessibilityListener extends AccessibilityService {
             result.success(false);
             return;
         }
-        dispatchSegment(instance, segments, 0, null, result);
+        dispatchSegment(instance, segments, 0, null, 0, 0, result);
     }
 
     @SuppressWarnings("unchecked")
     @RequiresApi(api = Build.VERSION_CODES.O)
     private static void dispatchSegment(AccessibilityListener service, List<Object> segments, int index,
-            GestureDescription.StrokeDescription previous, MethodChannel.Result result) {
+            GestureDescription.StrokeDescription previous, int previousX, int previousY,
+            MethodChannel.Result result) {
         try {
             Map<String, Object> segment = (Map<String, Object>) segments.get(index);
             List<Object> pointObjs = (List<Object>) segment.get("path");
             int duration = ((Number) segment.get("duration")).intValue();
             Path path = new Path();
             Map<String, Object> first = (Map<String, Object>) pointObjs.get(0);
-            path.moveTo(((Number) first.get("x")).floatValue(), ((Number) first.get("y")).floatValue());
+            // Android injects integer screen pixels. A subpixel segment can
+            // become stationary after rounding and produce no MotionEvents;
+            // Android 9 rejects that continuation instead of holding still.
+            final int startX = Math.round(((Number) first.get("x")).floatValue());
+            final int startY = Math.round(((Number) first.get("y")).floatValue());
+            int lastX = startX, lastY = startY;
+            boolean stationary = true;
+            path.moveTo(startX, startY);
             for (int i = 1; i < pointObjs.size(); i++) {
                 Map<String, Object> pt = (Map<String, Object>) pointObjs.get(i);
-                path.lineTo(((Number) pt.get("x")).floatValue(), ((Number) pt.get("y")).floatValue());
+                lastX = Math.round(((Number) pt.get("x")).floatValue());
+                lastY = Math.round(((Number) pt.get("y")).floatValue());
+                stationary &= lastX == startX && lastY == startY;
+                path.lineTo(lastX, lastY);
             }
+            final int endX = lastX, endY = lastY;
             boolean more = index + 1 < segments.size();
+            if (previous != null && (startX != previousX || startY != previousY)) {
+                Log.w("GESTURE", "continuous gesture has disconnected paths at segment " + index);
+                result.success(false);
+                return;
+            }
+            if (previous != null && stationary && more) {
+                // Keep the existing pointer down without sending an empty
+                // continuation. Retain its stroke id for the next movement.
+                new Handler(Looper.getMainLooper()).postDelayed(() ->
+                    dispatchSegment(service, segments, index + 1, previous, endX, endY, result), duration);
+                return;
+            }
             GestureDescription.StrokeDescription stroke = previous == null
                 ? new GestureDescription.StrokeDescription(path, 0, duration, more)
                 : previous.continueStroke(path, 0, duration, more);
+            final long startedAt = SystemClock.uptimeMillis();
             boolean sent = service.dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(),
                 new AccessibilityService.GestureResultCallback() {
                     @Override
                     public void onCompleted(GestureDescription gestureDescription) {
-                        if (more) dispatchSegment(service, segments, index + 1, stroke, result);
-                        else new Handler(Looper.getMainLooper()).post(() -> result.success(true));
+                        if (more) {
+                            // A press-only segment can complete at ACTION_DOWN,
+                            // before its duration expires. Preserve its hold.
+                            long remaining = Math.max(0, startedAt + duration - SystemClock.uptimeMillis());
+                            new Handler(Looper.getMainLooper()).postDelayed(() ->
+                                dispatchSegment(service, segments, index + 1, stroke, endX, endY, result), remaining);
+                        } else new Handler(Looper.getMainLooper()).post(() -> result.success(true));
                     }
 
                     @Override

@@ -8,8 +8,8 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/screen/widgets/proxy_form.dart';
 
 const records =
-    '192.0.2.7:8080:user:pass|first@example.com|tiktok|mail\n'
-    '192.0.2.8:8080:user:pass|second@example.com|tiktok|mail';
+    '192.0.2.7:8080:user:pass|first@example.com|mail|refresh|client|backup@example.com|tiktok\n'
+    '192.0.2.8:8080:user:pass|second@example.com|mail|refresh|client|backup@example.com|tiktok';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +26,46 @@ void main() {
     addTearDown(form.onClose);
     return form;
   }
+
+  test(
+    'selecting HTTP preserves credentials and uses HTTP for timezone lookup and drafts',
+    () async {
+      String? requestedScheme;
+      final form = create((proxy, _) async {
+        requestedScheme = proxy.uri.scheme;
+        return 'Asia/Ho_Chi_Minh';
+      });
+      form.url.text = 'socks5://proxy.example:8080';
+      form.username.text = 'fixture-user';
+      form.password.text = 'fixture-pass';
+      form.timeZoneId.text = 'America/New_York';
+      final fields = form.configurations.first;
+      fields.setProxyProtocol('http');
+      expect(fields.proxyProtocol, 'http');
+      expect(form.url.text, 'http://proxy.example:8080');
+      expect(form.username.text, 'fixture-user');
+      expect(form.password.text, 'fixture-pass');
+      expect(form.timeZoneId.text, isEmpty);
+      await form.detectTimeZoneFor(fields);
+      expect(requestedScheme, 'http');
+      expect(fields.toDraft().proxy!.uri.scheme, 'http');
+      expect(form.timeZoneId.text, 'Asia/Ho_Chi_Minh');
+    },
+  );
+
+  test(
+    'protocol selected before typing the address is applied to unqualified input',
+    () async {
+      final form = create((proxy, _) async => 'Asia/Tokyo');
+      final fields = form.configurations.first;
+      fields.setProxyProtocol('http');
+      form.url.text = 'proxy.example:8080';
+      expect(fields.parseProxy()!.uri.scheme, 'http');
+      form.url.text = 'socks5://proxy.example:1080';
+      expect(fields.proxyProtocol, 'socks5');
+      expect(fields.parseProxy()!.uri.scheme, 'socks5');
+    },
+  );
 
   test(
     'import detects every row and each draft carries its own timezone',
@@ -113,6 +153,45 @@ void main() {
       gate.complete('Asia/Tokyo');
       await pending;
       expect(form.configurations.first.disposed, isTrue);
+    },
+  );
+
+  testWidgets(
+    'new forms default to HTTP and the protocol selector switches to SOCKS5',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 2400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProxyForm(
+            title: 'Tạo cấu hình',
+            submitLabel: 'Lưu',
+            randomizeOnOpen: false,
+            generateUserAgent: () async => 'agent',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final selector = find.byType(DropdownButtonFormField<String>);
+      expect(
+        tester.widget<DropdownButtonFormField<String>>(selector).initialValue,
+        'http',
+      );
+      await tester.ensureVisible(selector);
+      await tester.tap(selector);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SOCKS5').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('savedProxyUrl')),
+        'proxy.example:1080',
+      );
+      final logic = tester
+          .state<GetBuilderState<ProxyFormController>>(
+            find.byType(GetBuilder<ProxyFormController>),
+          )
+          .controller!;
+      expect(logic.configurations.first.parseProxy()!.uri.scheme, 'socks5');
     },
   );
 

@@ -13,10 +13,10 @@ class AccountSessions {
   static String _validKey(int id) => 'tiktok_gecko_session_valid_$id';
 
   /// The context itself is persistent; this only marks a confirmed live login.
-  static Future<void> save(int id, String email) async {
+  static Future<void> save(int id, String email, {bool loggedIn = true}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_ownerKey, _identity(id, email));
-    await prefs.setBool(_validKey(id), true);
+    await prefs.setBool(_validKey(id), loggedIn);
   }
 
   static Future<void> activate(

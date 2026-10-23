@@ -208,6 +208,7 @@ class _Service extends SignupAccessibility {
 
   /// The next post's clock is missing until it loads after a swipe.
   int loadSecondsAfterMove = 0;
+  bool playbackErrorAfterMove = false;
   DateTime? _loadedAt;
 
   String? pasteReason;
@@ -249,6 +250,20 @@ class _Service extends SignupAccessibility {
       likes = '${int.parse(likes!) - 1}';
     }
     final nodes = data['nodes'] as List;
+    if (moved && playbackErrorAfterMove) {
+      final media = nodes.firstWhere((n) => n['id'] == '0.2.0');
+      media['text'] = 'Watch in full screen';
+      media['clickable'] = true;
+      nodes.removeWhere((n) => n['id'] == '0.2.0.2.0');
+      nodes.add(
+        _node(
+          '0.2.0.error',
+          const Rect.fromLTWH(100, 280, 200, 20),
+          text:
+              "We're having trouble playing this video. Please refresh and try again.",
+        ),
+      );
+    }
     if (hiddenEditor) {
       data['hidden'] = nodes.where((n) => n['id'] == 'panel.editor').toList();
       nodes.removeWhere((n) => n['id'] == 'panel.editor');
@@ -354,6 +369,35 @@ class _Service extends SignupAccessibility {
 }
 
 /// TikTok's sidebar search → suggestions → Videos tab → result player.
+class _RoomService extends _Service {
+  _RoomService(this.roomFrame);
+  final Map<String, dynamic> roomFrame;
+  bool room = true, roomAfterSwipe = false, exitWorks = true;
+  int exits = 0;
+
+  @override
+  Future<SignupSnapshot> snapshot() async =>
+      room ? SignupSnapshot(roomFrame) : await super.snapshot();
+
+  @override
+  Future<void> tap(SignupViewport viewport, Offset p) async {
+    if (!room) return super.tap(viewport, p);
+    final exit = NurtureVideo.liveRoomExit(SignupSnapshot(roomFrame))!;
+    expect(exit.bounds.contains(viewport.toScreen(p)), isTrue);
+    exits++;
+    if (exitWorks) room = false;
+  }
+
+  @override
+  Future<void> swipe(SignupViewport viewport, Offset from, Offset to) async {
+    await super.swipe(viewport, from, to);
+    if (roomAfterSwipe) {
+      roomAfterSwipe = false;
+      room = true;
+    }
+  }
+}
+
 class _SearchService extends SignupAccessibility {
   _SearchService({
     this.hiddenClock = false,
@@ -361,8 +405,15 @@ class _SearchService extends SignupAccessibility {
     this.hiddenEditor = false,
     this.hasVideosTab = true,
     this.liveResult = false,
+    this.liveBadgeSibling = false,
+    this.feedTile = false,
+    this.resultDelaySeconds = 0,
   });
   final bool hiddenClock, keepsDrawer, hiddenEditor, hasVideosTab, liveResult;
+  final bool feedTile;
+  final bool liveBadgeSibling;
+  final int resultDelaySeconds;
+  DateTime? _resultsReadyAt;
   bool drawerClosed = false;
   DateTime clock = DateTime(2026);
   String state = 'feed';
@@ -393,6 +444,30 @@ class _SearchService extends SignupAccessibility {
         hint: 'trending phrase',
       ),
     ];
+    if (feedTile &&
+        (state == 'feed' ||
+            (_resultsReadyAt != null && clock.isBefore(_resultsReadyAt!)))) {
+      nodes.addAll(
+        List<Map<String, dynamic>>.from(
+          _frame(
+                card: 'feed.1',
+                position: clock.difference(DateTime(2026)).inSeconds % 30,
+              )['nodes']
+              as List,
+        ),
+      );
+      final media = nodes.firstWhere((n) => n['id'] == 'feed.1.0');
+      media.addAll({
+        'description': 'Watch in full screen',
+        'clickable': true,
+        'className': 'android.widget.Button',
+      });
+      return SignupSnapshot({
+        'ready': true,
+        'webBounds': [0, 0, 400, 800],
+        'nodes': nodes,
+      });
+    }
     final drawerOpen =
         state == 'drawer' ||
         state == 'typed' ||
@@ -441,7 +516,7 @@ class _SearchService extends SignupAccessibility {
             text: 'Watch in full screen',
           ),
           _node(
-            '0.7.live.0',
+            liveBadgeSibling ? '0.7.badge' : '0.7.live.0',
             const Rect.fromLTWH(45, 185, 30, 15),
             text: 'LIVE',
           ),
@@ -516,6 +591,7 @@ class _SearchService extends SignupAccessibility {
     } else if (state == 'typed' && hit(40, 300, 160, 20)) {
       tapped.add('view-all');
       state = 'results';
+      _resultsReadyAt = clock.add(Duration(seconds: resultDelaySeconds));
     } else if (state == 'results' &&
         keepsDrawer &&
         !drawerClosed &&
@@ -557,6 +633,126 @@ class _SearchService extends SignupAccessibility {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  Map<String, dynamic> liveRoom() => Map<String, dynamic>.from(
+    jsonDecode(File('test/fixtures/nurture_live_room.json').readAsStringSync())
+        as Map,
+  );
+
+  test('recorded LIVE room exits via For You rather than sidebar Back', () {
+    final snapshot = SignupSnapshot(liveRoom());
+    expect(NurtureVideo.isLiveRoom(snapshot), isTrue);
+    expect(NurtureVideo.read(snapshot), isNull);
+    expect(
+      NurtureVideo.liveRoomExit(snapshot)?.name,
+      'Go to TikTok For You feed',
+    );
+    final feed = _frame();
+    (feed['nodes'] as List).add(
+      _node('sidebar.live', const Rect.fromLTWH(0, 10, 20, 20), text: 'LIVE'),
+    );
+    expect(NurtureVideo.isLiveRoom(SignupSnapshot(feed)), isFalse);
+  });
+
+  for (final scenario in ['feed', 'search', 'after-next']) {
+    test(
+      'skips a standalone LIVE room in $scenario without counting it',
+      () async {
+        final service = _RoomService(liveRoom())
+          ..room = scenario != 'after-next'
+          ..roomAfterSwipe = scenario == 'after-next';
+        var active = true;
+        final runner = NurtureAccessibilityRunner(
+          accessibility: service,
+          profile: NurtureCoordinateProfile({}),
+          comments: ['Configured comment'],
+          searchKeyword: scenario == 'search' ? 'Cats' : null,
+          isActive: () => active,
+          isTikTok: () async => true,
+          onProgress: (t, _) async {
+            if (service.room) expect(t.watchMilliseconds, 0);
+            if (t.videos > 0) active = false;
+          },
+          likeRate: 0,
+          longWatchRate: 0,
+          commentRate: 0,
+          random: _Random(false),
+          now: () => service.clock,
+          delay: service.delay,
+        );
+        await runner.start();
+        expect(service.exits, 1);
+        expect(service.swipes, 1);
+        expect(service.posts, 0);
+        expect(service.likeTaps, 0);
+        expect(runner.totals.videos, 1);
+        expect(runner.totals.watchMilliseconds, inInclusiveRange(2000, 5000));
+      },
+    );
+  }
+
+  test('a LIVE room that does not leave gets one exit tap and stops', () async {
+    final service = _RoomService(liveRoom())..exitWorks = false;
+    final runner = NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: [],
+      isActive: () => true,
+      isTikTok: () async => true,
+      onProgress: (_, _) async {},
+      now: () => service.clock,
+      delay: service.delay,
+    );
+    await expectLater(
+      runner.start(),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('Chưa rời được phòng LIVE'),
+        ),
+      ),
+    );
+    expect(service.exits, 1);
+    expect(runner.totals.watchMilliseconds, 0);
+    expect(runner.totals.videos, 0);
+  });
+
+  test('search excludes a LIVE badge exposed beside its result tile', () async {
+    final service = _SearchService(
+      keepsDrawer: true,
+      hasVideosTab: false,
+      liveResult: true,
+      liveBadgeSibling: true,
+    );
+    var active = true;
+    final runner = NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: [],
+      searchKeyword: 'Cats',
+      isActive: () => active,
+      isTikTok: () async => true,
+      onProgress: (t, _) async {
+        if (t.videos > 0) active = false;
+      },
+      likeRate: 0,
+      longWatchRate: 0,
+      commentRate: 0,
+      random: _Random(false),
+      now: () => service.clock,
+      delay: service.delay,
+    );
+    await runner.start();
+    expect(service.tapped, [
+      'open',
+      'view-all',
+      'close-search',
+      'result',
+      'next',
+    ]);
+    expect(runner.totals.videos, 1);
+  });
 
   for (final blockedUrl in [false, true]) {
     test(
@@ -1151,7 +1347,16 @@ void main() {
         await runner.start();
         expect(runner.totals.videos, 1);
       } else {
-        await expectLater(runner.start(), throwsStateError);
+        await expectLater(
+          runner.start(),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('Chưa đọc được tiến độ video sau thao tác chuyển'),
+            ),
+          ),
+        );
         expect(runner.totals.videos, 0);
       }
       expect(service.swipes, 1);
@@ -1173,9 +1378,68 @@ void main() {
       now: () => service.clock,
       delay: service.delay,
     );
-    await expectLater(runner.start(), throwsStateError);
+    await expectLater(
+      runner.start(),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('Chưa xác nhận được video mới sau thao tác chuyển'),
+        ),
+      ),
+    );
     expect(service.swipes, 1);
     expect(runner.totals.videos, 0);
+  });
+
+  test('a TikTok playback error after Next reports playback failure', () async {
+    final service = _Service()..playbackErrorAfterMove = true;
+    final runner = NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: [],
+      isActive: () => true,
+      isTikTok: () async => true,
+      onProgress: (_, _) async {},
+      likeRate: 0,
+      longWatchRate: 0,
+      commentRate: 0,
+      random: _Random(false),
+      now: () => service.clock,
+      delay: service.delay,
+    );
+    await expectLater(
+      runner.start(),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('TikTok không phát được video này'),
+        ),
+      ),
+    );
+    expect(service.swipes, 1);
+    expect(service.posts, 0);
+    expect(runner.totals.videos, 0);
+  });
+
+  test('playback failure ignores comment text and hidden media errors', () {
+    final error = _node(
+      'panel.comment',
+      const Rect.fromLTWH(100, 280, 200, 20),
+      text:
+          "We're having trouble playing this video. Please refresh and try again.",
+    );
+    final data = _frame();
+    final nodes = data['nodes'] as List;
+    final media = nodes.firstWhere((n) => n['id'] == '0.1.0');
+    media['text'] = 'Watch in full screen';
+    media['clickable'] = true;
+    nodes.add(error);
+    data['hidden'] = [
+      {...error, 'id': '0.1.0.error'},
+    ];
+    expect(NurtureVideo.playbackFailed(SignupSnapshot(data)), isFalse);
   });
 
   for (final landscape in [false, true]) {
@@ -1522,6 +1786,49 @@ void main() {
       expect(video.likeCount, count);
     }
   });
+
+  for (final delaySeconds in [0, 5]) {
+    test(
+      'search ignores the feed fullscreen button (results delayed ${delaySeconds}s)',
+      () async {
+        final service = _SearchService(
+          feedTile: true,
+          resultDelaySeconds: delaySeconds,
+        );
+        var active = true;
+        final runner = NurtureAccessibilityRunner(
+          accessibility: service,
+          profile: NurtureCoordinateProfile({}),
+          comments: [],
+          searchKeyword: 'Cats',
+          isActive: () => active,
+          isTikTok: () async => true,
+          onProgress: (totals, _) async {
+            if (!service.tapped.contains('result')) {
+              expect(totals.watchMilliseconds, 0);
+            }
+            if (totals.videos > 0) active = false;
+          },
+          likeRate: 0,
+          longWatchRate: 0,
+          commentRate: 0,
+          random: _Random(false),
+          now: () => service.clock,
+          delay: service.delay,
+        );
+        await runner.start();
+        expect(service.pasted, ['search:Cats']);
+        expect(service.tapped, [
+          'open',
+          'view-all',
+          'videos-tab',
+          'result',
+          'next',
+        ]);
+        expect(runner.totals.skippedVideos, 1);
+      },
+    );
+  }
 
   test(
     'search mode enters the keyword via Accessibility and watches results',

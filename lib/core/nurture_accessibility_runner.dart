@@ -107,8 +107,29 @@ class NurtureVideo {
   static int _seconds(String value) =>
       value.split(':').fold(0, (sum, part) => sum * 60 + int.parse(part));
 
+  /// TikTok can replace playback controls with this error after Next. Only
+  /// accept it inside visible media, never from captions or comment text.
+  static bool playbackFailed(SignupSnapshot snapshot) {
+    final media = snapshot.nodes.where(
+      (n) =>
+          n.clickable &&
+          n.enabled &&
+          n.name == 'Watch in full screen' &&
+          !n.bounds.intersect(snapshot.viewport.bounds).isEmpty,
+    );
+    return snapshot.nodes.any(
+      (n) =>
+          n.text.trim() ==
+              "We're having trouble playing this video. Please refresh and try again." &&
+          !n.bounds.intersect(snapshot.viewport.bounds).isEmpty &&
+          media.any((root) => n.id.startsWith('${root.id}.')),
+    );
+  }
+
   static NurtureVideo? read(SignupSnapshot snapshot) {
-    if (!snapshot.ready || !snapshot.viewport.valid) return null;
+    if (!snapshot.ready || !snapshot.viewport.valid || isLiveRoom(snapshot)) {
+      return null;
+    }
     // Gecko retains the clock in the tree after the player controls fade out.
     // Hidden nodes supply playback metadata and ancestor geometry only; action
     // targets still come exclusively from the visible snapshot below.
@@ -285,17 +306,45 @@ class NurtureVideo {
     return paired ? down : null;
   }
 
-  /// A LIVE post in the feed has no playback clock or comment button, so it
-  /// is never watched; this returns the feed's next button to skip it.
+  /// A standalone LIVE room is distinct from the sidebar's generic LIVE link.
+  static bool isLiveRoom(SignupSnapshot snapshot) {
+    if (!snapshot.ready || !snapshot.viewport.valid) return false;
+    return snapshot.nodes.any(
+      (n) =>
+          n.className.endsWith('WebView') &&
+          RegExp(
+            r'\bis LIVE\s*[-–—]\s*TikTok LIVE\b',
+            caseSensitive: false,
+          ).hasMatch(n.name),
+    );
+  }
+
+  /// LIVE's sidebar Back expands navigation rather than leaving the room.
+  /// Use TikTok's explicit For You link to resume ordinary videos instead.
+  static SignupNode? liveRoomExit(SignupSnapshot snapshot) {
+    if (!isLiveRoom(snapshot)) return null;
+    return snapshot.nodes
+        .where(
+          (n) =>
+              n.clickable &&
+              n.enabled &&
+              n.name == 'Go to TikTok For You feed' &&
+              !n.bounds.intersect(snapshot.viewport.bounds).isEmpty,
+        )
+        .firstOrNull;
+  }
+
+  /// A LIVE preview in the feed is skipped with its ordinary Next control.
   static SignupNode? liveNext(SignupSnapshot snapshot) {
     if (!snapshot.ready || !snapshot.viewport.valid) return null;
     final nodes = {for (final n in snapshot.nodes) n.id: n};
     // Badge, preview and the "Join my LIVE" overlay all name the post LIVE.
     final live = RegExp(
       r'^(LIVE\b|Watch LIVE|Click to watch LIVE|Join my LIVE)',
+      caseSensitive: false,
     );
     final badges = snapshot.nodes.where(
-      (n) => !n.editable && live.hasMatch(n.text.trim()),
+      (n) => !n.editable && live.hasMatch(n.name),
     );
     for (final badge in badges) {
       var page = badge.id;
@@ -519,13 +568,13 @@ class NurtureAccessibilityRunner {
 
   Future<void> _emit() => onProgress(totals, ++_sequence);
 
-  Future<SignupSnapshot> _snapshot() async {
+  Future<SignupSnapshot> _snapshot({bool trackPlayback = true}) async {
     final reader = _snapshotWaiter = Completer<SignupSnapshot>();
     // A document bridge may disappear during a read. Cancelling must release
     // the runner immediately, even if the underlying platform call is pending.
     // Consume late results/errors without letting an old run change totals.
     unawaited(
-      _readSnapshot(_runEpoch).then(
+      _readSnapshot(_runEpoch, trackPlayback: trackPlayback).then(
         (value) {
           if (!reader.isCompleted) reader.complete(value);
         },
@@ -541,7 +590,10 @@ class NurtureAccessibilityRunner {
     }
   }
 
-  Future<SignupSnapshot> _readSnapshot(int epoch) async {
+  Future<SignupSnapshot> _readSnapshot(
+    int epoch, {
+    required bool trackPlayback,
+  }) async {
     void check() {
       _check();
       if (epoch != _runEpoch) throw NurtureCancelled();
@@ -618,6 +670,19 @@ class NurtureAccessibilityRunner {
       final next = await accessibility.snapshot();
       check();
       if (next.ready && next.viewport.valid) s = next;
+    }
+    if (trackPlayback && NurtureVideo.playbackFailed(s)) {
+      throw StateError(
+        'TikTok không phát được video này; đã dừng nuôi. '
+        'Hãy tải lại trang hoặc kiểm tra kết nối.',
+      );
+    }
+    if (!trackPlayback) {
+      // Opening search is not watching its results. Do not count the old feed
+      // behind the drawer, or carry its sample into the result player.
+      _previous = null;
+      _sampledAt = null;
+      return s;
     }
     final current = NurtureVideo.read(s);
     final previous = _previous;
@@ -710,6 +775,12 @@ class NurtureAccessibilityRunner {
     _check();
     await beforeDispatch?.call(point);
     _check();
+    if (key.endsWith('/next-video')) {
+      debugPrint(
+        'Nurture next tap: layout=$key control=${n.bounds} '
+        'screen=${s.viewport.toScreen(point)}',
+      );
+    }
     await accessibility.tap(s.viewport, point);
     _check();
   }
@@ -727,6 +798,11 @@ class NurtureAccessibilityRunner {
       if (keyword.isNotEmpty) await _search(keyword);
       while (true) {
         final s = await _snapshot();
+        if (NurtureVideo.isLiveRoom(s)) {
+          missingSince = null;
+          await _skipLiveRoom(s);
+          continue;
+        }
         final video = NurtureVideo.read(s);
         final live = video == null ? NurtureVideo.liveNext(s) : null;
         if (live != null) {
@@ -816,7 +892,11 @@ class NurtureAccessibilityRunner {
       await accessibility.setKeyboardSuppressed(true);
       _check();
       while (_now().isBefore(deadline)) {
-        final s = await _snapshot();
+        final s = await _snapshot(trackPlayback: false);
+        if (NurtureVideo.isLiveRoom(s)) {
+          await _skipLiveRoom(s);
+          return;
+        }
         // Done once the player is open; an unplayable post is skipped by
         // the watch loop with the player's next button.
         if (NurtureVideo.read(s)?.detail == true ||
@@ -934,6 +1014,17 @@ class NurtureAccessibilityRunner {
       if (!drawer.focused) return ('focus-search', drawer);
       return (fired['paste'] ?? 0) == 0 ? ('paste', drawer) : null;
     }
+    if ((fired['view-all'] ?? 0) == 0) {
+      // The For You feed exposes "Watch in full screen" too. Open and submit
+      // search first, even if a feed video or an old results grid is visible.
+      if (viewAll != null) return ('view-all', viewAll);
+      final sidebar = s.nodes
+          .where(
+            (n) => n.editable && n.bounds.center.dx < v.left + v.width * .1,
+          )
+          .firstOrNull;
+      return sidebar == null ? null : ('open', sidebar);
+    }
     if (videosTab != null) {
       // The Top tab mixes in users and LIVE rooms; Videos holds only posts.
       if ((fired['videos-tab'] ?? 0) == 0) return ('videos-tab', videosTab);
@@ -941,17 +1032,33 @@ class NurtureAccessibilityRunner {
     // Gecko also exposes a combined results page without tab controls. Its
     // video tiles have the same accessible button as the Videos grid, but
     // LIVE previews reuse it too: exclude any tile containing a LIVE badge.
+    final feedRoots = s.nodes
+        .where(
+          (n) => RegExp(
+            r'^Read or add comments\b',
+            caseSensitive: false,
+          ).hasMatch(n.name),
+        )
+        .where((n) => n.id.split('.').length >= 3)
+        .map((n) => n.id.split('.').take(n.id.split('.').length - 2).join('.'))
+        .toSet();
     final tiles = s.nodes
         .where(
           (n) =>
               n.clickable &&
               n.enabled &&
               n.name == 'Watch in full screen' &&
+              // A slow search navigation can leave the old feed visible after
+              // submission. Never click its media while waiting for the grid.
+              !feedRoots.any(
+                (root) => n.id == root || n.id.startsWith('$root.'),
+              ) &&
               v.contains(n.bounds.topLeft) &&
               n.bounds.bottom <= v.bottom &&
               !s.nodes.any(
                 (child) =>
-                    child.id.startsWith('${n.id}.') &&
+                    (child.id.startsWith('${n.id}.') ||
+                        n.bounds.contains(child.bounds.center)) &&
                     RegExp(
                       r'^(LIVE|LIVE now|Watch LIVE|Click to watch LIVE|Join my LIVE)$',
                       caseSensitive: false,
@@ -962,13 +1069,23 @@ class NurtureAccessibilityRunner {
     if (tiles.isNotEmpty) {
       return ('result', tiles[_random.nextInt(min(tiles.length, 8))]);
     }
-    if (videosTab != null) return null;
-    if (viewAll != null) return ('view-all', viewAll);
-    final sidebar = s.nodes
-        .where((n) => n.editable && n.bounds.center.dx < v.left + v.width * .1)
-        .firstOrNull;
-    if (sidebar != null) return ('open', sidebar);
     return null;
+  }
+
+  Future<void> _skipLiveRoom(SignupSnapshot s) async {
+    final exit = NurtureVideo.liveRoomExit(s);
+    if (exit == null) {
+      throw StateError('Không tìm thấy nút rời phòng LIVE; đã dừng nuôi.');
+    }
+    debugPrint('Nurture LIVE room: returning to For You');
+    await _tap('live/room/for-you', s, exit);
+    final deadline = _now().add(const Duration(seconds: 10));
+    while (_now().isBefore(deadline)) {
+      await _sleep();
+      final current = await _snapshot(trackPlayback: false);
+      if (!NurtureVideo.isLiveRoom(current)) return;
+    }
+    throw StateError('Chưa rời được phòng LIVE; đã dừng nuôi.');
   }
 
   Future<void> _skipLive(SignupSnapshot s, SignupNode next) async {
@@ -991,6 +1108,11 @@ class NurtureAccessibilityRunner {
     NurtureVideo video,
     _WatchPlan plan,
   ) async {
+    debugPrint(
+      'Nurture advance: layout=${video.orientation.name} '
+      'position=${video.position}/${video.duration} '
+      'action=${video.next != null ? 'tap' : 'swipe'}',
+    );
     if (video.next != null) {
       await _tap('${video.orientation.name}/feed/next-video', s, video.next!);
     } else {
@@ -1041,9 +1163,28 @@ class NurtureAccessibilityRunner {
     // unreadable until its clock reports a duration, which slow loads (large
     // screens, landscape posts) can push well past a few seconds.
     final deadline = _now().add(const Duration(seconds: 20));
+    String? lastState;
     while (_now().isBefore(deadline)) {
       await _sleep();
-      final current = NurtureVideo.read(await _snapshot());
+      final snapshot = await _snapshot();
+      if (NurtureVideo.isLiveRoom(snapshot)) {
+        await _skipLiveRoom(snapshot);
+        continue;
+      }
+      final current = NurtureVideo.read(snapshot);
+      final state = current == null
+          ? 'unreadable'
+          : current.key == video.key
+          ? 'same-video'
+          : 'changed-video';
+      if (state != lastState) {
+        lastState = state;
+        final clocks = [...snapshot.nodes, ...snapshot.hiddenNodes]
+            .where((n) => NurtureVideo._time.hasMatch(n.text.trim()))
+            .map((n) => n.text.trim())
+            .join(', ');
+        debugPrint('Nurture advance check: $state clocks=[$clocks]');
+      }
       if (current != null && current.key != video.key) {
         if (!plan.completed) {
           plan.completed = true;
@@ -1059,7 +1200,11 @@ class NurtureAccessibilityRunner {
         return;
       }
     }
-    throw StateError('Chưa chuyển được video; đã dừng để kiểm tra tọa độ.');
+    throw StateError(
+      lastState == 'unreadable'
+          ? 'Chưa đọc được tiến độ video sau thao tác chuyển (20 giây); đã dừng nuôi.'
+          : 'Chưa xác nhận được video mới sau thao tác chuyển (20 giây); đã dừng nuôi.',
+    );
   }
 
   /// One tap on the like toggle; never repeated, since a second tap unlikes.

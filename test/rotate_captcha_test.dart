@@ -148,6 +148,68 @@ void main() {
     },
   );
 
+  test('waits beyond five seconds for a slowly loading CAPTCHA', () async {
+    final elapsed = Stopwatch()..start();
+    var requests = 0;
+    final solver = RotateCaptchaSolver(
+      client: MockClient((_) async {
+        requests++;
+        // Stop at the API response: this test only checks loading readiness.
+        return http.Response('{}', 200);
+      }),
+    );
+    await expectLater(
+      solver.solve(
+        licenseKey: 'key',
+        read: () async => elapsed.elapsed < const Duration(seconds: 6)
+            ? null
+            : challenge,
+        accessibility: SignupAccessibility(),
+        guard: () async {},
+        onStatus: (_) {},
+        isPresent: () async => true,
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'SadCaptcha trả góc xoay không hợp lệ.',
+        ),
+      ),
+    );
+    expect(requests, 1);
+    expect(gestures, isEmpty);
+  });
+
+  test('closing while CAPTCHA loads cancels without an API request', () async {
+    var reads = 0;
+    final reading = Completer<void>();
+    final solver = RotateCaptchaSolver(
+      client: MockClient((_) async => throw StateError('unexpected API')),
+    );
+    final result = solver.solve(
+      licenseKey: 'key',
+      read: () async {
+        reads++;
+        if (!reading.isCompleted) reading.complete();
+        return null;
+      },
+      accessibility: SignupAccessibility(),
+      guard: () async {},
+      onStatus: (_) {},
+      isPresent: () async => true,
+    );
+    final expectation = expectLater(
+      result,
+      throwsA(isA<RotateCaptchaCancelled>()),
+    );
+    await reading.future;
+    solver.close();
+    await expectation;
+    expect(reads, 1);
+    expect(gestures, isEmpty);
+  });
+
   test('visible CAPTCHA times out without repeating API or drag', () async {
     var requests = 0;
     final solver = RotateCaptchaSolver(

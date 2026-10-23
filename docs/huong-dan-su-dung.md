@@ -183,7 +183,7 @@ Các danh sách chỉ để xem trong tool. Người quản trị sửa trên Fi
 
 Với mỗi cấu hình, tool bắt đầu bằng phiên WebView sạch và nạp proxy cùng thông tin tương ứng. Khi đăng ký thành công, tài khoản được đánh dấu Đã đăng ký. Nếu đã chọn **Nuôi sau khi đăng ký**, tool tiếp tục nuôi theo thông số của cấu hình đó.
 
-Khi kết thúc, tool giữ màn hình ngẫu nhiên **1–2 phút** trước khi đăng xuất. Giữa hai cấu hình có khoảng nghỉ ngẫu nhiên **5–15 giây**, sau đó tiếp tục theo thứ tự danh sách. Thời gian chờ này là một phần của lượt chạy.
+Khi kết thúc, tool giữ phiên đăng nhập và quay về Home. Giữa hai cấu hình có khoảng nghỉ ngẫu nhiên **5–15 giây**, sau đó tiếp tục theo thứ tự danh sách.
 
 Cấu hình đăng ký thất bại được đưa vào tab **Cấu hình lỗi**. Lượt đăng ký thông thường bỏ qua các cấu hình đang bị đánh dấu lỗi.
 
@@ -193,9 +193,11 @@ Cấu hình đăng ký thất bại được đưa vào tab **Cấu hình lỗi*
 2. Nếu tài khoản đã có chưa xuất hiện, vào Quản lý cấu hình, sửa và bật **Đã đăng ký**, sau đó lưu.
 3. Chạm tài khoản muốn nuôi đầu tiên để đặt **Chạy trước**.
 4. Bấm **Chạy nuôi lần lượt các tài khoản**.
-5. Tool đăng nhập từng cấu hình, nuôi trong khoảng thời gian đã đặt, giữ màn hình 1–2 phút rồi đăng xuất và chuyển tài khoản tiếp theo.
+5. Tool dùng phiên đăng nhập đã lưu hoặc đăng nhập từng cấu hình, nuôi trong khoảng thời gian đã đặt, rồi giữ phiên và chuyển tài khoản tiếp theo.
 
 Mỗi phiên chọn ngẫu nhiên giữa news feed và tìm kiếm từ khóa; khi chọn tìm kiếm, từ khóa được chọn ngẫu nhiên trong danh sách đang dùng. Các thao tác thả tim, bình luận và thời gian xem tuân theo cấu hình nuôi của tài khoản.
+
+Tool bỏ qua livestream, không cộng thời gian xem hoặc tương tác với LIVE. Nếu kết quả tìm kiếm mở sang phòng LIVE, tool thoát về For You và tiếp tục nuôi video thường.
 
 Trên màn TikTok, nút **Auto nuôi** bật/tắt phần tự xem và tương tác khi đủ điều kiện đăng nhập. Nút **Tải lại** mở lại trang hiện tại.
 

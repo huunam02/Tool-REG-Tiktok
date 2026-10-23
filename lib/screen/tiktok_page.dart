@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/controller/tiktok_controller.dart';
@@ -39,7 +38,6 @@ class TikTokPage extends StatelessWidget {
     this.nurtureRepository,
     this.otpReaderFactory,
     this.proxyStore,
-    this.logoutAfterNurture = false,
     this.autoAdvance = false,
   }) : useNativeWebView = useNativeWebView || manualViewingPlan != null;
 
@@ -54,7 +52,6 @@ class TikTokPage extends StatelessWidget {
   final NurtureRepository? nurtureRepository;
   final OtpCodeReader Function(OtpApiConfiguration)? otpReaderFactory;
   final ProxyStore? proxyStore;
-  final bool logoutAfterNurture;
   final bool autoAdvance;
   String get initialUrl => startWithBrowserCheck
       ? TikTokController.browserCheckUrl
@@ -77,7 +74,6 @@ class TikTokPage extends StatelessWidget {
       nurtureRepository: nurtureRepository,
       otpReaderFactory: otpReaderFactory,
       proxyStore: proxyStore,
-      logoutAfterNurture: logoutAfterNurture,
       autoAdvance: autoAdvance,
       onFlowFinished: (result) {
         if (context.mounted && ModalRoute.of(context)?.isCurrent == true) {
@@ -105,8 +101,6 @@ class _TikTokView extends StatelessWidget {
 
   Widget _autoWatchButton() {
     final enabled =
-        !logic.waitingToLogout &&
-        !logic.logoutBusy &&
         (logic.loginConfirmed ||
             logic.launchAction == TikTokLaunchAction.browse) &&
         logic.webViewController != null &&
@@ -193,22 +187,13 @@ class _TikTokView extends StatelessWidget {
                               color: Colors.white,
                             ),
                           )
-                        : !logic.logoutBusy && logic.waitingToLogout
-                        ? _LogoutCountdown(
-                            logoutAt: logic.signupLogoutAt!,
-                            done: logic.logoutFollowsNurture
-                                ? 'Đã nuôi xong.'
-                                : 'Đăng ký thành công.',
-                          )
                         : Text(
-                            logic.logoutBusy
-                                ? 'Đang đăng xuất TikTok để quay về Home…'
-                                : (logic.autoLoginBusy &&
-                                          logic.loginOtpRequest != null &&
-                                          logic.activeLoginOtp.isEmpty) ||
-                                      (logic.autoSignupBusy &&
-                                          logic.signupOtpRequest != null &&
-                                          logic.activeSignupOtp.isEmpty)
+                            (logic.autoLoginBusy &&
+                                        logic.loginOtpRequest != null &&
+                                        logic.activeLoginOtp.isEmpty) ||
+                                    (logic.autoSignupBusy &&
+                                        logic.signupOtpRequest != null &&
+                                        logic.activeSignupOtp.isEmpty)
                                 ? 'Đang chờ API lấy OTP… (tối đa ${logic.configuration.otpApi?.waitSeconds ?? 180} giây)'
                                 : logic.autoLoginBusy
                                 ? logic.loginStatus
@@ -234,6 +219,27 @@ class _TikTokView extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _verificationPauseNotice() => Positioned(
+    left: 12,
+    right: 12,
+    bottom: 12,
+    child: SafeArea(
+      top: false,
+      child: Material(
+        key: const Key('verificationPauseNotice'),
+        color: const Color(0xFF262626),
+        borderRadius: BorderRadius.circular(12),
+        child: const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text(
+            TikTokController.verificationPausedMessage,
+            style: TextStyle(fontSize: 12, color: Colors.white),
           ),
         ),
       ),
@@ -341,7 +347,9 @@ class _TikTokView extends StatelessWidget {
                   initialUrl: logic.initialUrl,
                   contextId: logic.configuration.configurationId == null
                       ? 'profile-${logic.configuration.userAgent.hashCode}'
-                      : geckoProfileContextId(logic.configuration.configurationId!),
+                      : geckoProfileContextId(
+                          logic.configuration.configurationId!,
+                        ),
                   userAgent: logic.configuration.userAgent,
                   // Every mode reports the configuration's phone GPU.
                   gpu: logic.configuration.gpuProfile,
@@ -349,7 +357,9 @@ class _TikTokView extends StatelessWidget {
                     if (!logic.useNativeWebView &&
                         needsAndroidDesktopIdentity &&
                         logic.configuration.webViewTimeZone != null)
-                      webViewTimeZoneScript(logic.configuration.webViewTimeZone!),
+                      webViewTimeZoneScript(
+                        logic.configuration.webViewTimeZone!,
+                      ),
                     disableWebRtcScript,
                     if (forceEnglishWebViewLocale && !logic.useNativeWebView)
                       englishWebViewLocaleScript,
@@ -389,63 +399,16 @@ class _TikTokView extends StatelessWidget {
                   failure: logic.pageFailure!,
                   onRetry: logic.retryPage,
                 ),
-              if (logic.autoLoginBusy ||
+              if (logic.verificationPaused)
+                _verificationPauseNotice()
+              else if (logic.autoLoginBusy ||
                   logic.autoSignupBusy ||
-                  logic.waitingToLogout ||
-                  logic.logoutBusy ||
                   logic.autoRunFailing)
                 _autoControls(),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Shows the exact remaining hold instead of the randomized 1–2 minute range.
-class _LogoutCountdown extends StatefulWidget {
-  const _LogoutCountdown({required this.logoutAt, required this.done});
-
-  final DateTime logoutAt;
-  final String done;
-
-  @override
-  State<_LogoutCountdown> createState() => _LogoutCountdownState();
-}
-
-class _LogoutCountdownState extends State<_LogoutCountdown> {
-  late final Timer _ticker;
-
-  @override
-  void initState() {
-    super.initState();
-    _ticker = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => setState(() {}),
-    );
-  }
-
-  @override
-  void dispose() {
-    _ticker.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final remaining = widget.logoutAt.difference(DateTime.now());
-    final seconds = (remaining.inMilliseconds / 1000).ceil();
-    final message = seconds <= 0
-        ? '${widget.done} Sắp đăng xuất…'
-        : '${widget.done} Tự đăng xuất sau '
-              '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
-    return Text(
-      message,
-      key: const Key('signupLogoutCountdown'),
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style: const TextStyle(fontSize: 12, color: Colors.white),
     );
   }
 }

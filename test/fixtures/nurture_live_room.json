@@ -1,0 +1,95 @@
+{
+  "ready": true,
+  "webBounds": [
+    108,
+    320,
+    1332,
+    2768
+  ],
+  "nodes": [
+    {
+      "id": "0",
+      "className": "android.webkit.WebView",
+      "bounds": [
+        108,
+        320,
+        4028,
+        8160
+      ],
+      "text": "Example creator (@fixture) is LIVE - TikTok LIVE",
+      "description": "",
+      "clickable": false,
+      "enabled": true
+    },
+    {
+      "id": "0.0.0.0.0.0",
+      "className": "android.view.View",
+      "bounds": [
+        136,
+        345,
+        169,
+        380
+      ],
+      "text": "",
+      "description": "Go to TikTok For You feed",
+      "clickable": true,
+      "enabled": true
+    },
+    {
+      "id": "0.0.0.0.0.1.0.0",
+      "className": "android.view.View",
+      "bounds": [
+        127,
+        395,
+        177,
+        445
+      ],
+      "text": "Back",
+      "description": "",
+      "clickable": true,
+      "enabled": true
+    },
+    {
+      "id": "0.0.0.0.0.1.1",
+      "className": "android.view.View",
+      "bounds": [
+        127,
+        462,
+        177,
+        512
+      ],
+      "text": "",
+      "description": "Discover LIVE",
+      "clickable": true,
+      "enabled": true
+    },
+    {
+      "id": "0.0.0.0.0.1.1.0.0",
+      "className": "android.view.View",
+      "bounds": [
+        127,
+        462,
+        177,
+        512
+      ],
+      "text": "",
+      "description": "Discover LIVE",
+      "clickable": true,
+      "enabled": true
+    },
+    {
+      "id": "0.0.0.0.0.1.1.0.0.0",
+      "className": "android.view.View",
+      "bounds": [
+        127,
+        462,
+        177,
+        512
+      ],
+      "text": "Discover LIVE",
+      "description": "",
+      "clickable": true,
+      "enabled": true
+    }
+  ]
+}

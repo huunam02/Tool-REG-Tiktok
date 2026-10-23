@@ -1,0 +1,718 @@
+[
+  {
+    "elapsed_seconds": 0.3,
+    "time_vn": "2026-10-23T16:33:51+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "1000",
+          "_full": "0",
+          "_skipped": "0",
+          "_likes": "0",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 3.7,
+    "time_vn": "2026-10-23T16:33:54+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "4000",
+          "_full": "0",
+          "_skipped": "0",
+          "_likes": "0",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 7.0,
+    "time_vn": "2026-10-23T16:33:57+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "7000",
+          "_full": "0",
+          "_skipped": "0",
+          "_likes": "0",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 10.5,
+    "time_vn": "2026-10-23T16:34:01+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "11000",
+          "_full": "0",
+          "_skipped": "0",
+          "_likes": "0",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 13.6,
+    "time_vn": "2026-10-23T16:34:04+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "14000",
+          "_full": "0",
+          "_skipped": "0",
+          "_likes": "0",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 16.9,
+    "time_vn": "2026-10-23T16:34:07+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "18000",
+          "_full": "1",
+          "_skipped": "0",
+          "_likes": "0",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 20.3,
+    "time_vn": "2026-10-23T16:34:11+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "19000",
+          "_full": "1",
+          "_skipped": "0",
+          "_likes": "0",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 23.8,
+    "time_vn": "2026-10-23T16:34:14+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "21000",
+          "_full": "1",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 26.9,
+    "time_vn": "2026-10-23T16:34:17+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "26000",
+          "_full": "1",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 30.1,
+    "time_vn": "2026-10-23T16:34:20+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "28000",
+          "_full": "1",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 33.2,
+    "time_vn": "2026-10-23T16:34:23+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "32000",
+          "_full": "1",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 36.4,
+    "time_vn": "2026-10-23T16:34:27+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "34000",
+          "_full": "2",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 39.5,
+    "time_vn": "2026-10-23T16:34:30+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "37000",
+          "_full": "2",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 42.8,
+    "time_vn": "2026-10-23T16:34:33+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "40000",
+          "_full": "2",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 46.0,
+    "time_vn": "2026-10-23T16:34:36+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "43000",
+          "_full": "2",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 49.1,
+    "time_vn": "2026-10-23T16:34:39+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "43000",
+          "_full": "2",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 52.2,
+    "time_vn": "2026-10-23T16:34:42+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "46000",
+          "_full": "2",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 55.5,
+    "time_vn": "2026-10-23T16:34:46+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "50000",
+          "_full": "2",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 59.1,
+    "time_vn": "2026-10-23T16:34:49+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "52000",
+          "_full": "2",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 62.3,
+    "time_vn": "2026-10-23T16:34:53+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "56000",
+          "_full": "2",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 65.4,
+    "time_vn": "2026-10-23T16:34:56+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "59000",
+          "_full": "2",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 68.5,
+    "time_vn": "2026-10-23T16:34:59+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "62000",
+          "_full": "3",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 71.6,
+    "time_vn": "2026-10-23T16:35:02+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "65000",
+          "_full": "3",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 75.1,
+    "time_vn": "2026-10-23T16:35:05+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "68000",
+          "_full": "3",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 78.3,
+    "time_vn": "2026-10-23T16:35:09+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "71000",
+          "_full": "4",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 81.4,
+    "time_vn": "2026-10-23T16:35:12+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "73000",
+          "_full": "4",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 84.6,
+    "time_vn": "2026-10-23T16:35:15+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "77000",
+          "_full": "4",
+          "_skipped": "0",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 87.7,
+    "time_vn": "2026-10-23T16:35:18+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "4",
+          "_skipped": "0",
+          "_likes": "2",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 90.9,
+    "time_vn": "2026-10-23T16:35:21+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "true",
+        "_watchCompletionPending": "false",
+        "_isClosed": "true"
+      }
+    ]
+  }
+]

@@ -337,7 +337,7 @@ class RotateCaptchaSolver {
     await guard();
     var challenge = await read();
     await guard();
-    final loadingDeadline = DateTime.now().add(const Duration(seconds: 5));
+    final loadingDeadline = DateTime.now().add(const Duration(seconds: 15));
     while (challenge == null &&
         await isPresent() &&
         DateTime.now().isBefore(loadingDeadline)) {
@@ -349,7 +349,7 @@ class RotateCaptchaSolver {
     if (challenge == null) {
       if (await isPresent()) {
         throw StateError(
-          'CAPTCHA chưa sẵn sàng hoặc không phải dạng xoay được hỗ trợ. Hãy xử lý thủ công.',
+          'Chưa đọc được CAPTCHA sau thời gian chờ.',
         );
       }
       return false;

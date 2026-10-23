@@ -1,0 +1,2657 @@
+[
+  {
+    "elapsed_seconds": 0.1,
+    "time_vn": "2026-10-23T16:52:05+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 3.2,
+    "time_vn": "2026-10-23T16:52:08+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 6.4,
+    "time_vn": "2026-10-23T16:52:11+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 9.5,
+    "time_vn": "2026-10-23T16:52:14+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 12.6,
+    "time_vn": "2026-10-23T16:52:17+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 15.7,
+    "time_vn": "2026-10-23T16:52:21+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 18.9,
+    "time_vn": "2026-10-23T16:52:24+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 22.0,
+    "time_vn": "2026-10-23T16:52:27+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 25.1,
+    "time_vn": "2026-10-23T16:52:30+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 28.2,
+    "time_vn": "2026-10-23T16:52:33+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 31.3,
+    "time_vn": "2026-10-23T16:52:36+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 34.4,
+    "time_vn": "2026-10-23T16:52:39+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 37.5,
+    "time_vn": "2026-10-23T16:52:42+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 40.6,
+    "time_vn": "2026-10-23T16:52:45+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 43.7,
+    "time_vn": "2026-10-23T16:52:49+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 46.9,
+    "time_vn": "2026-10-23T16:52:52+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 50.0,
+    "time_vn": "2026-10-23T16:52:55+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 53.0,
+    "time_vn": "2026-10-23T16:52:58+07:00",
+    "controllers": []
+  },
+  {
+    "elapsed_seconds": 56.3,
+    "time_vn": "2026-10-23T16:53:01+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "true",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "false",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false"
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 59.4,
+    "time_vn": "2026-10-23T16:53:04+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "0",
+          "_full": "0",
+          "_skipped": "0",
+          "_likes": "0",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 62.6,
+    "time_vn": "2026-10-23T16:53:07+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "2000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "0",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 65.7,
+    "time_vn": "2026-10-23T16:53:11+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "5000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "0",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 68.9,
+    "time_vn": "2026-10-23T16:53:14+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "9000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 72.1,
+    "time_vn": "2026-10-23T16:53:17+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "11000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 75.3,
+    "time_vn": "2026-10-23T16:53:20+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "15000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 78.4,
+    "time_vn": "2026-10-23T16:53:23+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "18000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 81.5,
+    "time_vn": "2026-10-23T16:53:26+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "21000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 84.7,
+    "time_vn": "2026-10-23T16:53:29+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "24000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 87.8,
+    "time_vn": "2026-10-23T16:53:33+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "27000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 91.0,
+    "time_vn": "2026-10-23T16:53:36+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "30000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 94.1,
+    "time_vn": "2026-10-23T16:53:39+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "34000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 97.3,
+    "time_vn": "2026-10-23T16:53:42+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "37000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 100.4,
+    "time_vn": "2026-10-23T16:53:45+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "40000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 103.5,
+    "time_vn": "2026-10-23T16:53:48+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "43000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 106.7,
+    "time_vn": "2026-10-23T16:53:51+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "46000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 109.9,
+    "time_vn": "2026-10-23T16:53:55+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "49000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 113.0,
+    "time_vn": "2026-10-23T16:53:58+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "53000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 116.2,
+    "time_vn": "2026-10-23T16:54:01+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "55000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 119.3,
+    "time_vn": "2026-10-23T16:54:04+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "59000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 122.5,
+    "time_vn": "2026-10-23T16:54:07+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "61000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 125.7,
+    "time_vn": "2026-10-23T16:54:10+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "63000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 128.8,
+    "time_vn": "2026-10-23T16:54:14+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "67000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 131.9,
+    "time_vn": "2026-10-23T16:54:17+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "70000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 135.2,
+    "time_vn": "2026-10-23T16:54:20+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "73000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 138.3,
+    "time_vn": "2026-10-23T16:54:23+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "76000",
+          "_full": "0",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 141.5,
+    "time_vn": "2026-10-23T16:54:26+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 144.6,
+    "time_vn": "2026-10-23T16:54:29+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 147.7,
+    "time_vn": "2026-10-23T16:54:32+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 150.9,
+    "time_vn": "2026-10-23T16:54:36+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 154.1,
+    "time_vn": "2026-10-23T16:54:39+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 157.2,
+    "time_vn": "2026-10-23T16:54:42+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 160.3,
+    "time_vn": "2026-10-23T16:54:45+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "true",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "false",
+          "_running": "true"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 163.5,
+    "time_vn": "2026-10-23T16:54:48+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 166.6,
+    "time_vn": "2026-10-23T16:54:51+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 169.7,
+    "time_vn": "2026-10-23T16:54:55+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 172.9,
+    "time_vn": "2026-10-23T16:54:58+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 176.0,
+    "time_vn": "2026-10-23T16:55:01+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 179.1,
+    "time_vn": "2026-10-23T16:55:04+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 182.3,
+    "time_vn": "2026-10-23T16:55:07+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 185.4,
+    "time_vn": "2026-10-23T16:55:10+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 188.6,
+    "time_vn": "2026-10-23T16:55:13+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 191.7,
+    "time_vn": "2026-10-23T16:55:16+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 194.8,
+    "time_vn": "2026-10-23T16:55:20+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 197.9,
+    "time_vn": "2026-10-23T16:55:23+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 201.1,
+    "time_vn": "2026-10-23T16:55:26+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 204.2,
+    "time_vn": "2026-10-23T16:55:29+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 207.3,
+    "time_vn": "2026-10-23T16:55:32+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 210.4,
+    "time_vn": "2026-10-23T16:55:35+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 213.6,
+    "time_vn": "2026-10-23T16:55:38+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 216.7,
+    "time_vn": "2026-10-23T16:55:41+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 219.9,
+    "time_vn": "2026-10-23T16:55:45+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 223.0,
+    "time_vn": "2026-10-23T16:55:48+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 226.2,
+    "time_vn": "2026-10-23T16:55:51+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 229.3,
+    "time_vn": "2026-10-23T16:55:54+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 232.4,
+    "time_vn": "2026-10-23T16:55:57+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 235.6,
+    "time_vn": "2026-10-23T16:56:00+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 238.7,
+    "time_vn": "2026-10-23T16:56:03+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 241.8,
+    "time_vn": "2026-10-23T16:56:07+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 244.9,
+    "time_vn": "2026-10-23T16:56:10+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 248.1,
+    "time_vn": "2026-10-23T16:56:13+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 251.2,
+    "time_vn": "2026-10-23T16:56:16+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 254.3,
+    "time_vn": "2026-10-23T16:56:19+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 257.4,
+    "time_vn": "2026-10-23T16:56:22+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 260.6,
+    "time_vn": "2026-10-23T16:56:25+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 263.7,
+    "time_vn": "2026-10-23T16:56:28+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 266.8,
+    "time_vn": "2026-10-23T16:56:32+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 270.0,
+    "time_vn": "2026-10-23T16:56:35+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 273.1,
+    "time_vn": "2026-10-23T16:56:38+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 276.3,
+    "time_vn": "2026-10-23T16:56:41+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 279.4,
+    "time_vn": "2026-10-23T16:56:44+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 282.5,
+    "time_vn": "2026-10-23T16:56:47+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 285.6,
+    "time_vn": "2026-10-23T16:56:50+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 288.8,
+    "time_vn": "2026-10-23T16:56:54+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 292.0,
+    "time_vn": "2026-10-23T16:56:57+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 295.2,
+    "time_vn": "2026-10-23T16:57:00+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 298.3,
+    "time_vn": "2026-10-23T16:57:03+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 301.4,
+    "time_vn": "2026-10-23T16:57:06+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 304.5,
+    "time_vn": "2026-10-23T16:57:09+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 307.7,
+    "time_vn": "2026-10-23T16:57:12+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 310.8,
+    "time_vn": "2026-10-23T16:57:16+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 313.9,
+    "time_vn": "2026-10-23T16:57:19+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 317.0,
+    "time_vn": "2026-10-23T16:57:22+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 320.2,
+    "time_vn": "2026-10-23T16:57:25+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 323.3,
+    "time_vn": "2026-10-23T16:57:28+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 326.4,
+    "time_vn": "2026-10-23T16:57:31+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 329.6,
+    "time_vn": "2026-10-23T16:57:34+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 332.7,
+    "time_vn": "2026-10-23T16:57:37+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 335.8,
+    "time_vn": "2026-10-23T16:57:41+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 339.0,
+    "time_vn": "2026-10-23T16:57:44+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 342.1,
+    "time_vn": "2026-10-23T16:57:47+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 345.2,
+    "time_vn": "2026-10-23T16:57:50+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 348.4,
+    "time_vn": "2026-10-23T16:57:53+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 351.5,
+    "time_vn": "2026-10-23T16:57:56+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 354.7,
+    "time_vn": "2026-10-23T16:57:59+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 357.8,
+    "time_vn": "2026-10-23T16:58:03+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 360.9,
+    "time_vn": "2026-10-23T16:58:06+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  },
+  {
+    "elapsed_seconds": 364.1,
+    "time_vn": "2026-10-23T16:58:09+07:00",
+    "controllers": [
+      {
+        "autoWatchEnabled": "false",
+        "autoWatchBusy": "false",
+        "autoLoginBusy": "false",
+        "autoLoginAttempt": "0",
+        "loginConfirmed": "true",
+        "verificationPaused": "false",
+        "_flowFinished": "false",
+        "_watchCompletionPending": "false",
+        "_isClosed": "false",
+        "runner": {
+          "_watchMs": "80000",
+          "_full": "1",
+          "_skipped": "1",
+          "_likes": "1",
+          "_comments": "0",
+          "_cancelled": "true",
+          "_running": "false"
+        }
+      }
+    ]
+  }
+]

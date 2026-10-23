@@ -48,7 +48,7 @@ void main() {
     logic.onNotice = (notice) => notices.add(notice.message);
     await tester.pump(const Duration(minutes: 41));
     expect(results, isEmpty);
-    // 30 minutes of nurture plus 12 for login and logout.
+    // 30 minutes of nurture plus 12 for login and page loading.
     await tester.pump(const Duration(minutes: 1, seconds: 1));
     expect(notices, contains('Quá 42 phút chưa xong cấu hình này.'));
     logic.onDelete();

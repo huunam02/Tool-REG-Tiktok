@@ -13,7 +13,6 @@ import '../scripts/rotate_captcha_script.dart';
 import '../rotate_captcha.dart';
 import '../captcha_settings_store.dart';
 import '../scripts/authenticated_session_script.dart';
-import '../scripts/auto_logout_script.dart';
 import '../send_code_accessibility.dart';
 import '../cookie_consent_accessibility.dart';
 import '../signup_accessibility.dart';
@@ -64,7 +63,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     this.rotateCaptchaSolverFactory,
     this.onReturnToConfiguration,
     this.onFlowFinished,
-    this.logoutAfterNurture = false,
     this.autoAdvance = false,
     Random? workflowRandom,
     ProxyStore? proxyStore,
@@ -85,18 +83,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   final CaptchaSettingsStore captchaSettingsStore;
   final ValueChanged<TikTokFlowResult>? onFlowFinished;
   final Random _workflowRandom;
-  Timer? _signupLogoutTimer;
-  DateTime? signupLogoutAt;
-  bool logoutBusy = false;
-  bool get waitingToLogout => signupLogoutAt != null;
   bool _signupHandoffStarted = false;
   bool _flowFinished = false;
   bool _watchCompletionPending = false;
   bool _finishingWatch = false;
-  int _workflowGeneration = 0;
-
-  /// Log out after nurturing instead of keeping the session (auto runs).
-  final bool logoutAfterNurture;
 
   /// Part of an automatic run over several configurations: a failed or stuck
   /// flow returns [TikTokFlowResult.failed] so Home can continue.
@@ -114,17 +104,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   Timer? _autoFailTimer;
   Timer? _autoFlowWatchdog;
   bool _stoppedByUser = false;
-  TikTokFlowResult _logoutResult = TikTokFlowResult.signupLoggedOut;
-
-  bool get logoutFollowsNurture =>
-      _logoutResult == TikTokFlowResult.nurtureLoggedOut;
-
-  /// Explicit callers may request logout; normal signup/nurture keeps the jar.
-  bool get _logsOutAfterNurture => onFlowFinished != null && logoutAfterNurture;
-
-  /// Before logging out, the screen is held for a random 1–2 minutes.
-  Duration _logoutHold() => Duration(seconds: 60 + _workflowRandom.nextInt(61));
-
   void _afterSignupSucceeded() {
     // A route owns the handoff to Home and the next configuration.
     if (onFlowFinished == null ||
@@ -168,20 +147,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       duration: const Duration(seconds: 3),
     );
     await _startTimedAutoWatch();
-  }
-
-  void _scheduleLogout(TikTokFlowResult result) {
-    if (onFlowFinished == null ||
-        _flowFinished ||
-        waitingToLogout ||
-        logoutBusy ||
-        !active) {
-      return;
-    }
-    _logoutResult = result;
-    final hold = _logoutHold();
-    mutate(() => signupLogoutAt = _now().add(hold));
-    _signupLogoutTimer = Timer(hold, _continueSignupLogout);
   }
 
   /// Leave this configuration after a short notice so the run can continue.
@@ -247,8 +212,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   bool get _flowContinues =>
       _flowFinished ||
       _signupHandoffStarted ||
-      waitingToLogout ||
-      logoutBusy ||
       autoWatchEnabled ||
       _watchCompletionPending ||
       autoSignupBusy ||
@@ -270,102 +233,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     _autoFailTimer?.cancel();
     _autoFailTimer = null;
     if (autoRunFailing) mutate(() => autoRunFailing = false);
-  }
-
-  void cancelSignupHandoff() {
-    _workflowGeneration++;
-    _signupLogoutTimer?.cancel();
-    _signupLogoutTimer = null;
-    signupLogoutAt = null;
-    logoutBusy = false;
-    mutate(() {});
-  }
-
-  void _continueSignupLogout() {
-    if (!active ||
-        !appActive ||
-        logoutBusy ||
-        !waitingToLogout ||
-        _now().isBefore(signupLogoutAt!) ||
-        autoSignupBusy ||
-        autoLoginBusy ||
-        pageFailure != null ||
-        accountFailure != null ||
-        browserCheckOpen) {
-      return;
-    }
-    unawaited(_logoutAfterSignup());
-  }
-
-  Future<void> _logoutAfterSignup() async {
-    final generation = _workflowGeneration;
-    bool current() =>
-        active && generation == _workflowGeneration && waitingToLogout;
-    mutate(() => logoutBusy = true);
-    final deadline = _now().add(const Duration(seconds: 45));
-    var confirmations = 0;
-    try {
-      await stopAutoWatch();
-      while (current() && appActive && _now().isBefore(deadline)) {
-        final url = await webViewController?.getUrl();
-        if (!current() || !appActive) return;
-        if (url == null) {
-          await Future<void>.delayed(const Duration(milliseconds: 700));
-          continue;
-        }
-        if (url.scheme != 'https' || url.host != 'www.tiktok.com') {
-          throw StateError('Logout left TikTok');
-        }
-        await _checkRotateCaptcha();
-        if (!current() || !appActive) return;
-        dynamic result;
-        try {
-          result = await webViewController?.evaluateJavascript(
-            source: buildAutoLogoutScript(generation),
-          );
-        } catch (_) {
-          // Logout can replace the page and briefly destroy its JS context.
-          await Future<void>.delayed(const Duration(milliseconds: 700));
-          continue;
-        }
-        if (!current() || !appActive) return;
-        if (result == 'wrong-origin' || result == 'verification-required') {
-          throw StateError('Logout requires attention');
-        }
-        confirmations = result == 'logged-out' ? confirmations + 1 : 0;
-        if (confirmations >= 2) {
-          _signupLogoutTimer?.cancel();
-          _signupLogoutTimer = null;
-          mutate(() {
-            signupLogoutAt = null;
-            logoutBusy = false;
-            loginConfirmed = false;
-          });
-          await _persistCurrentAccountLoginState(false);
-          if (!active || generation != _workflowGeneration) return;
-          if (!_flowFinished) {
-            _flowFinished = true;
-            _autoFlowWatchdog?.cancel();
-            onFlowFinished?.call(_logoutResult);
-          }
-          return;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 700));
-      }
-      if (current() && appActive) {
-        throw StateError('Logout confirmation timed out');
-      }
-    } catch (_) {
-      if (current()) {
-        cancelSignupHandoff();
-        notify(
-          'Chưa xác nhận được đăng xuất TikTok. Đã dừng lịch đăng nhập lại; hãy kiểm tra màn hiện tại.',
-        );
-        _failAutoFlow();
-      }
-    } finally {
-      if (current()) mutate(() => logoutBusy = false);
-    }
   }
 
   bool _registrationSaved = false;
@@ -480,7 +347,26 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   bool _tikTokScreenVisible = true;
   int _rotateCaptchaEpoch = 0, _nurtureActionEpoch = 0;
   RotateCaptchaChallenge? _failedRotateCaptcha;
-  String? _rotateCaptchaFailure, _rotateCaptchaFailureKey, _rotateCaptchaNotice;
+  String? _rotateCaptchaFailure, _rotateCaptchaFailureKey;
+  bool verificationPaused = false;
+  static const verificationPausedMessage =
+      'Chưa đọc được CAPTCHA sau thời gian chờ. Đã tạm dừng nuôi và giữ trang hiện tại.';
+
+  /// A verification failure must not complete the run or navigate away.
+  void pauseForVerification() {
+    if (!active || verificationPaused) return;
+    _userTookOver();
+    _cancelAutoWatchTimers();
+    if (autoLoginBusy) cancelAutoLogin();
+    if (autoSignupBusy) cancelAutoSignup();
+    mutate(() {
+      verificationPaused = true;
+      autoWatchEnabled = false;
+      _watchCompletionPending = false;
+    });
+    unawaited(stopAutoWatch());
+    notify(verificationPausedMessage);
+  }
 
   bool get _canCheckRotateCaptcha =>
       active &&
@@ -525,20 +411,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           // Navigation, route changes and backgrounding invalidate old work.
         } catch (error) {
           if (!current()) return;
-          if (autoLoginBusy) cancelAutoLogin();
-          if (autoSignupBusy) cancelAutoSignup();
-          if (autoWatchEnabled) {
-            _cancelAutoWatchTimers();
-            mutate(() => autoWatchEnabled = false);
-            unawaited(stopAutoWatch());
-          }
-          final message = error is StateError
-              ? error.message.toString()
-              : 'Không xử lý được CAPTCHA. Hãy kiểm tra màn hiện tại.';
-          if (_rotateCaptchaNotice != message) {
-            _rotateCaptchaNotice = message;
-            notify(message);
-          }
+          pauseForVerification();
         }
         if (current()) schedule();
       });
@@ -551,7 +424,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     _failedRotateCaptcha = null;
     _rotateCaptchaFailure = null;
     _rotateCaptchaFailureKey = null;
-    _rotateCaptchaNotice = null;
   }
 
   void _stopRotateCaptchaMonitor() {
@@ -606,7 +478,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             !browserCheckOpen &&
             !autoSignupBusy &&
             !autoLoginBusy &&
-            !logoutBusy &&
+            !verificationPaused &&
             _rotateCaptchaWork == null &&
             !signupAccessibility.actionBusy &&
             await _cookieConsent.check()) {
@@ -644,7 +516,18 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     if (!_canCheckRotateCaptcha) return;
     final pending = _rotateCaptchaWork;
     if (pending != null) return pending;
-    final work = _inspectRotateCaptcha();
+    final navigation = navigationId, epoch = _rotateCaptchaEpoch;
+    // Share the handled future: concurrent snapshots must not receive the
+    // original failure and restart navigation before the pause wins.
+    final work = _inspectRotateCaptcha().catchError((Object error) {
+      if (error is RotateCaptchaCancelled) throw error;
+      if (_canCheckRotateCaptcha &&
+          navigationId == navigation &&
+          _rotateCaptchaEpoch == epoch) {
+        pauseForVerification();
+      }
+      throw RotateCaptchaCancelled();
+    });
     _rotateCaptchaWork = work;
     try {
       await work;
@@ -836,7 +719,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         email,
         loggedIn,
       );
-      if (selected) await AccountSessions.save(id, email);
+      if (selected) {
+        await AccountSessions.save(id, email, loggedIn: loggedIn);
+      }
     } catch (_) {
       // Session persistence must not interrupt browser controls.
     }
@@ -930,7 +815,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       _signupCalibrationChannel.setMethodCallHandler(null);
     }
     unawaited(closeManualViewing());
-    cancelSignupHandoff();
     _cancelAutoWatchTimers();
     unawaited(_sendCodeAccessibility?.dispose());
     _ipChecker?.cancel();
@@ -972,7 +856,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         unawaited(_returnAfterNurture());
         return;
       }
-      _continueSignupLogout();
       unawaited(runInitialAction());
     }
     if (autoWatchEnabled && appActive) {
@@ -1085,9 +968,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
                 : 'Không thể tiếp tục nuôi qua Accessibility.';
             debugPrint('Accessibility nurture stopped: $message');
             notify(message);
-            // Automatic runs keep their deadline whether or not they log out,
-            // so a TikTok dialog cannot stall the queue until the watchdog.
-            if (_logsOutAfterNurture || autoAdvance) {
+            // Automatic runs keep their deadline so a TikTok dialog cannot
+            // stall the queue until the watchdog.
+            if (autoAdvance) {
               final stopsAt = _autoWatchStopsAt;
               if (_nurtureRestarts < maxNurtureRestarts &&
                   stopsAt != null &&
@@ -1172,14 +1055,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       _autoViewingSession = null;
       if (!active || !appActive) return;
       _watchCompletionPending = false;
-      if (_logsOutAfterNurture) {
-        notify(
-          'Đã nuôi xong. Giữ màn hình 1–2 phút rồi đăng xuất.',
-          duration: const Duration(seconds: 3),
-        );
-        _scheduleLogout(TikTokFlowResult.nurtureLoggedOut);
-        return;
-      }
       if (onFlowFinished != null && !_flowFinished) {
         _flowFinished = true;
         onFlowFinished!(TikTokFlowResult.nurtureCompleted);
@@ -1387,8 +1262,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         pageFailure != null ||
         accountFailure != null ||
         browserCheckOpen ||
-        waitingToLogout ||
-        logoutBusy ||
         _flowFinished ||
         autoWatchBusy ||
         autoLoginBusy ||
@@ -1402,7 +1275,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       notify('Hãy đăng nhập tự động thành công trước khi bật Auto nuôi.');
       return;
     }
-    mutate(() => autoWatchBusy = true);
+    mutate(() {
+      autoWatchBusy = true;
+      verificationPaused = false;
+    });
     try {
       if (!autoWatchEnabled && launchAction == TikTokLaunchAction.browse) {
         final navigation = navigationId;
@@ -1811,18 +1687,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     Map<String, dynamic> result = {'ok': true, 'action': action};
     if (action == 'snapshot') {
       result = await FlutterAccessibilityService.signupSnapshot();
-    } else if (action == 'logout-step') {
-      _cancelAutoWatchTimers();
-      mutate(() => autoWatchEnabled = false);
-      await stopAutoWatch();
-      final status = await webViewController?.evaluateJavascript(
-        source: buildAutoLogoutScript(_workflowGeneration),
-      );
-      if (status == 'logged-out') {
-        mutate(() => loginConfirmed = false);
-        await _persistCurrentAccountLoginState(false);
-      }
-      result = {'ok': true, 'status': status};
     } else if (action == 'login-profile') {
       result = {
         'ok': true,
@@ -2039,7 +1903,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   Future<void> autoSignup() async {
     if (useNativeWebView) return;
-    if (waitingToLogout || logoutBusy || _flowFinished) return;
+    if (_flowFinished) return;
     if (usesCoordinateSignup) {
       await _runCoordinateSignup();
       return;
@@ -2479,7 +2343,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
 
   Future<void> autoLogin() async {
     if (useNativeWebView) return;
-    if (waitingToLogout || logoutBusy || _flowFinished) return;
+    if (_flowFinished) return;
     if (usesAccessibilityLogin) {
       await _runAccessibilityLogin();
       return;
@@ -2882,12 +2746,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       _ =>
         'Chưa xác nhận được bình luận đã gửi. Đã dừng, không gửi lại để tránh trùng.',
     };
-    if (_logsOutAfterNurture && message != 'login-required') {
-      // The account is still signed in: end the session with the usual logout.
-      notify(text);
-      _finishTimedAutoWatch();
-      return;
-    }
     _cancelAutoWatchTimers();
     mutate(() {
       autoWatchEnabled = false;
@@ -2980,8 +2838,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     if (active && !_flowContinues) _failAutoFlow();
   }
 
-  void cancelAutoActions({bool cancelHandoff = true}) {
-    if (cancelHandoff && (waitingToLogout || logoutBusy)) cancelSignupHandoff();
+  void cancelAutoActions() {
     initialActionStarted = true;
     if (autoLoginBusy) cancelAutoLogin();
     if (autoSignupBusy) cancelAutoSignup();
@@ -3055,7 +2912,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   void showPageFailure(WebViewFailure failure) {
     if (!active) return;
     _stopRotateCaptchaMonitor();
-    cancelSignupHandoff();
     _cancelAutoWatchTimers();
     _ipChecker?.cancel();
     if (autoLoginBusy) cancelAutoLogin();
@@ -3400,7 +3256,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   void reloadPage() {
-    cancelAutoActions(cancelHandoff: false);
+    cancelAutoActions();
     unawaited(webViewController?.reload());
   }
 

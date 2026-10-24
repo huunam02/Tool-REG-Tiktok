@@ -142,6 +142,7 @@ class SignupNode {
 class SignupSnapshot {
   SignupSnapshot(Map<String, dynamic> data)
     : ready = data['ready'] == true,
+      serviceConnected = data['serviceConnected'] != false,
       keyboardVisible = data['keyboardVisible'] == true,
       viewport = SignupViewport(
         data['webBounds'] == null
@@ -155,6 +156,9 @@ class SignupSnapshot {
           .map((e) => SignupNode(Map<String, dynamic>.from(e)))
           .toList();
   final bool ready;
+
+  /// False when Android lists the service as enabled but has not bound it.
+  final bool serviceConnected;
   final bool keyboardVisible;
   final SignupViewport viewport;
   final List<SignupNode> nodes;
@@ -352,8 +356,22 @@ class SignupAccessibility {
     }
   });
 
+  /// Why no WebView is readable (windows, WebView/Gecko nodes); diagnostics
+  /// only, never used to pick a target.
+  Future<String> diagnoseWeb() =>
+      FlutterAccessibilityService.signupDiagnoseWeb();
+
   Future<bool> submitComment() =>
       _perform(FlutterAccessibilityService.signupSubmitComment);
+
+  Future<Map<String, dynamic>> revealCommentPost(SignupNode editor) => _perform(
+    () => FlutterAccessibilityService.signupRevealCommentPost(editor.id, [
+      editor.bounds.left,
+      editor.bounds.top,
+      editor.bounds.right,
+      editor.bounds.bottom,
+    ]),
+  );
 
   Future<bool> clearOtp(String expected) =>
       _perform(() => FlutterAccessibilityService.signupClearOtp(expected));

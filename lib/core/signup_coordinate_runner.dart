@@ -219,17 +219,27 @@ class SignupCoordinateRunner {
 
   Future<SignupSnapshot> _waitForEntryReady() async {
     onStatus('Đang chờ trang và nút đăng ký sẵn sàng…');
-    final deadline = now().add(const Duration(seconds: 60));
+    final started = now();
+    final deadline = started.add(const Duration(seconds: 60));
     DateTime? pageReadySince;
     DateTime? targetStableSince;
     Rect? previousViewport;
     Rect? previousTarget;
     String? previousAction;
+    // Why the last read was not ready; shown in the failure so a customer's
+    // device can be diagnosed from the Cấu hình lỗi card alone.
+    var reason = 'chưa đọc được trang';
     while (now().isBefore(deadline)) {
       final snapshot = await _snapshot(allowNotReady: true);
-      if (!(isPageReady?.call() ?? true) ||
-          !snapshot.ready ||
-          !snapshot.viewport.valid) {
+      if (!snapshot.ready || !snapshot.viewport.valid) {
+        final b = snapshot.viewport.bounds;
+        reason = !snapshot.serviceConnected
+            ? 'dịch vụ Trợ năng chưa chạy; hãy tắt rồi bật lại Trợ năng '
+                  'hoặc khởi động lại điện thoại'
+            : !snapshot.ready
+            ? 'không đọc được WebView qua Trợ năng'
+            : 'khung WebView ${b.width.round()}×${b.height.round()} '
+                  'không đúng tỉ lệ 1:2';
         pageReadySince = null;
         targetStableSince = null;
         previousViewport = null;
@@ -238,7 +248,11 @@ class SignupCoordinateRunner {
         await _pause(300);
         continue;
       }
-      if (_authenticated(snapshot)) return snapshot;
+      // A slow phone or proxy can show the page long before the browser's
+      // load event (the customer's Galaxy S8). A stable entry control is then
+      // accepted after 20s with a longer stability check.
+      final loaded = isPageReady?.call() ?? true;
+      if (_authenticated(snapshot) && loaded) return snapshot;
       if (await _acceptCookiesIfShown(snapshot)) {
         // The banner closing can shift layout; re-check target stability.
         targetStableSince = null;
@@ -246,32 +260,64 @@ class SignupCoordinateRunner {
         continue;
       }
       final timestamp = now();
-      pageReadySince ??= timestamp;
+      // The five-second settle restarts whenever the load is pending again
+      // (e.g. a reload); the fallback below tracks the target meanwhile.
+      pageReadySince = loaded ? pageReadySince ?? timestamp : null;
       final action = _entryAction(snapshot);
-      final target = _target(snapshot, action, expected: _entryLabel(action));
+      final label = _entryLabel(action);
+      final target = _target(snapshot, action, expected: label);
       if (target == null) {
         targetStableSince = null;
         previousTarget = null;
+        final name = switch (action) {
+          'open-signup' => 'Sign up',
+          'signup-phone-email' => 'Use phone or email',
+          _ => 'Log in',
+        };
+        reason =
+            (snapshot.nodes.any((n) => label.hasMatch(n.label))
+                ? 'nút "$name" đang bị tắt'
+                : 'không thấy nút "$name"') +
+            (loaded ? '' : ', trang chưa báo tải xong');
       } else {
         if (previousAction != action ||
             previousViewport != snapshot.viewport.bounds ||
             previousTarget != target.bounds) {
           targetStableSince = timestamp;
         }
-        if (timestamp.difference(pageReadySince) >=
+        final settled = timestamp.difference(targetStableSince!);
+        if (loaded &&
+            timestamp.difference(pageReadySince!) >=
                 const Duration(seconds: 5) &&
-            timestamp.difference(targetStableSince!) >=
-                const Duration(seconds: 2)) {
+            settled >= const Duration(seconds: 2)) {
           return snapshot;
         }
+        if (!loaded &&
+            timestamp.difference(started) >= const Duration(seconds: 20) &&
+            settled >= const Duration(seconds: 3)) {
+          return snapshot;
+        }
+        final b = target.bounds;
+        reason = loaded
+            ? 'nút còn di chuyển (${b.left.round()},${b.top.round()})'
+            : 'trang chưa báo tải xong';
         previousTarget = target.bounds;
       }
       previousAction = action;
       previousViewport = snapshot.viewport.bounds;
       await _pause(300);
     }
+    if (reason == 'không đọc được WebView qua Trợ năng') {
+      try {
+        final diagnosis = await accessibility.diagnoseWeb();
+        if (diagnosis.isNotEmpty) reason = '$reason [$diagnosis]';
+      } catch (_) {
+        // Diagnostics must not replace the original failure.
+      }
+    }
     throw StateError(
-      'Trang hoặc nút đăng nhập/đăng ký chưa ổn định; đã dừng trước khi bấm.',
+      'Trang hoặc nút đăng nhập/đăng ký chưa ổn định ($reason); '
+      'đã dừng trước khi bấm.',
     );
   }
 

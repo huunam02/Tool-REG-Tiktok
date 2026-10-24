@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/controller/home_controller.dart';
+import '../core/controller/tiktok_controller.dart';
 import '../core/otp_settings_store.dart';
 import '../core/proxy_store.dart';
 import '../core/tiktok_flow_result.dart';
@@ -107,7 +108,20 @@ class _HomeView extends StatelessWidget {
   Future<void> _openSettings(BuildContext context) =>
       Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (_) => SettingsPage(proxyStore: logic.proxyStore),
+          builder: (settings) => SettingsPage(
+            proxyStore: logic.proxyStore,
+            onBrowserCheck: () => logic.openBrowserCheck(
+              (configuration) => Navigator.of(settings).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => TikTokPage(
+                    configuration: configuration,
+                    startWithBrowserCheck: true,
+                    browserCheckPage: TikTokController.deviceBrowserCheckUrl,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       );
 

@@ -23,6 +23,9 @@ class SettingsController extends AppController with WidgetsBindingObserver {
   bool get dataBusy => exporting || previewing;
   final AccessibilityPermissionService accessibilityPermission;
   bool? accessibilityEnabled;
+
+  /// Enabled in Android settings but not bound (needs off and on again).
+  bool accessibilityStalled = false;
   bool checkingAccessibility = false;
   bool openingAccessibilitySettings = false;
   String? accessibilityError;
@@ -127,7 +130,11 @@ class SettingsController extends AppController with WidgetsBindingObserver {
     });
     try {
       final enabled = await accessibilityPermission.isEnabled();
-      mutate(() => accessibilityEnabled = enabled);
+      final running = enabled && await accessibilityPermission.isRunning();
+      mutate(() {
+        accessibilityEnabled = running;
+        accessibilityStalled = enabled && !running;
+      });
     } catch (_) {
       mutate(() {
         accessibilityEnabled = null;

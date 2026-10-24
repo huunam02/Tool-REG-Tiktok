@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 
 import 'app_configuration.dart';
 import 'cookie_consent_accessibility.dart';
@@ -23,6 +24,7 @@ class LoginAccessibilityRunner {
     required this.profile,
     this.cancelOtpRequest,
     this.onOtpRejected,
+    this.reloadBlankPage,
     Future<void> Function(Duration)? delay,
     DateTime Function()? now,
     Random? random,
@@ -38,6 +40,9 @@ class LoginAccessibilityRunner {
   final Future<String> Function() getOtp;
   final void Function()? cancelOtpRequest;
   final void Function(String)? onOtpRejected;
+
+  /// Reloads a loaded TikTok document that never rendered any content.
+  final Future<void> Function()? reloadBlankPage;
   final Future<void> Function(Duration)? _delay;
   final void Function(String) onStatus;
   final DateTime Function() now;
@@ -424,10 +429,10 @@ class LoginAccessibilityRunner {
   Future<void> run() async {
     onStatus('Đang chờ trang đăng nhập sẵn sàng…');
     var deadline = now().add(const Duration(seconds: 180));
-    DateTime? readySince, emailStableSince;
+    DateTime? readySince, emailStableSince, blankSince, reloadedAt;
     Object? emailBounds;
     var otpFetched = false;
-    var loginTaps = 0;
+    var loginTaps = 0, blankReloads = 0;
     DateTime? loginTappedAt;
     String? otp;
     while (now().isBefore(deadline)) {
@@ -443,6 +448,30 @@ class LoginAccessibilityRunner {
           await _pause(300);
           continue;
         }
+        // A loaded document can stay blank (seen through a slow proxy): the
+        // tree holds only the WebView. Reload it, at most twice.
+        if ([
+          ...snapshot.nodes,
+          ...snapshot.hiddenNodes,
+        ].every((n) => n.label.isEmpty && !n.clickable && !n.editable)) {
+          blankSince ??= now();
+          if (reloadBlankPage != null &&
+              blankReloads < 2 &&
+              now().difference(blankSince) >= const Duration(seconds: 30)) {
+            blankReloads++;
+            onStatus('Trang TikTok trống; đang tải lại ($blankReloads/2)…');
+            await _guard();
+            reloadedAt = now();
+            await reloadBlankPage!();
+            blankSince = null;
+            readySince = null;
+            final extended = now().add(const Duration(seconds: 90));
+            if (deadline.isBefore(extended)) deadline = extended;
+          }
+          await _pause(300);
+          continue;
+        }
+        blankSince = null;
         if (_authenticated(snapshot)) {
           alreadyLoggedIn =
               !_actions.contains('submit-password') && !otpFetched;
@@ -694,6 +723,13 @@ class LoginAccessibilityRunner {
         otpFetched = false;
         otp = null;
         deadline = now().add(const Duration(seconds: 45));
+      } on PlatformException {
+        // The reloading document briefly refuses URL and tree reads.
+        if (reloadedAt == null ||
+            now().difference(reloadedAt) > const Duration(seconds: 30)) {
+          rethrow;
+        }
+        await _pause(500);
       }
     }
     throw StateError(

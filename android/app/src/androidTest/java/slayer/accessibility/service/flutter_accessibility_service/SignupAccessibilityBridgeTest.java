@@ -283,6 +283,35 @@ public class SignupAccessibilityBridgeTest {
             AccessibilityListener.currentInstance().getSoftKeyboardController().getShowMode());
     }
 
+    @Test public void revealsDisabledPostWithoutEnteringOrSubmittingText() throws Exception {
+        evaluate("document.body.innerHTML='<div style=\"position:fixed;bottom:30px;left:10px\">" +
+            "<input id=\"draft\">" +
+            "<button disabled onclick=\"window.posted=true\">Post</button></div>';true");
+        Map<String,Object> result = null;
+        long until = System.currentTimeMillis() + 5000;
+        do {
+            Thread.sleep(200);
+            AtomicReference<Map<String,Object>> value = new AtomicReference<>();
+            instrumentation().runOnMainSync(() -> {
+                List<Map<String,Object>> nodes = (List<Map<String,Object>>) SignupAccessibilityBridge.snapshot().get("nodes");
+                Map<String,Object> editor = nodes.stream().filter(n -> Boolean.TRUE.equals(n.get("editable"))).findFirst().orElse(null);
+                if (editor == null) {
+                    value.set(java.util.Collections.singletonMap("ok", false));
+                } else {
+                    value.set(SignupAccessibilityBridge.revealCommentPost((String) editor.get("id"),
+                        (List<Integer>) editor.get("bounds")));
+                }
+            });
+            result = value.get();
+        } while (!Boolean.TRUE.equals(result.get("ok")) && System.currentTimeMillis() < until);
+        AtomicReference<Map<String,Object>> state = new AtomicReference<>();
+        instrumentation().runOnMainSync(() -> state.set(SignupAccessibilityBridge.snapshot()));
+        assertEquals(result.toString() + " snapshot=" + state.get(), Boolean.TRUE, result.get("ok"));
+        assertEquals("post-visible", result.get("reason"));
+        assertEquals("\"\"", evaluate("draft.value"));
+        assertEquals("false", evaluate("window.posted===true"));
+    }
+
     @Test public void rejectsCommentInputIntoLoginEmail() throws Exception {
         instrumentation().runOnMainSync(() -> web.requestFocus());
         evaluate("email.focus();true");

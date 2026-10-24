@@ -188,6 +188,7 @@ class _Service extends SignupAccessibility {
       stall = false;
   bool confirmPost = true, suppressed = false;
   bool focusWorks = true, hiddenEditor = false;
+  bool openWorks = true, searchEditor = false;
   int missingClockAfterOpen = 0, missingClockFrames = 0, panelDelaySeconds = 0;
   int closes = 0;
 
@@ -250,6 +251,16 @@ class _Service extends SignupAccessibility {
       likes = '${int.parse(likes!) - 1}';
     }
     final nodes = data['nodes'] as List;
+    if (searchEditor) {
+      nodes.add(
+        _node(
+          'search',
+          const Rect.fromLTWH(10, 20, 30, 20),
+          hint: 'Search',
+          editor: true,
+        ),
+      );
+    }
     if (moved && playbackErrorAfterMove) {
       final media = nodes.firstWhere((n) => n['id'] == '0.2.0');
       media['text'] = 'Watch in full screen';
@@ -320,9 +331,11 @@ class _Service extends SignupAccessibility {
       return;
     }
     if (!panel) {
-      panel = true;
-      missingClockFrames = missingClockAfterOpen;
-      clock = clock.add(Duration(seconds: panelDelaySeconds));
+      if (openWorks) {
+        panel = true;
+        missingClockFrames = missingClockAfterOpen;
+        clock = clock.add(Duration(seconds: panelDelaySeconds));
+      }
     } else if (p.dy < 50) {
       panel = false;
       closes++;
@@ -368,6 +381,239 @@ class _Service extends SignupAccessibility {
   Future<void> cancelPaste() async {}
 }
 
+class _ServerErrorService extends _Service {
+  _ServerErrorService({
+    this.recoverAfter = 1,
+    this.scenario = 'error',
+    this.searchPlayer = false,
+  });
+  final int recoverAfter;
+  final String scenario;
+  final bool searchPlayer;
+  int retries = 0;
+  final retryTimes = <DateTime>[];
+
+  @override
+  Future<SignupSnapshot> snapshot() async {
+    if (retries >= recoverAfter) {
+      if (searchPlayer) {
+        return (_SearchService()
+              ..state = 'player'
+              ..clock = clock)
+            .snapshot();
+      }
+      return super.snapshot();
+    }
+    final nodes = <Map<String, dynamic>>[
+      _node('error', const Rect.fromLTWH(80, 200, 280, 160)),
+      if (scenario != 'missing-title')
+        _node(
+          'error.title',
+          const Rect.fromLTWH(120, 240, 200, 20),
+          text: 'Something went wrong',
+        ),
+      if (scenario != 'missing-details')
+        _node(
+          'error.details',
+          const Rect.fromLTWH(80, 270, 280, 20),
+          text: 'Sorry, something wrong with the server, please try again.',
+        ),
+      if (scenario != 'missing-button')
+        _node(
+          'error.retry',
+          Rect.fromLTWH(scenario == 'offscreen' ? 410 : 180, 310, 80, 20),
+          text: 'Try again',
+          clickable: true,
+          enabled: scenario != 'disabled',
+        ),
+      if (scenario == 'duplicate')
+        _node(
+          'error.retry2',
+          const Rect.fromLTWH(180, 340, 80, 20),
+          text: 'Try again',
+          clickable: true,
+        ),
+      if (scenario == 'caption')
+        ...(_frame()['nodes'] as List).cast<Map<String, dynamic>>(),
+      if (scenario == 'draft')
+        _node(
+          'hidden-draft',
+          const Rect.fromLTWH(290, 750, 70, 20),
+          editor: true,
+          hint: '',
+          length: 5,
+        ),
+      if (scenario == 'captcha')
+        _node(
+          'captcha',
+          const Rect.fromLTWH(90, 400, 200, 20),
+          text: 'Verify to continue',
+        ),
+      if (scenario == 'login')
+        _node(
+          'login',
+          const Rect.fromLTWH(90, 400, 200, 20),
+          text: 'Log in to TikTok',
+        ),
+    ];
+    return SignupSnapshot({
+      'ready': true,
+      'webBounds': [0, 0, 400, 800],
+      'nodes': nodes,
+    });
+  }
+
+  @override
+  Future<void> tap(SignupViewport viewport, Offset p) async {
+    expect(const Rect.fromLTWH(180, 310, 80, 20).contains(p), isTrue);
+    retries++;
+    retryTimes.add(clock);
+  }
+}
+
+class _UnreadableFeedService extends _Service {
+  _UnreadableFeedService(this.unreadable);
+  final Set<int> unreadable;
+  int post = 0, nextTaps = 0;
+  bool nextWorks = true;
+
+  @override
+  Future<SignupSnapshot> snapshot() async => SignupSnapshot(frame());
+
+  Map<String, dynamic> frame() {
+    final card = '0.0.$post';
+    final data = _frame(
+      card: card,
+      duration: 120,
+      position: clock.difference(DateTime(2026)).inSeconds % 120,
+    );
+    final nodes = data['nodes'] as List;
+    final media = nodes.firstWhere((n) => n['id'] == '$card.0');
+    media['text'] = 'Watch in full screen';
+    media['clickable'] = true;
+    if (unreadable.contains(post)) {
+      nodes.firstWhere((n) => n['id'] == '$card.0.2.0')['text'] =
+          '00:00 / 00:00';
+    }
+    nodes.addAll(<Map<String, dynamic>>[
+      {
+        ..._node(
+          '0.1.0.0.0',
+          const Rect.fromLTWH(380, 400, 16, 16),
+          clickable: true,
+        ),
+        'className': 'android.widget.Button',
+      },
+      {
+        ..._node(
+          '0.1.0.1.0',
+          const Rect.fromLTWH(380, 425, 16, 16),
+          clickable: true,
+        ),
+        'className': 'android.widget.Button',
+      },
+    ]);
+    return data;
+  }
+
+  @override
+  Future<void> tap(SignupViewport viewport, Offset p) async {
+    expect(const Rect.fromLTWH(380, 425, 16, 16).contains(p), isTrue);
+    taps++;
+    nextTaps++;
+    if (nextWorks) post++;
+  }
+}
+
+/// Gecko keeps the playing card's pre-scroll geometry: the card is flagged
+/// visible but it and its action column are reported 600 px lower, so the
+/// column and clock fall outside the viewport (hidden).
+class _StaleFeedService extends _UnreadableFeedService {
+  _StaleFeedService({this.mediaShown = true}) : super({}) {
+    post = 1;
+  }
+
+  /// False: Gecko hides the playing card's media too.
+  final bool mediaShown;
+
+  @override
+  Map<String, dynamic> frame() {
+    final data = super.frame();
+    final card = '0.0.$post';
+    const vp = Rect.fromLTWH(0, 0, 400, 800);
+    final nodes = <Map<String, dynamic>>[];
+    final hidden = <Map<String, dynamic>>[];
+    for (final n in (data['nodes'] as List).cast<Map<String, dynamic>>()) {
+      final id = n['id'] as String;
+      if (id != card && !id.startsWith('$card.')) {
+        nodes.add(n);
+        continue;
+      }
+      final b = n['bounds'] as List;
+      final moved = {
+        ...n,
+        'bounds': [b[0], b[1] + 600, b[2], b[3] + 600],
+      };
+      final r = SignupNode.rectFrom(moved['bounds']);
+      final shown = id == '$card.0' ? mediaShown : vp.overlaps(r) && id == card;
+      (shown ? nodes : hidden).add(moved);
+    }
+    return {...data, 'nodes': nodes, 'hidden': hidden};
+  }
+}
+
+/// The playing post shows TikTok's playback error until Next is tapped.
+class _PlaybackErrorFeedService extends _UnreadableFeedService {
+  _PlaybackErrorFeedService(this.failing) : super({});
+  final Set<int> failing;
+
+  @override
+  Map<String, dynamic> frame() {
+    final data = super.frame();
+    if (!failing.contains(post)) return data;
+    final card = '0.0.$post';
+    final nodes = data['nodes'] as List;
+    nodes.removeWhere((n) => n['id'] == '$card.0.2.0');
+    nodes.add(
+      _node(
+        '$card.0.error',
+        const Rect.fromLTWH(100, 280, 200, 20),
+        text:
+            "We're having trouble playing this video. Please refresh and try again.",
+      ),
+    );
+    return data;
+  }
+}
+
+/// A draft appears without its hint while the opening attempt is waiting.
+class _UnrecognizedDraftService extends _Service {
+  _UnrecognizedDraftService({required this.hidden, required this.enabled}) {
+    openWorks = false;
+    searchEditor = true;
+  }
+  final bool hidden, enabled;
+
+  @override
+  Future<SignupSnapshot> snapshot() async {
+    final snapshot = await super.snapshot();
+    if (taps > 0) {
+      (hidden ? snapshot.hiddenNodes : snapshot.nodes).add(
+        SignupNode(
+          _node(
+            'unknown.editor',
+            const Rect.fromLTWH(290, 750, 80, 30),
+            editor: true,
+            length: 5,
+            enabled: enabled,
+          ),
+        ),
+      );
+    }
+    return snapshot;
+  }
+}
+
 /// TikTok's sidebar search → suggestions → Videos tab → result player.
 class _RoomService extends _Service {
   _RoomService(this.roomFrame);
@@ -398,6 +644,37 @@ class _RoomService extends _Service {
   }
 }
 
+/// Gecko can temporarily omit the editor after paste/submit and show it later.
+class _MissingDraftService extends _Service {
+  @override
+  Future<SignupSnapshot> snapshot() async {
+    final s = await super.snapshot();
+    if (pastes == 0) return s;
+    s.nodes.removeWhere((n) => n.editable);
+    s.hiddenNodes.removeWhere((n) => n.editable);
+    return s;
+  }
+}
+
+class _PrefetchedNextService extends _Service {
+  int samplesAfterMove = 0;
+
+  @override
+  Future<SignupSnapshot> snapshot() async {
+    if (!moved) return super.snapshot();
+    samplesAfterMove++;
+    if (samplesAfterMove <= 2) {
+      return SignupSnapshot(
+        _frame(
+          card: samplesAfterMove == 1 ? '0.prefetched' : '0.1',
+          position: clock.difference(DateTime(2026)).inSeconds % duration,
+        ),
+      );
+    }
+    return super.snapshot();
+  }
+}
+
 class _SearchService extends SignupAccessibility {
   _SearchService({
     this.hiddenClock = false,
@@ -418,6 +695,16 @@ class _SearchService extends SignupAccessibility {
   DateTime clock = DateTime(2026);
   String state = 'feed';
   int video = 1;
+  bool postVisible = false, revealWorks = true, revealMovesPost = true;
+
+  /// Accessibility ACTION_CLICK on the clipped Post; refused when false.
+  bool submitAccepted = true;
+  int submits = 0;
+
+  /// Player posts that are photo slideshows: a /photo/ URL and no clock.
+  final photos = <int>{};
+  bool commentFocused = false;
+  String commentText = '', publishedComment = '';
   final pasted = <String>[];
   final tapped = <String>[];
 
@@ -537,11 +824,12 @@ class _SearchService extends SignupAccessibility {
       nodes.addAll([
         {..._node('9', vp), 'className': 'android.app.AlertDialog'},
         _node('9.0', const Rect.fromLTWH(0, 0, 260, 800)),
-        _node(
-          '9.0.1',
-          const Rect.fromLTWH(140, 780, 40, 12),
-          text: '00:${position.toString().padLeft(2, '0')}/00:30',
-        ),
+        if (!photos.contains(video))
+          _node(
+            '9.0.1',
+            const Rect.fromLTWH(140, 780, 40, 12),
+            text: '00:${position.toString().padLeft(2, '0')}/00:30',
+          ),
         _button(
           '9.0.5',
           const Rect.fromLTWH(230, 500, 20, 20),
@@ -551,16 +839,33 @@ class _SearchService extends SignupAccessibility {
         _node(
           '9.1.0',
           const Rect.fromLTWH(265, 200, 130, 15),
-          text: 'https:[email]/video/90000$video?is_from_webapp=1',
+          text:
+              'https:[email]/${photos.contains(video) ? 'photo' : 'video'}'
+              '/90000$video?is_from_webapp=1',
         ),
         _node('9.3', const Rect.fromLTWH(260, 770, 140, 20)),
         _node(
           '9.3.0.1',
-          const Rect.fromLTWH(265, 772, 130, 15),
+          const Rect.fromLTWH(265, 772, 100, 15),
           editor: true,
           clickable: true,
-          hint: 'Add comment...',
+          focused: commentFocused,
+          length: commentText.length,
+          hint: commentText.isEmpty ? 'Add comment...' : '',
         ),
+        if (postVisible)
+          _button('9.3.1', const Rect.fromLTWH(375, 772, 20, 15), text: 'Post'),
+        _node(
+          '9.2',
+          const Rect.fromLTWH(265, 740, 100, 20),
+          text: 'Comments (10)',
+        ),
+        if (publishedComment.isNotEmpty)
+          _node(
+            '9.1.2',
+            const Rect.fromLTWH(265, 300, 100, 20),
+            text: publishedComment,
+          ),
       ]);
     }
     final hidden = nodes
@@ -611,6 +916,14 @@ class _SearchService extends SignupAccessibility {
     } else if (state == 'player' && hit(230, 500, 20, 20)) {
       tapped.add('next');
       video++;
+    } else if (state == 'player' && postVisible && hit(375, 772, 20, 15)) {
+      tapped.add('post');
+      publishedComment = commentText;
+      commentText = '';
+    } else if (state == 'player' && hit(265, 772, 100, 15)) {
+      commentFocused = true;
+    } else if (state == 'player' && hit(265, 740, 100, 20)) {
+      commentFocused = false;
     } else {
       tapped.add('stray $p');
     }
@@ -620,7 +933,27 @@ class _SearchService extends SignupAccessibility {
   Future<Map<String, dynamic>> paste(String text, String field) async {
     pasted.add('$field:$text');
     if (state == 'drawer') state = 'typed';
+    if (field == 'comment') commentText = text;
     return {'ok': true};
+  }
+
+  @override
+  Future<bool> submitComment() async {
+    submits++;
+    if (!submitAccepted || commentText.isEmpty) return false;
+    tapped.add('a11y-post');
+    publishedComment = commentText;
+    commentText = '';
+    return true;
+  }
+
+  @override
+  Future<Map<String, dynamic>> revealCommentPost(SignupNode editor) async {
+    postVisible = revealWorks && revealMovesPost;
+    return {
+      'ok': revealWorks,
+      'reason': revealWorks ? 'post-reveal-requested' : 'post-offscreen',
+    };
   }
 
   @override
@@ -634,9 +967,525 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  for (final search in [false, true]) {
+    test(
+      'Try again recovers ${search ? 'Search' : 'Feed'} on the current page',
+      () async {
+        final service = _ServerErrorService(searchPlayer: search);
+        final deadline = service.clock.add(const Duration(seconds: 8));
+        final runner = NurtureAccessibilityRunner(
+          accessibility: service,
+          profile: NurtureCoordinateProfile({}),
+          comments: [],
+          searchKeyword: search ? 'Cats' : null,
+          likeRate: 0,
+          commentRate: 0,
+          longWatchRate: 1,
+          isActive: () => service.clock.isBefore(deadline),
+          isTikTok: () async => true,
+          onProgress: (_, _) async {},
+          now: () => service.clock,
+          delay: service.delay,
+        );
+        await runner.start();
+        expect(service.retries, 1);
+        expect(runner.totals.watchMilliseconds, greaterThan(0));
+        expect(runner.totals.watchMilliseconds, lessThanOrEqualTo(6000));
+        expect(
+          service.clock.difference(deadline).inMilliseconds,
+          inInclusiveRange(0, 199),
+        );
+        expect([service.posts, service.pastes, service.swipes], [0, 0, 0]);
+      },
+    );
+  }
+
+  test(
+    'persistent server error retries at most three times, ten seconds apart across resume',
+    () async {
+      final service = _ServerErrorService(recoverAfter: 100);
+      var deadline = service.clock.add(const Duration(seconds: 15));
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: [],
+        isActive: () => service.clock.isBefore(deadline),
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await runner.start();
+      expect(service.retries, 2);
+      deadline = service.clock.add(const Duration(seconds: 30));
+      await runner.start();
+      expect(service.retries, 3);
+      expect(runner.totals.watchMilliseconds, 0);
+      expect(runner.totals.videos, 0);
+      for (var i = 1; i < service.retryTimes.length; i++) {
+        expect(
+          service.retryTimes[i].difference(service.retryTimes[i - 1]),
+          greaterThanOrEqualTo(const Duration(seconds: 10)),
+        );
+      }
+    },
+  );
+
+  for (final scenario in [
+    'missing-title',
+    'missing-details',
+    'missing-button',
+    'disabled',
+    'offscreen',
+    'duplicate',
+    'caption',
+    'draft',
+    'captcha',
+    'login',
+  ]) {
+    test('does not press Try again for $scenario', () async {
+      final service = _ServerErrorService(scenario: scenario);
+      final deadline = service.clock.add(const Duration(seconds: 5));
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: [],
+        likeRate: 0,
+        commentRate: 0,
+        longWatchRate: 1,
+        continueOnCommentError: true,
+        isActive: () => service.clock.isBefore(deadline),
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      if (scenario == 'login') {
+        await expectLater(runner.start(), throwsStateError);
+      } else {
+        await runner.start();
+      }
+      expect(service.retries, 0);
+    });
+  }
+
+  test(
+    'Try again rechecks the error screen after saving coordinates',
+    () async {
+      final service = _ServerErrorService();
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile(
+          {},
+          save: (_) async {
+            // The error clears while profile storage is pending.
+            service.retries = 1;
+          },
+        ),
+        comments: [],
+        isActive: () => true,
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await expectLater(runner.start(), throwsStateError);
+      expect(service.retryTimes, isEmpty);
+    },
+  );
+
   Map<String, dynamic> liveRoom() => Map<String, dynamic>.from(
     jsonDecode(File('test/fixtures/nurture_live_room.json').readAsStringSync())
         as Map,
+  );
+
+  test('recorded feed with zero duration still exposes verified next', () {
+    final data =
+        jsonDecode(
+              File(
+                'test/fixtures/nurture_feed_no_duration.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    final snapshot = SignupSnapshot(data);
+    expect(NurtureVideo.read(snapshot), isNull);
+    final navigation = NurtureVideo.feedNavigation(snapshot)!;
+    expect(navigation.key, '0.0.1.2.0.0|fixture-creator');
+    expect(navigation.next.bounds, const Rect.fromLTRB(1286, 1546, 1328, 1587));
+    for (final hidden in [false, true]) {
+      final draft = SignupNode(
+        _node(
+          'unknown.editor',
+          const Rect.fromLTWH(290, 750, 80, 30),
+          editor: true,
+          length: 5,
+        ),
+      );
+      final withDraft = SignupSnapshot(data);
+      (hidden ? withDraft.hiddenNodes : withDraft.nodes).add(draft);
+      expect(NurtureVideo.feedNavigation(withDraft), isNull);
+    }
+    final ambiguous = SignupSnapshot(data);
+    ambiguous.nodes.add(
+      SignupNode({
+        ...data['nodes'].firstWhere((n) => n['id'] == '0.0.1.2.0.0.1.2') as Map,
+        'id': '0.0.1.2.0.0.1.3',
+      }),
+    );
+    expect(NurtureVideo.feedNavigation(ambiguous), isNull);
+  });
+
+  for (final unreadable in [
+    <int>{0},
+    <int>{1},
+  ]) {
+    test('continues past a zero-duration feed post at $unreadable', () async {
+      final service = _UnreadableFeedService(unreadable);
+      var active = true;
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: [],
+        likeRate: 0,
+        commentRate: 0,
+        longWatchRate: 0,
+        isActive: () => active,
+        isTikTok: () async => true,
+        onProgress: (totals, _) async {
+          if (service.post >= 2 && totals.videos >= 1) active = false;
+        },
+        random: _Random(false),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await runner.start();
+      expect(service.nextTaps, 2);
+      expect(runner.totals.skippedVideos, 1);
+      expect(runner.totals.comments, 0);
+      expect(service.pastes, 0);
+      expect(service.posts, 0);
+    });
+  }
+
+  for (final nextWorks in [false, true]) {
+    test(
+      'unreadable feed recovery is bounded (nextWorks=$nextWorks)',
+      () async {
+        final service = _UnreadableFeedService({0, 1, 2, 3, 4})
+          ..nextWorks = nextWorks;
+        final runner = NurtureAccessibilityRunner(
+          accessibility: service,
+          profile: NurtureCoordinateProfile({}),
+          comments: [],
+          likeRate: 0,
+          isActive: () => true,
+          isTikTok: () async => true,
+          onProgress: (_, _) async {},
+          now: () => service.clock,
+          delay: service.delay,
+        );
+        await expectLater(
+          runner.start(),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains(
+                nextWorks
+                    ? 'Nhiều bài liên tiếp'
+                    : 'Chưa xác nhận được bài mới',
+              ),
+            ),
+          ),
+        );
+        expect(service.nextTaps, nextWorks ? 3 : 1);
+        expect(runner.totals.videos, 0);
+        expect(runner.totals.watchMilliseconds, 0);
+      },
+    );
+  }
+
+  Map<String, dynamic> staleLiveAd() => Map<String, dynamic>.from(
+    jsonDecode(
+          File(
+            'test/fixtures/nurture_feed_stale_live_ad.json',
+          ).readAsStringSync(),
+        )
+        as Map,
+  );
+
+  test('recorded stale feed geometry exposes only the page Next', () {
+    // Next landed on a promoted LIVE; Gecko flags it visible but still
+    // reports it ~1700px lower, with its action column hidden.
+    final snapshot = SignupSnapshot(staleLiveAd());
+    expect(NurtureVideo.read(snapshot), isNull);
+    final navigation = NurtureVideo.feedNavigation(snapshot)!;
+    expect(navigation.key, '0.0.1.2.0.3|fixture-live LIVE');
+    expect(navigation.next.bounds, const Rect.fromLTRB(1286, 1546, 1328, 1587));
+
+    final data = staleLiveAd();
+    (data['hidden'] as List).add(
+      _node(
+        '0.0.1.2.0.3.0.4.0.0',
+        const Rect.fromLTRB(566, 4014, 822, 4060),
+        text: '00:04 / 00:18',
+      ),
+    );
+    final video = NurtureVideo.read(SignupSnapshot(data))!;
+    expect(video.key, '0.0.1.2.0.3|fixture-live LIVE|18');
+    expect(video.position, 4);
+    expect(video.targetsVerified, isFalse);
+    expect([video.comments, video.like], [null, null]);
+    expect(video.next!.bounds, const Rect.fromLTRB(1286, 1546, 1328, 1587));
+
+    final ambiguous = SignupSnapshot(data);
+    ambiguous.nodes.add(
+      SignupNode({
+        ...(data['hidden'] as List).firstWhere(
+              (n) => n['id'] == '0.0.1.2.0.2.0',
+            )
+            as Map,
+        'clickable': true,
+        'enabled': true,
+      }),
+    );
+    expect(NurtureVideo.read(ambiguous), isNull);
+    expect(NurtureVideo.feedNavigation(ambiguous), isNull);
+  });
+
+  test('a card reported partly outside the viewport exposes no targets', () {
+    final data = _frame(likes: '5');
+    for (final n in (data['nodes'] as List).cast<Map<String, dynamic>>()) {
+      if (n['id'] == '0.1') continue;
+      final b = n['bounds'] as List;
+      n['bounds'] = [b[0], b[1] + 280, b[2], b[3] + 280];
+    }
+    final video = NurtureVideo.read(SignupSnapshot(data))!;
+    expect(video.key, '0.1|creator|30');
+    expect(video.targetsVerified, isFalse);
+    expect([video.comments, video.like], [null, null]);
+    final settled = NurtureVideo.read(SignupSnapshot(_frame(likes: '5')))!;
+    expect(settled.targetsVerified, isTrue);
+    expect(settled.like, isNotNull);
+    // Recorded: the whole feed reported 581px low while a short landscape
+    // post and its buttons still fit inside the viewport.
+    final shifted = _frame(landscape: true, likes: '5');
+    for (final n in (shifted['nodes'] as List).cast<Map<String, dynamic>>()) {
+      final b = n['bounds'] as List;
+      n['bounds'] = [b[0], b[1] + 60, b[2], b[3] + 60];
+    }
+    final low = NurtureVideo.read(SignupSnapshot(shifted))!;
+    expect(low.targetsVerified, isFalse);
+    expect([low.comments, low.like], [null, null]);
+  });
+
+  test('a playing post reported 581px low exposes targets moved back', () {
+    // Recorded on Gecko after Next: the screenshot drew the like button at
+    // y≈1387 and comments at y≈1487, the tree reported both 581px lower.
+    Map<String, dynamic> recorded(String clock) {
+      final data = Map<String, dynamic>.from(
+        jsonDecode(
+              File(
+                'test/fixtures/nurture_feed_offset_581.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+      );
+      for (final n in (data['hidden'] as List).cast<Map>()) {
+        if (n['id'] == '0.0.1.2.0.1.0.4.0.0') n['text'] = clock;
+      }
+      return data;
+    }
+
+    final video = NurtureVideo.read(SignupSnapshot(recorded('00:05 / 00:16')))!;
+    expect(video.key, startsWith('0.0.1.2.0.1|'));
+    expect(video.targetsVerified, isTrue);
+    expect(video.like!.bounds, const Rect.fromLTRB(1204, 1346, 1266, 1446));
+    expect(video.comments!.bounds, const Rect.fromLTRB(1204, 1446, 1266, 1546));
+    expect(video.bounds.top, 1842 - 581);
+    // Not yet playing: the drawn post is unproven, so nothing is tapped.
+    final waiting = NurtureVideo.read(
+      SignupSnapshot(recorded('00:00 / 00:16')),
+    )!;
+    expect(waiting.targetsVerified, isFalse);
+    expect([waiting.comments, waiting.like], [null, null]);
+  });
+
+  for (final mediaShown in [true, false]) {
+    test('stale feed geometry is watched without any card-relative tap '
+        '(media shown: $mediaShown)', () async {
+      final service = _StaleFeedService(mediaShown: mediaShown);
+      final deadline = service.clock.add(const Duration(seconds: 75));
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: ['Configured comment'],
+        likeRate: 1,
+        commentRate: 1,
+        longWatchRate: 1,
+        isActive: () => service.clock.isBefore(deadline),
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        random: _Random(true),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await runner.start();
+      // The 120s post is watched for its one-minute cap, then the page Next.
+      expect(service.nextTaps, 1);
+      expect(runner.totals.watchMilliseconds, greaterThanOrEqualTo(55000));
+      expect(runner.totals.fullVideos, 1);
+      expect([runner.totals.likes, runner.totals.comments], [0, 0]);
+      expect([service.pastes, service.posts], [0, 0]);
+    });
+  }
+
+  test('a hidden stale card is read only when its clock alone started', () {
+    Map<String, dynamic> frame(List<String> clocks) {
+      final hidden = <Map<String, dynamic>>[];
+      for (var i = 0; i < clocks.length; i++) {
+        final top = 900.0 + i * 800;
+        hidden.addAll([
+          _node('0.0.$i', Rect.fromLTWH(10, top, 300, 500)),
+          _node(
+            '0.0.$i.0',
+            Rect.fromLTWH(10, top, 300, 500),
+            text: 'Watch in full screen',
+            clickable: true,
+          ),
+          _node(
+            '0.0.$i.0.2',
+            Rect.fromLTWH(20, top + 450, 100, 20),
+            text: clocks[i],
+          ),
+          _node('0.0.$i.1.0.0', Rect.fromLTWH(350, top, 30, 30), text: 'c$i'),
+        ]);
+      }
+      Map<String, dynamic> button(String id, double top) => {
+        ..._node(id, Rect.fromLTWH(380, top, 16, 16), clickable: true),
+        'className': 'android.widget.Button',
+      };
+      return {
+        'ready': true,
+        'webBounds': [0, 0, 400, 800],
+        'nodes': [button('0.1.0.0.0', 400), button('0.1.0.1.0', 425)],
+        'hidden': hidden,
+      };
+    }
+
+    SignupSnapshot snapshot(List<String> clocks) =>
+        SignupSnapshot(frame(clocks));
+    final video = NurtureVideo.read(
+      snapshot(['00:00 / 00:00', '00:07 / 00:23', '00:00 / 00:00']),
+    )!;
+    expect(video.key, '0.0.1|c1|23');
+    expect(video.targetsVerified, isFalse);
+    // A post left behind keeps its duration at 00:00; it has not started.
+    expect(
+      NurtureVideo.read(snapshot(['00:00 / 01:03', '00:07 / 00:23']))?.key,
+      '0.0.1|c1|23',
+    );
+    for (final ambiguous in [
+      ['00:03 / 01:03', '00:07 / 00:23'],
+      ['00:00 / 01:03', '00:00 / 00:23'],
+    ]) {
+      expect(NurtureVideo.read(snapshot(ambiguous)), isNull);
+    }
+  });
+
+  test(
+    'a post that autoplays onward before Next is counted, not tapped',
+    () async {
+      final service = _UnreadableFeedService({});
+      var autoplayed = false, active = true;
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile(
+          {},
+          save: (_) async {
+            // TikTok moves on by itself while Next is being prepared.
+            if (!autoplayed) {
+              autoplayed = true;
+              service.post++;
+            }
+          },
+        ),
+        comments: [],
+        likeRate: 0,
+        commentRate: 0,
+        longWatchRate: 0,
+        isActive: () => active,
+        isTikTok: () async => true,
+        onProgress: (totals, _) async {
+          if (totals.videos >= 2) active = false;
+        },
+        random: _Random(false),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await runner.start();
+      expect(autoplayed, isTrue);
+      expect(runner.totals.skippedVideos, 2);
+      // Only the second post needed a tap; post 1 was never skipped unwatched.
+      expect(service.nextTaps, 1);
+      expect(service.post, 2);
+    },
+  );
+
+  test('a post TikTok cannot play is skipped through the page Next', () async {
+    final service = _PlaybackErrorFeedService({0});
+    var active = true;
+    final runner = NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: [],
+      likeRate: 0,
+      commentRate: 0,
+      longWatchRate: 0,
+      isActive: () => active,
+      isTikTok: () async => true,
+      onProgress: (totals, _) async {
+        if (totals.videos >= 1) active = false;
+      },
+      random: _Random(false),
+      now: () => service.clock,
+      delay: service.delay,
+    );
+    await runner.start();
+    expect(service.nextTaps, 2);
+    expect(runner.totals.skippedVideos, 1);
+    expect(runner.totals.watchMilliseconds, greaterThan(0));
+  });
+
+  test(
+    'persistent playback errors stop after three skips across resume',
+    () async {
+      final service = _PlaybackErrorFeedService({0, 1, 2, 3, 4, 5});
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: [],
+        isActive: () => true,
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await expectLater(
+        runner.start(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('không phát được video'),
+          ),
+        ),
+      );
+      expect(service.nextTaps, 3);
+      await expectLater(runner.start(), throwsStateError);
+      expect(service.nextTaps, 3);
+      expect(runner.totals.videos, 0);
+    },
   );
 
   test('recorded LIVE room exits via For You rather than sidebar Back', () {
@@ -1272,7 +2121,7 @@ void main() {
         delay: service.delay,
       ).start(),
       throwsA(
-        isA<StateError>().having(
+        isA<NurtureDialogOpen>().having(
           (e) => e.message,
           'message',
           contains('hộp thoại (Popup)'),
@@ -1324,7 +2173,33 @@ void main() {
     expect(service.swipes, 0);
   });
 
-  for (final seconds in [12, 25]) {
+  test('a clock frozen for 15s skips the post once as unwatched', () async {
+    final service = _Service()..stall = true;
+    NurtureTotals? totals;
+    final until = service.clock.add(const Duration(seconds: 40));
+    await NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: [],
+      isActive: () {
+        // The next post plays normally.
+        if (service.swipes > 0) service.stall = false;
+        return service.clock.isBefore(until);
+      },
+      isTikTok: () async => true,
+      onProgress: (t, _) async => totals = t,
+      longWatchRate: 1,
+      commentRate: 0,
+      random: _Random(false),
+      now: () => service.clock,
+      delay: service.delay,
+    ).start();
+    expect(service.swipes, 1);
+    expect(totals!.skippedVideos, 1);
+    expect(totals!.fullVideos, 0);
+  });
+
+  for (final seconds in [12, 25, 40]) {
     test('next post loading for ${seconds}s after one swipe', () async {
       final service = _Service()..loadSecondsAfterMove = seconds;
       var active = true;
@@ -1343,7 +2218,7 @@ void main() {
         now: () => service.clock,
         delay: service.delay,
       );
-      if (seconds < 20) {
+      if (seconds < 30) {
         await runner.start();
         expect(runner.totals.videos, 1);
       } else {
@@ -1353,7 +2228,7 @@ void main() {
             isA<StateError>().having(
               (e) => e.message,
               'message',
-              contains('Chưa đọc được tiến độ video sau thao tác chuyển'),
+              contains('Chưa đọc được tiến độ video sau Next'),
             ),
           ),
         );
@@ -1362,6 +2237,31 @@ void main() {
       expect(service.swipes, 1);
     });
   }
+
+  test(
+    'a prefetched next frame cannot confirm a transition by itself',
+    () async {
+      final service = _PrefetchedNextService();
+      var active = true;
+      await NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: [],
+        isActive: () => active,
+        isTikTok: () async => true,
+        onProgress: (totals, _) async {
+          if (totals.videos > 0) active = false;
+        },
+        longWatchRate: 0,
+        commentRate: 0,
+        random: _Random(false),
+        now: () => service.clock,
+        delay: service.delay,
+      ).start();
+      expect(service.samplesAfterMove, greaterThanOrEqualTo(4));
+      expect(service.swipes, 1);
+    },
+  );
 
   test('a failed swipe is never dispatched again', () async {
     final service = _Service()..allowMove = false;
@@ -1384,9 +2284,16 @@ void main() {
         isA<StateError>().having(
           (e) => e.message,
           'message',
-          contains('Chưa xác nhận được video mới sau thao tác chuyển'),
+          contains('Chưa xác nhận được video mới sau Next'),
         ),
       ),
+    );
+    expect(service.swipes, 1);
+    expect(runner.totals.videos, 0);
+    // Recovery on the same document must not dispatch an uncertain Next twice.
+    await expectLater(
+      runner.start(),
+      throwsA(isA<NurturePlaybackUnavailable>()),
     );
     expect(service.swipes, 1);
     expect(runner.totals.videos, 0);
@@ -1511,6 +2418,60 @@ void main() {
     expect(runner.totals.watchMilliseconds, lessThanOrEqualTo(70000));
   });
 
+  for (final duration in [16, 30, 60]) {
+    test('latest comment on a ${duration}s video sends before 50%', () async {
+      final service = _Service()..duration = duration;
+      var active = true;
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: ['Configured comment'],
+        isActive: () => active,
+        isTikTok: () async => true,
+        onProgress: (t, _) async {
+          if (t.fullVideos > 0) active = false;
+        },
+        commentRate: 1,
+        random: _LatestRandom(),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      final start = service.clock;
+      await runner.start();
+      expect(service.posts, 1);
+      expect(runner.totals.comments, 1);
+      expect(
+        service.postedAt!.difference(start).inMilliseconds,
+        lessThan(duration * 500),
+      );
+    });
+  }
+
+  test('a delayed panel before 70% but past 50% never receives text', () async {
+    final service = _Service()..panelDelaySeconds = 12;
+    var active = true;
+    final skipped = <String>[];
+    final runner = NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: ['Configured comment'],
+      isActive: () => active,
+      isTikTok: () async => true,
+      onProgress: (t, _) async {
+        if (t.fullVideos > 0) active = false;
+      },
+      onCommentSkipped: skipped.add,
+      random: _Random(true),
+      now: () => service.clock,
+      delay: service.delay,
+    );
+    await runner.start();
+    expect(service.pastes, 0);
+    expect(service.posts, 0);
+    expect(skipped, hasLength(1));
+    expect(runner.totals.fullVideos, 1);
+  });
+
   test('preexisting draft is preserved without input or submission', () async {
     final service = _Service()..length = 5;
     final runner = NurtureAccessibilityRunner(
@@ -1529,6 +2490,62 @@ void main() {
     expect(service.posts, 0);
     expect(service.length, 5);
   });
+
+  test(
+    'queued nurture keeps watching a draft until the session deadline',
+    () async {
+      final service = _Service()
+        ..panel = true
+        ..length = 5;
+      final deadline = service.clock.add(const Duration(seconds: 30));
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: ['Configured comment'],
+        continueOnCommentError: true,
+        isActive: () => service.clock.isBefore(deadline),
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        random: _Random(true),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await runner.start();
+      expect(service.clock, deadline);
+      expect(service.length, 5);
+      expect(
+        [service.taps, service.pastes, service.posts, service.swipes],
+        [0, 0, 0, 0],
+      );
+      expect(runner.totals.watchMilliseconds, greaterThan(20000));
+    },
+  );
+
+  test(
+    'queued nurture continues after an unconfirmed comment without reposting',
+    () async {
+      final service = _Service()..confirmPost = false;
+      final deadline = service.clock.add(const Duration(minutes: 1));
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: ['Configured comment'],
+        continueOnCommentError: true,
+        isActive: () => service.clock.isBefore(deadline),
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        random: _Random(true),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await runner.start();
+      expect(service.clock, deadline);
+      expect(service.posts, 1);
+      expect(service.pastes, 1);
+      expect(runner.totals.comments, 0);
+      expect(runner.totals.watchMilliseconds, greaterThan(30000));
+    },
+  );
 
   test('an unconfirmed comment is dispatched once and never counted', () async {
     final service = _Service()..confirmPost = false;
@@ -1551,6 +2568,33 @@ void main() {
     await runner.start();
     expect(service.posts, 1);
   });
+
+  test(
+    'an uncertain draft blocks Next even while the editor is missing',
+    () async {
+      final service = _MissingDraftService()..confirmPost = false;
+      final deadline = service.clock.add(const Duration(minutes: 1));
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: ['Configured comment'],
+        continueOnCommentError: true,
+        isActive: () => service.clock.isBefore(deadline),
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        random: _Random(true),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await runner.start();
+      expect(runner.hasPendingCommentDraft, isTrue);
+      expect(service.pastes, 1);
+      expect(service.posts, 1);
+      expect(service.swipes, 0);
+      expect(runner.totals.comments, 0);
+      expect(runner.totals.watchMilliseconds, greaterThan(30000));
+    },
+  );
 
   test('a hidden feed comment draft is preserved before any gesture', () async {
     final service = _Service()
@@ -1577,6 +2621,7 @@ void main() {
   });
 
   for (final scenario in [
+    'panel-did-not-open',
     'hidden-empty-editor',
     'clock-reflow',
     'focus-not-ready',
@@ -1589,6 +2634,9 @@ void main() {
     test('nurture continues through $scenario without switching off', () async {
       final service = _Service();
       switch (scenario) {
+        case 'panel-did-not-open':
+          service.openWorks = false;
+          service.searchEditor = true;
         case 'hidden-empty-editor':
           service.hiddenEditor = true;
         case 'clock-reflow':
@@ -1625,12 +2673,18 @@ void main() {
       await runner.start();
       expect(runner.totals.fullVideos, 1);
       expect(service.panel, isFalse);
-      if (scenario == 'focus-not-ready' ||
+      if (scenario == 'panel-did-not-open' ||
+          scenario == 'focus-not-ready' ||
           scenario == 'late-panel' ||
           scenario == 'hidden-empty-editor') {
         expect(service.pastes, 0);
         expect(service.posts, 0);
         expect(skipped, hasLength(1));
+        if (scenario == 'panel-did-not-open') {
+          expect(service.taps, 1);
+          expect(service.closes, 0);
+          expect(skipped.single, contains('mở khung bình luận'));
+        }
       } else if (scenario == 'editor-unavailable' ||
           scenario == 'paste-not-inserted') {
         expect(service.pastes, 1);
@@ -1641,6 +2695,54 @@ void main() {
         expect(runner.totals.comments, 1);
       }
     });
+  }
+
+  for (final (hidden, enabled) in [
+    (false, true),
+    (false, false),
+    (true, false),
+  ]) {
+    test(
+      'opening timeout preserves an unrecognized draft (hidden=$hidden, enabled=$enabled)',
+      () async {
+        final service = _UnrecognizedDraftService(
+          hidden: hidden,
+          enabled: enabled,
+        );
+        final skipped = <String>[];
+        final deadline = service.clock.add(const Duration(minutes: 1));
+        final runner = NurtureAccessibilityRunner(
+          accessibility: service,
+          profile: NurtureCoordinateProfile({}),
+          comments: ['Configured comment'],
+          isActive: () => service.clock.isBefore(deadline),
+          isTikTok: () async => true,
+          onProgress: (_, _) async {},
+          onCommentSkipped: skipped.add,
+          likeRate: 0,
+          commentRate: 1,
+          random: _Random(true),
+          now: () => service.clock,
+          delay: service.delay,
+        );
+        await expectLater(
+          runner.start(),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              contains('giữ bản nháp'),
+            ),
+          ),
+        );
+        expect(skipped, isEmpty);
+        expect(service.taps, 1);
+        expect(service.closes, 0);
+        expect(service.pastes, 0);
+        expect(service.posts, 0);
+        expect(service.swipes, 0);
+      },
+    );
   }
 
   test('music label reflow does not change the post identity', () {
@@ -1665,7 +2767,8 @@ void main() {
       {},
       save: (points) async {
         if (points.keys.any((key) => key.contains('/post-comment/'))) {
-          service.clock = service.clock.add(const Duration(seconds: 25));
+          // Pass 50% of a 30s video while remaining before the old 70% limit.
+          service.clock = service.clock.add(const Duration(seconds: 12));
         }
       },
     );
@@ -1749,6 +2852,94 @@ void main() {
     expect(video.comments, isNull);
     expect(video.next, isNotNull);
     expect(video.orientation, NurtureVideoOrientation.detail);
+  });
+
+  for (final (reveals, moves) in [
+    (true, true),
+    (false, false),
+    (true, false),
+  ]) {
+    test(
+      'Search checks a visible Post before paste (reveal=$reveals, moves=$moves)',
+      () async {
+        final service = _SearchService()
+          ..state = 'player'
+          ..revealWorks = reveals
+          ..revealMovesPost = moves;
+        final deadline = service.clock.add(const Duration(seconds: 28));
+        final skipped = <String>[];
+        final runner = NurtureAccessibilityRunner(
+          accessibility: service,
+          profile: NurtureCoordinateProfile({}),
+          comments: ['Configured comment'],
+          isActive: () => service.clock.isBefore(deadline),
+          isTikTok: () async => true,
+          onProgress: (_, _) async {},
+          onCommentSkipped: skipped.add,
+          likeRate: 0,
+          commentRate: 1,
+          longWatchRate: 1,
+          random: _Random(true),
+          now: () => service.clock,
+          delay: service.delay,
+        );
+        await runner.start();
+        if (reveals && moves) {
+          expect(service.pasted, ['comment:Configured comment']);
+          expect(service.tapped.where((a) => a == 'post'), hasLength(1));
+          expect(runner.totals.comments, 1);
+          expect(runner.hasPendingCommentDraft, isFalse);
+        } else if (!reveals) {
+          // Clipped past the WebView edge: sent once through Accessibility.
+          expect(service.pasted, ['comment:Configured comment']);
+          expect(service.tapped, isNot(contains('post')));
+          expect(service.tapped.where((a) => a == 'a11y-post'), hasLength(1));
+          expect(service.tapped.where((a) => a.startsWith('stray')), isEmpty);
+          expect(runner.totals.comments, 1);
+          expect(runner.hasPendingCommentDraft, isFalse);
+          expect(skipped, isEmpty);
+        } else {
+          expect(service.pasted, isEmpty);
+          expect(service.tapped, isNot(contains('post')));
+          expect(runner.totals.comments, 0);
+          expect(runner.hasPendingCommentDraft, isFalse);
+          expect(skipped, hasLength(1));
+        }
+      },
+    );
+  }
+
+  test('a refused clipped Post keeps the draft and is never resent', () async {
+    final service = _SearchService()
+      ..state = 'player'
+      ..revealWorks = false
+      ..revealMovesPost = false
+      ..submitAccepted = false;
+    final deadline = service.clock.add(const Duration(seconds: 28));
+    final skipped = <String>[];
+    final runner = NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: ['Configured comment'],
+      isActive: () => service.clock.isBefore(deadline),
+      isTikTok: () async => true,
+      onProgress: (_, _) async {},
+      onCommentSkipped: skipped.add,
+      continueOnCommentError: true,
+      likeRate: 0,
+      commentRate: 1,
+      longWatchRate: 1,
+      random: _Random(true),
+      now: () => service.clock,
+      delay: service.delay,
+    );
+    await runner.start();
+    expect(service.pasted, ['comment:Configured comment']);
+    expect(service.submits, 5);
+    expect(service.commentText, 'Configured comment');
+    expect(runner.totals.comments, 0);
+    expect(runner.hasPendingCommentDraft, isTrue);
+    expect(skipped.first, contains('Post bị khuất'));
   });
 
   test(
@@ -1864,6 +3055,82 @@ void main() {
       ]);
       expect(totals!.skippedVideos, 1);
       expect(profile.points.keys, contains('detail/feed/next-video'));
+    },
+  );
+
+  test('a photo post in the search player is recognised and skipped', () async {
+    final service = _SearchService()..photos.add(2);
+    var active = true;
+    final start = service.clock;
+    final runner = NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: [],
+      searchKeyword: 'Cats',
+      isActive: () => active,
+      isTikTok: () async => true,
+      onProgress: (t, _) async {
+        if (service.video == 3 && t.watchMilliseconds > 0) active = false;
+      },
+      longWatchRate: 0,
+      commentRate: 0,
+      likeRate: 0,
+      random: _Random(false),
+      now: () => service.clock,
+      delay: service.delay,
+    );
+    await runner.start();
+    // Next reached the photo, which was skipped once without a 30s stall.
+    expect(service.tapped.sublist(service.tapped.indexOf('result')), [
+      'result',
+      'next',
+      'next',
+    ]);
+    expect(runner.totals.skippedVideos, 1);
+    expect(
+      service.clock.difference(start),
+      lessThan(const Duration(seconds: 30)),
+    );
+  });
+
+  test(
+    'the search player autoplaying onto a photo needs no Next tap',
+    () async {
+      final service = _SearchService()..photos.add(2);
+      var active = true;
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile(
+          {},
+          save: (points) async {
+            // The post ends and TikTok opens the next (a photo) by itself.
+            if (points.containsKey('detail/feed/next-video') &&
+                service.video == 1) {
+              service.video++;
+            }
+          },
+        ),
+        comments: [],
+        searchKeyword: 'Cats',
+        isActive: () => active,
+        isTikTok: () async => true,
+        onProgress: (t, _) async {
+          if (service.video == 3 && t.watchMilliseconds > 0) active = false;
+        },
+        longWatchRate: 0,
+        commentRate: 0,
+        likeRate: 0,
+        random: _Random(false),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await runner.start();
+      // Post 1 counted without a tap; the photo skipped with one tap.
+      expect(service.tapped.sublist(service.tapped.indexOf('result')), [
+        'result',
+        'next',
+      ]);
+      expect(runner.totals.skippedVideos, 1);
     },
   );
 

@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/login_accessibility_runner.dart';
@@ -12,6 +13,12 @@ class _OtpForm extends SignupAccessibility {
   bool rejected = false, authenticated = false, focused = false;
   bool rejectRetry = false, changeDraft = false, wrongPassword = false;
   bool retainErrorAfterResend = false;
+
+  /// A loaded document that rendered nothing: only the WebView node.
+  bool blank = false;
+
+  /// Reads refused while a reloaded document is replaced.
+  int refusedReads = 0;
   String value = '';
   int resends = 0, clears = 0, pastes = 0;
 
@@ -34,10 +41,26 @@ class _OtpForm extends SignupAccessibility {
   };
 
   @override
-  Future<SignupSnapshot> snapshot() async => SignupSnapshot({
+  Future<SignupSnapshot> snapshot() async {
+    if (refusedReads > 0) {
+      refusedReads--;
+      throw PlatformException(code: 'navigating');
+    }
+    return _snapshot();
+  }
+
+  SignupSnapshot _snapshot() => SignupSnapshot({
     'ready': true,
     'webBounds': [0, 0, 400, 800],
-    'nodes': authenticated
+    'nodes': blank
+        ? [
+            {
+              'id': '0',
+              'className': 'android.webkit.WebView',
+              'bounds': [0, 0, 400, 800],
+            },
+          ]
+        : authenticated
         ? [
             node('messages', 'Messages', [10, 10, 50, 30]),
             node('profile', 'Profile', [10, 40, 50, 60]),
@@ -111,7 +134,11 @@ void main() {
     comments: [],
   );
 
-  LoginAccessibilityRunner runner(_OtpForm form, {List<String>? rejected}) {
+  LoginAccessibilityRunner runner(
+    _OtpForm form, {
+    List<String>? rejected,
+    Future<void> Function()? reloadBlankPage,
+  }) {
     var reads = 0;
     return LoginAccessibilityRunner(
       accessibility: form,
@@ -122,6 +149,7 @@ void main() {
       isTikTok: () async => true,
       getOtp: () async => ++reads == 1 ? '111111' : '222222',
       onOtpRejected: rejected?.add,
+      reloadBlankPage: reloadBlankPage,
       onStatus: (_) {},
       now: () => form.clock,
       delay: form.delay,
@@ -162,5 +190,36 @@ void main() {
     final form = _OtpForm()..wrongPassword = true;
     await expectLater(runner(form).run(), throwsStateError);
     expect([form.clears, form.resends, form.pastes], [0, 0, 0]);
+  });
+
+  test('a blank TikTok document is reloaded before login continues', () async {
+    final form = _OtpForm()
+      ..blank = true
+      ..authenticated = true;
+    final start = form.clock;
+    final reloads = <Duration>[];
+    final login = runner(
+      form,
+      reloadBlankPage: () async {
+        reloads.add(form.clock.difference(start));
+        form.blank = false;
+        form.refusedReads = 3;
+      },
+    );
+    await login.run();
+    expect(reloads, hasLength(1));
+    expect(reloads.single, greaterThanOrEqualTo(const Duration(seconds: 35)));
+    expect(login.alreadyLoggedIn, isTrue);
+  });
+
+  test('a document that stays blank is reloaded twice, then fails', () async {
+    final form = _OtpForm()..blank = true;
+    var reloads = 0;
+    await expectLater(
+      runner(form, reloadBlankPage: () async => reloads++).run(),
+      throwsStateError,
+    );
+    expect(reloads, 2);
+    expect([form.pastes, form.resends], [0, 0]);
   });
 }

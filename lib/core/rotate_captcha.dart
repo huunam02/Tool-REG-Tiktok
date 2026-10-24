@@ -298,6 +298,11 @@ class RotateCaptchaSolver {
           }
         }
         if (!await isPresent()) return true;
+      } on StateError catch (error) {
+        if (error is RotateCaptchaCancelled || attempt >= attempts) rethrow;
+        onStatus('Chưa xử lý được CAPTCHA; thử lại ($attempt/$attempts)…');
+        await guard();
+        await _pause(1000);
       }
     }
   }
@@ -348,9 +353,7 @@ class RotateCaptchaSolver {
     }
     if (challenge == null) {
       if (await isPresent()) {
-        throw StateError(
-          'Chưa đọc được CAPTCHA sau thời gian chờ.',
-        );
+        throw StateError('Chưa đọc được CAPTCHA sau thời gian chờ.');
       }
       return false;
     }

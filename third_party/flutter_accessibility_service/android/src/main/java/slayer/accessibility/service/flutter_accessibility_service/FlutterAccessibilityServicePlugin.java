@@ -125,6 +125,10 @@ public class FlutterAccessibilityServicePlugin implements FlutterPlugin, Activit
     public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
         if (call.method.equals("isAccessibilityPermissionEnabled")) {
             result.success(Utils.isAccessibilitySettingsOn(context));
+        } else if (call.method.equals("signupDiagnoseWeb")) {
+            result.success(SignupAccessibilityBridge.diagnoseMissingWeb());
+        } else if (call.method.equals("isAccessibilityServiceRunning")) {
+            result.success(AccessibilityListener.currentInstance() != null);
         } else if (call.method.equals("requestAccessibilityPermission")) {
             pendingResult = result;
             Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
@@ -167,6 +171,9 @@ public class FlutterAccessibilityServicePlugin implements FlutterPlugin, Activit
             SignupAccessibilityBridge.setKeyboardSuppressed(Boolean.TRUE.equals(call.argument("suppressed")), result);
         } else if (call.method.equals("signupSubmitComment")) {
             result.success(SignupAccessibilityBridge.submitComment());
+        } else if (call.method.equals("signupRevealCommentPost")) {
+            result.success(SignupAccessibilityBridge.revealCommentPost(
+                call.argument("editorId"), call.argument("editorBounds")));
         } else if (call.method.equals("signupClearOtp")) {
             SignupAccessibilityBridge.clearOtp(call.argument("expected"), result);
         } else if (call.method.equals("signupDismissKeyboard")) {

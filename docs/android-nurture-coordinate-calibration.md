@@ -42,12 +42,25 @@ Không cộng thời gian đứng tải, ra nền hoặc nhảy seek. Mỗi bài
 50% xem hết, 50% lướt sớm sau 2–5 giây tiến độ quan sát được. Với clip cực ngắn,
 độ phân giải một giây có thể không quan sát đủ để chuyển trước cuối clip.
 Chỉ bài có kế hoạch xem hết mới bình luận; bài quá ngắn bỏ bình luận.
-Chọn mốc từ giây 3 đến nửa thời gian xem, muộn nhất giây 20; vẫn kiểm tra mốc 70%
-thời lượng video trước Post. Video dài hơn 1 phút chỉ xem 1 phút rồi chuyển.
+Chọn mốc từ giây 3 đến nửa thời gian xem, muộn nhất giây 20 và chừa ít nhất
+5 giây trước mốc 50% thời lượng video để mở khung và nhập nội dung. Bài không
+đủ khoảng thời gian này bỏ bình luận. Kiểm tra lại mốc 50% trước Post.
+Video dài hơn 1 phút chỉ xem 1 phút rồi chuyển.
 
 Nút chuyển video được ưu tiên khi nhận diện được đúng cặp điều hướng lên/xuống.
 Bố cục không có cặp nút này dùng gesture vuốt trong khung video, lưu cả hai đầu
 trước thao tác. Một lần chuyển phải thấy bài đổi; không tự lặp gesture nếu thất bại.
+Sau Next chờ 1,2 giây cho trang và cây Trợ năng ổn định; xác nhận video mới qua
+nhiều snapshot và tiến độ thay đổi. Thời gian chờ tải sau Next tối đa 30 giây.
+Hết thời gian chờ mới phục hồi; không đặt lại thời hạn nuôi của tài khoản.
+Khi lỗi thao tác, chờ 5 giây rồi chạy lại bộ đọc trên cùng trang, giữ thống kê,
+chế độ Search/Feed, bản nháp và các thao tác đã thử. Không tự tải lại trang hoặc
+đưa về Home TikTok. Next đã gửi nhưng chưa xác nhận thì chỉ đọc lại, không bấm
+Next lần nữa cho cùng video. Nút Tải lại vẫn do người dùng chủ động bấm.
+Riêng màn “Something went wrong” kèm thông báo lỗi server và nút “Try again”,
+tool bấm đúng nút này qua Trợ năng để thử lại tại chỗ. Mỗi đợt lỗi thử tối đa
+3 lần, cách nhau ít nhất 10 giây; không bấm khi có nháp hoặc CAPTCHA/đăng nhập.
+Không cộng thời gian chờ lỗi vào thời gian xem và không đặt lại hạn nuôi.
 
 Bình luận chỉ lấy từ cấu hình, tránh lặp liên tiếp cùng mẫu. Trước khi focus
 ô cuối màn hình, Accessibility tạm ẩn bàn phím nhưng giữ focus, tránh IME che
@@ -55,7 +68,16 @@ Bình luận chỉ lấy từ cấu hình, tránh lặp liên tiếp cùng mẫu
 khi hủy hoặc khi lease 10 giây hết hạn. Bản nháp có sẵn
 được giữ nguyên. Chỉ tính đã gửi khi ô nhập trống và thấy thêm đúng nội dung
 bình luận trong cây Accessibility. Post chỉ gửi một lần; kết quả không rõ,
-đổi video, mất tiến độ hoặc quá mốc 70% đều dừng, không gửi lại.
+đổi video, mất tiến độ hoặc đến mốc 50% đều không gửi lại. Khi chạy lần lượt,
+lỗi bình luận không kết thúc sớm phiên nuôi; nếu còn nháp thì giữ video hiện tại
+để xem đến hết thời gian.
+Sau khi đã thử nhập, trạng thái có thể còn nháp được giữ cả khi snapshot tạm
+không thấy editor. Chỉ xóa trạng thái này khi xác nhận gửi thành công hoặc native
+xác nhận không có nội dung được nhập; không Next hoặc reload khi còn trạng thái đó.
+Trong Search, trước khi nhập, yêu cầu Trợ năng đưa nút Post vào màn hình rồi
+đọc lại bounds trong WebView. Không thấy Post thì bỏ qua trước paste. Khi gửi,
+chạm Post đang hiển thị và kiểm tra lại thời điểm dưới 50%, không dựa vào click
+trên nút bị cắt ngoài màn hình của API 28.
 Nội dung chứa email/mã sáu số có thể bị bộ che dữ liệu làm mất khả năng xác nhận;
 trường hợp này cũng dừng và không gửi lại.
 

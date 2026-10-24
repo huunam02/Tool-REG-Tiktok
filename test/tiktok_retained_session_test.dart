@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,21 +10,86 @@ import 'package:test_tiktok/core/captcha_settings_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/gecko_browser.dart';
+import 'package:test_tiktok/core/nurture_coordinate_profile.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
-import 'package:test_tiktok/core/scripts/authenticated_session_script.dart';
+import 'package:test_tiktok/core/signup_accessibility.dart';
 import 'package:test_tiktok/core/tiktok_flow_result.dart';
 import 'package:test_tiktok/core/tiktok_launch_action.dart';
 
 import 'support/memory_proxy_store.dart';
 
-class _LoginProbeController extends TikTokController {
-  _LoginProbeController({
+/// The live TikTok page: its sidebar shows Messages/Profile once signed in.
+class _Accessibility extends SignupAccessibility {
+  bool signedIn = true;
+  final Map<String, dynamic> feed = Map<String, dynamic>.from(
+    jsonDecode(
+          File(
+            'test/fixtures/nurture_accessibility_recording.json',
+          ).readAsStringSync(),
+        )['feed']
+        as Map,
+  );
+
+  Map<String, dynamic> _label(String id, String text) => {
+    'id': id,
+    'bounds': [0, 0, 40, 40],
+    'text': text,
+    'clickable': true,
+    'enabled': true,
+  };
+
+  @override
+  Future<SignupSnapshot> snapshot() async => SignupSnapshot({
+    ...feed,
+    'nodes': [
+      ...(feed['nodes'] as List),
+      if (signedIn) ...[
+        _label('sidebar.messages', 'Messages'),
+        _label('sidebar.profile', 'Profile'),
+      ] else
+        _label('sidebar.login', 'Log in'),
+    ],
+  });
+
+  @override
+  Future<void> cancelPaste() async {}
+
+  // The recorded feed never moves; gestures complete without effect.
+  @override
+  Future<void> swipe(SignupViewport viewport, Offset from, Offset to) async {}
+  @override
+  Future<void> tap(SignupViewport viewport, Offset point) async {}
+}
+
+class _Controller extends TikTokController {
+  _Controller(
+    this.accessibility, {
+    required super.configuration,
+    super.proxyStore,
+    super.captchaSettingsStore,
+    super.startWithNurture,
+    super.autoAdvance,
+    super.onFlowFinished,
+    super.now,
+  }) : super(
+         launchAction: TikTokLaunchAction.login,
+         useAccessibility: true,
+         nurtureProfileLoader: () async => NurtureCoordinateProfile({}),
+       );
+  final _Accessibility accessibility;
+  @override
+  SignupAccessibility get signupAccessibility => accessibility;
+}
+
+class _LoginProbeController extends _Controller {
+  _LoginProbeController(
+    super.accessibility, {
     required super.configuration,
     required super.proxyStore,
     required super.captchaSettingsStore,
     super.now,
     super.startWithNurture,
-  }) : super(launchAction: TikTokLaunchAction.login, useAccessibility: false);
+  });
 
   int loginCalls = 0;
   final loginStates = <List<bool>>[];
@@ -37,23 +105,15 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('test_tiktok/gecko_view_84');
   final calls = <MethodCall>[];
-  bool authenticated = true;
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     calls.clear();
-    authenticated = true;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           calls.add(call);
           if (call.method == 'getUrl') return 'https://www.tiktok.com/';
-          if (call.method == 'evaluateJavascript') {
-            if ((call.arguments as Map)['source'] ==
-                checkAuthenticatedSessionScript) {
-              return authenticated;
-            }
-            return true;
-          }
+          if (call.method == 'evaluateJavascript') return null;
           return null;
         });
   });
@@ -62,7 +122,7 @@ void main() {
     testWidgets('$scenario session logs in before enabling nurture', (
       tester,
     ) async {
-      authenticated = false;
+      final accessibility = _Accessibility()..signedIn = false;
       final store = MemoryProxyStore()
         ..currentId = 1
         ..currentAccount = const AccountCredentials(
@@ -78,6 +138,7 @@ void main() {
       final settings = CaptchaSettingsStore();
       await settings.load();
       final logic = _LoginProbeController(
+        accessibility,
         configuration: AppConfiguration(
           configurationId: 1,
           userAgent: 'fixture',
@@ -127,7 +188,8 @@ void main() {
     final settings = CaptchaSettingsStore();
     await settings.load();
     final notices = <String>[];
-    final logic = TikTokController(
+    final logic = _Controller(
+      _Accessibility()..signedIn = false,
       configuration: AppConfiguration(
         userAgent: 'fixture',
         comments: const [],
@@ -136,8 +198,6 @@ void main() {
         loginUsername: 'person@example.com',
         loginPassword: '',
       ),
-      launchAction: TikTokLaunchAction.login,
-      useAccessibility: false,
       proxyStore: store,
       captchaSettingsStore: settings,
     )..onInit();
@@ -178,7 +238,8 @@ void main() {
         final settings = CaptchaSettingsStore();
         await settings.load();
         final results = <TikTokFlowResult>[];
-        final logic = TikTokController(
+        final logic = _Controller(
+          _Accessibility(),
           configuration: AppConfiguration(
             configurationId: 1,
             userAgent: 'fixture',
@@ -192,9 +253,7 @@ void main() {
               maxMinutes: 2,
             ),
           ),
-          launchAction: TikTokLaunchAction.login,
           startWithNurture: true,
-          useAccessibility: false,
           autoAdvance: automatic,
           proxyStore: store,
           captchaSettingsStore: settings,

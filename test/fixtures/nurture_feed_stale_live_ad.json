@@ -1,0 +1,2380 @@
+{
+ "ready": true,
+ "keyboardVisible": false,
+ "webBounds": [
+  92,
+  280,
+  1348,
+  2792
+ ],
+ "nodes": [
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    184,
+    280,
+    1348,
+    2792
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    184,
+    280,
+    1348,
+    2792
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0",
+   "text": "",
+   "scrollable": true,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    184,
+    2023,
+    1287,
+    4535
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0.3",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    246,
+    2445,
+    1184,
+    4113
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0.3.0",
+   "text": "Watch in full screen",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    246,
+    2445,
+    1184,
+    4113
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0.3.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    246,
+    2445,
+    1184,
+    2517
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0.3.0.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1112,
+    2455,
+    1174,
+    2517
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0.3.0.0.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1112,
+    2471,
+    1174,
+    2501
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0.3.0.0.0.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1128,
+    2471,
+    1158,
+    2501
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0.3.0.0.0.0.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    246,
+    2445,
+    1184,
+    4113
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0.3.0.0.1.0",
+   "text": "",
+   "scrollable": true,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    175,
+    2320,
+    1254,
+    4238
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0.3.0.0.1.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    175,
+    2320,
+    1254,
+    4238
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.0.3.0.0.1.0.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1286,
+    1485,
+    1328,
+    1587
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.1.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1286,
+    1485,
+    1328,
+    1526
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.1.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1286,
+    1485,
+    1328,
+    1526
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.1.0.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1286,
+    1495,
+    1328,
+    1516
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.1.0.0.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1297,
+    1495,
+    1317,
+    1516
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.1.0.0.0.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1286,
+    1546,
+    1328,
+    1587
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.1.0.1",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1286,
+    1546,
+    1328,
+    1587
+   ],
+   "focused": true,
+   "inputType": 0,
+   "id": "0.0.1.2.1.0.1.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1286,
+    1556,
+    1328,
+    1577
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.1.0.1.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  },
+  {
+   "editable": false,
+   "clickable": true,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "enabled": true,
+   "password": false,
+   "hint": "",
+   "bounds": [
+    1297,
+    1556,
+    1317,
+    1577
+   ],
+   "focused": false,
+   "inputType": 0,
+   "id": "0.0.1.2.1.0.1.0.0.0",
+   "text": "",
+   "scrollable": false,
+   "selected": false
+  }
+ ],
+ "hidden": [
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    184,
+    -489,
+    1287,
+    2023
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    400,
+    1184,
+    1134
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0",
+   "text": "Watch in full screen"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    400,
+    1184,
+    1134
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    400,
+    1184,
+    1134
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    400,
+    1184,
+    400
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    400,
+    1184,
+    1134
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.2.0.0.0.0.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    215,
+    410,
+    277,
+    471
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    215,
+    410,
+    277,
+    471
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.ToggleButton",
+   "id": "0.0.1.2.0.2.0.1.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    215,
+    425,
+    277,
+    456
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.1.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    230,
+    425,
+    261,
+    456
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.2.0.1.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1112,
+    410,
+    1174,
+    471
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.2.0.2",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1112,
+    425,
+    1174,
+    456
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.2.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1128,
+    425,
+    1158,
+    456
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.2.0.2.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    952,
+    1184,
+    1134
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    952,
+    1184,
+    1134
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    967,
+    432,
+    998
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    967,
+    432,
+    998
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    967,
+    432,
+    998
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "fixture caption",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    967,
+    432,
+    998
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.0.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    230,
+    972,
+    251,
+    993
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.2.0.3.0.0.0.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    256,
+    972,
+    422,
+    992
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.0.0.0.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    256,
+    974,
+    422,
+    991
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.0.0.0.0.1.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1013,
+    353,
+    1042
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "fixture caption",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1013,
+    353,
+    1042
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.1.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1015,
+    353,
+    1040
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.1.0.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1057,
+    1169,
+    1114
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1057,
+    1169,
+    1080
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1057,
+    718,
+    1080
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1057,
+    718,
+    1080
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1058,
+    297,
+    1079
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "fixture caption",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1058,
+    297,
+    1079
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0.0.0.0.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    297,
+    1057,
+    578,
+    1080
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0.0.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    297,
+    1058,
+    578,
+    1079
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0.0.0.1.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    578,
+    1058,
+    713,
+    1079
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "fixture caption",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0.0.0.2",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    578,
+    1058,
+    713,
+    1079
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0.0.0.2.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    713,
+    1057,
+    718,
+    1080
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0.0.0.3",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    713,
+    1058,
+    718,
+    1079
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.0.0.0.3.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1080,
+    1169,
+    1114
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    220,
+    1092,
+    349,
+    1112
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.3.0.2.1.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    1113,
+    1184,
+    1134
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.4",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    1034,
+    1184,
+    1083
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.4.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    566,
+    1035,
+    822,
+    1081
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.4.0.0",
+   "text": "00:00 / 01:03"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    1129,
+    205,
+    1134
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.SeekBar",
+   "id": "0.0.1.2.0.2.0.4.1",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    205,
+    1129,
+    1184,
+    1134
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.0.4.2",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    490,
+    1266,
+    1044
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    490,
+    1266,
+    552
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    490,
+    1266,
+    552
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "fixture-creator",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    490,
+    1266,
+    552
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    490,
+    1266,
+    552
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.0.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    490,
+    1266,
+    552
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.2.1.0.0.0.0.0",
+   "text": "fixture-creator"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1220,
+    536,
+    1251,
+    567
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.2.1.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1221,
+    543,
+    1250,
+    561
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.0.1.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1226,
+    543,
+    1244,
+    561
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.2.1.0.1.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    577,
+    1266,
+    677
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    577,
+    1266,
+    677
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.ToggleButton",
+   "id": "0.0.1.2.0.2.1.1.0",
+   "text": "Like video 12.9K likes"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    587,
+    1266,
+    649
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.1.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    587,
+    1266,
+    649
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.2.1.1.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1222,
+    605,
+    1249,
+    632
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.2.1.1.0.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1215,
+    657,
+    1256,
+    677
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.1.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1215,
+    658,
+    1256,
+    676
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.1.0.1.0",
+   "text": "12.9K"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    677,
+    1266,
+    777
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.2.1.2",
+   "text": "Read or add comments 333 comments"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    687,
+    1266,
+    749
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.2.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    687,
+    1266,
+    749
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.2.1.2.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1220,
+    703,
+    1251,
+    734
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.2.1.2.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1220,
+    757,
+    1250,
+    777
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.2.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1220,
+    758,
+    1250,
+    776
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.2.1.0",
+   "text": "333"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    777,
+    1266,
+    877
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.3",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    777,
+    1266,
+    877
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.3.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    777,
+    1266,
+    877
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.2.1.3.0.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    787,
+    1266,
+    849
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.3.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    787,
+    1266,
+    849
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.2.1.3.0.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1222,
+    805,
+    1249,
+    832
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.2.1.3.0.0.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1218,
+    857,
+    1252,
+    877
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.3.0.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1218,
+    858,
+    1252,
+    876
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.3.0.0.1.0",
+   "text": "1193"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    877,
+    1266,
+    977
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.4",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    877,
+    1266,
+    977
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.2.1.4.0",
+   "text": "Share video 2709 shares"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    887,
+    1266,
+    949
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.4.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    887,
+    1266,
+    949
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.2.1.4.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1220,
+    903,
+    1251,
+    933
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.2.1.4.0.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1216,
+    956,
+    1254,
+    977
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.4.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1216,
+    958,
+    1254,
+    976
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.4.0.1.0",
+   "text": "2709"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1207,
+    977,
+    1263,
+    1044
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "fixture caption",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.2.1.5",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    246,
+    2445,
+    246,
+    2445
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "fixture caption",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    246,
+    2445,
+    1184,
+    4113
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    246,
+    2445,
+    1184,
+    4113
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.3.0.0.1.1.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    608,
+    3834,
+    821,
+    3860
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.2",
+   "text": "Click to watch LIVE"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    829,
+    3834,
+    855,
+    3860
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.3",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    834,
+    3835,
+    849,
+    3859
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.3.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    261,
+    3977,
+    1169,
+    4097
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.4",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    271,
+    3986,
+    349,
+    4007
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.4.0",
+   "text": "LIVE now"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    261,
+    4031,
+    392,
+    4054
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.4.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    261,
+    4032,
+    392,
+    4053
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.4.1.0",
+   "text": "fixture caption"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    261,
+    4070,
+    426,
+    4097
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.4.2",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    268,
+    4075,
+    420,
+    4092
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.4.2.0",
+   "text": "Promotional content"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    251,
+    4051,
+    297,
+    4103
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.5",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    260,
+    4063,
+    288,
+    4091
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.3.0.0.1.5.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    297,
+    4051,
+    343,
+    4103
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.0.0.1.6",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    309,
+    4065,
+    332,
+    4088
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.3.0.0.1.6.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    3838,
+    1266,
+    4113
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    3838,
+    1266,
+    3900
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    3838,
+    1266,
+    3900
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "fixture-live LIVE",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    3838,
+    1266,
+    3900
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.3.1.0.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1213,
+    3847,
+    1258,
+    3892
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.0.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1213,
+    3847,
+    1258,
+    3892
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.0.0.1.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1213,
+    3847,
+    1258,
+    3892
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.3.1.0.0.1.0.0",
+   "text": "fixture-live"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1218,
+    3837,
+    1252,
+    3862
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.0.0.1.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1226,
+    3851,
+    1245,
+    3861
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.0.0.1.1.0",
+   "text": "LIVE"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1220,
+    3885,
+    1251,
+    3915
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.3.1.0.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1221,
+    3891,
+    1250,
+    3909
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.0.1.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1226,
+    3891,
+    1244,
+    3909
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.3.1.0.1.0.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    3913,
+    1266,
+    4013
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.ToggleButton",
+   "id": "0.0.1.2.0.3.1.1",
+   "text": "Like video 560 likes"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1220,
+    3938,
+    1251,
+    3969
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.3.1.1.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1220,
+    3992,
+    1250,
+    4013
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.1.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1220,
+    3994,
+    1250,
+    4011
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.1.1.0",
+   "text": "560"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1204,
+    4013,
+    1266,
+    4113
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Button",
+   "id": "0.0.1.2.0.3.1.2",
+   "text": "Share video 2 shares"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1220,
+    4038,
+    1251,
+    4069
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.widget.Image",
+   "id": "0.0.1.2.0.3.1.2.0",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1230,
+    4092,
+    1240,
+    4113
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.2.1",
+   "text": ""
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1230,
+    4094,
+    1240,
+    4111
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.0.3.1.2.1.0",
+   "text": "2"
+  },
+  {
+   "editable": false,
+   "hint": "",
+   "bounds": [
+    1286,
+    280,
+    1348,
+    2792
+   ],
+   "focused": false,
+   "length": 0,
+   "description": "",
+   "className": "android.view.View",
+   "id": "0.0.1.2.1",
+   "text": ""
+  }
+ ]
+}

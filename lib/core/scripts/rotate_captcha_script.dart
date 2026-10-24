@@ -6,6 +6,11 @@ const readRotateCaptchaScript = r'''
   const visible = el => {
     if (!el) return false;
     const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+    for (let parent = el; parent; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      if (style.display === 'none' || style.visibility === 'hidden' ||
+          Number(style.opacity) === 0) return false;
+    }
     return r.width > 0 && r.height > 0 && s.display !== 'none' &&
       s.visibility !== 'hidden' && Number(s.opacity) !== 0;
   };
@@ -58,13 +63,28 @@ const readRotateCaptchaScript = r'''
 
 const rotateCaptchaPresentScript = r'''
 (() => {
-  if (location.origin !== 'https://www.tiktok.com' || document.hidden) return true;
-  return [...document.querySelectorAll('#captcha-verify-container, .captcha-verify-container, .captcha-disable-scroll, .captcha_verify_slide--slidebar, iframe[src*="captcha"]')]
-    .some(el => {
-      const r = el.getBoundingClientRect(), s = getComputedStyle(el);
-      return r.width > 0 && r.height > 0 && s.display !== 'none' &&
-        s.visibility !== 'hidden' && Number(s.opacity) !== 0;
-    });
+  if (location.origin !== 'https://www.tiktok.com' || document.hidden) return null;
+  const visible = el => {
+    const r = el.getBoundingClientRect();
+    const v = window.visualViewport;
+    const left = v?.offsetLeft || 0, top = v?.offsetTop || 0;
+    if (r.width <= 0 || r.height <= 0 || r.right <= left || r.bottom <= top ||
+        r.left >= left + (v?.width || innerWidth) ||
+        r.top >= top + (v?.height || innerHeight)) return false;
+    for (let parent = el; parent; parent = parent.parentElement) {
+      const s = getComputedStyle(parent);
+      if (s.display === 'none' || s.visibility === 'hidden' ||
+          Number(s.opacity) === 0) return false;
+    }
+    return true;
+  };
+  // Scroll locking classes and empty/stale modal containers are not puzzles.
+  const controls = '.captcha_verify_slide--slidebar, iframe[src*="captcha"]';
+  if ([...document.querySelectorAll(controls)].some(visible)) return true;
+  return [...document.querySelectorAll('#captcha-verify-container, .captcha-verify-container, .captcha_verify_container, #captcha_container')]
+    .some(root => visible(root) && [...root.querySelectorAll(
+      'img, canvas, [role="slider"], [draggable="true"]'
+    )].some(visible));
 })()
 ''';
 

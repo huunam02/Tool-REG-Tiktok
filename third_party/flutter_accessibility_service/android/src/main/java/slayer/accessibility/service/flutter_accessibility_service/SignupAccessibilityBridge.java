@@ -98,11 +98,69 @@ final class SignupAccessibilityBridge {
         return null;
     }
 
+    /**
+     * Why no WebView was found, for a device that cannot be debugged over ADB:
+     * the active window, the app's windows and every WebView/Gecko node there,
+     * read without the package filter findWeb applies.
+     */
+    static String diagnoseMissingWeb() {
+        try {
+            return diagnoseMissingWeb(AccessibilityListener.currentInstance());
+        } catch (RuntimeException error) {
+            return "diag-error " + error.getClass().getSimpleName();
+        }
+    }
+
+    private static String diagnoseMissingWeb(AccessibilityListener service) {
+        if (service == null) return "svc=null";
+        String pkg = service.getPackageName();
+        StringBuilder out = new StringBuilder();
+        AccessibilityNodeInfo active = service.getRootInActiveWindow();
+        out.append("active=").append(active == null ? "null"
+            : pkg.contentEquals(active.getPackageName() == null ? "" : active.getPackageName()) ? "app"
+            : String.valueOf(active.getPackageName()));
+        List<AccessibilityWindowInfo> windows = service.getWindows();
+        out.append(" win=").append(windows.size());
+        int[] counts = new int[2]; // nodes in app windows, nodes of another package
+        List<String> found = new ArrayList<>();
+        int appWindows = 0;
+        for (AccessibilityWindowInfo window : windows) {
+            AccessibilityNodeInfo root = window.getRoot();
+            if (root == null || !pkg.contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) continue;
+            appWindows++;
+            describeWeb(root, pkg, 0, counts, found);
+        }
+        out.append(" app=").append(appWindows).append(" n=").append(counts[0])
+            .append(" foreign=").append(counts[1]);
+        out.append(" web=").append(found.isEmpty() ? "none" : String.join(";", found));
+        return out.toString();
+    }
+
+    private static void describeWeb(AccessibilityNodeInfo node, String pkg, int depth,
+            int[] counts, List<String> found) {
+        if (node == null || depth > 60 || counts[0] > 3000) return;
+        counts[0]++;
+        CharSequence nodePkg = node.getPackageName();
+        if (!pkg.contentEquals(nodePkg == null ? "" : nodePkg)) counts[1]++;
+        String cls = node.getClassName() == null ? "" : node.getClassName().toString();
+        if ((cls.contains("WebView") || cls.contains("Gecko")) && found.size() < 4) {
+            Rect r = new Rect(); node.getBoundsInScreen(r);
+            found.add(cls.substring(cls.lastIndexOf('.') + 1) + " v" + (node.isVisibleToUser() ? 1 : 0)
+                + " c" + node.getChildCount() + " d" + depth + " " + r.width() + "x" + r.height());
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            describeWeb(node.getChild(i), pkg, depth + 1, counts, found);
+        }
+    }
+
     static Map<String, Object> snapshot() {
         AccessibilityListener service = AccessibilityListener.currentInstance();
         AccessibilityNodeInfo web = webRoot(service);
         Map<String, Object> result = new HashMap<>();
         result.put("ready", web != null);
+        // Android can list the service as enabled while it is not bound
+        // (Samsung after an app update shows it "not working").
+        result.put("serviceConnected", service != null);
         result.put("keyboardVisible", keyboardVisible(service));
         if (web == null) return result;
         Rect rect = new Rect();
@@ -650,6 +708,61 @@ final class SignupAccessibilityBridge {
         clipboardHandler.postDelayed(deferredRestore, FAILED_RESTORE_DELAY_MS);
     }
 
+    /** Scroll a clipped Post into view before any draft is entered. Never clicks it. */
+    static Map<String, Object> revealCommentPost(String editorId, List<? extends Number> expectedBounds) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("ok", false);
+        AccessibilityNodeInfo web = webRoot(AccessibilityListener.currentInstance());
+        if (web == null) { result.put("reason", "web-unavailable"); return result; }
+        AccessibilityNodeInfo editor = commentEditorAt(web, editorId, expectedBounds);
+        if (editor == null) { result.put("reason", "editor-unavailable"); return result; }
+        if (editorValue(editor) != null && editorValue(editor).length() > 0) {
+            result.put("reason", "draft-exists"); return result;
+        }
+        AccessibilityNodeInfo scope = editor;
+        AccessibilityNodeInfo post = null;
+        for (int level = 0; level < 4 && scope != null; level++) {
+            scope = scope.getParent();
+            post = findPost(scope, 0, false);
+            if (post != null) break;
+        }
+        if (post == null) { result.put("reason", "post-unavailable"); return result; }
+        Rect viewport = new Rect(), bounds = new Rect();
+        web.getBoundsInScreen(viewport);
+        AccessibilityNodeInfo host = web.getParent();
+        if (host != null) {
+            Rect hostBounds = new Rect(); host.getBoundsInScreen(hostBounds);
+            if (!viewport.intersect(hostBounds)) viewport.setEmpty();
+        }
+        post.getBoundsInScreen(bounds);
+        boolean visible = post.isVisibleToUser() && !bounds.isEmpty() && viewport.contains(bounds);
+        boolean requested = visible || post.performAction(
+            AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.getId());
+        result.put("ok", requested);
+        result.put("reason", visible ? "post-visible" : requested ? "post-reveal-requested" : "post-offscreen");
+        return result; // Dart re-reads and verifies bounds after the layout settles.
+    }
+
+    private static AccessibilityNodeInfo commentEditorAt(AccessibilityNodeInfo web,
+            String id, List<? extends Number> expectedBounds) {
+        if (id == null || !id.matches("0(?:\\.[0-9]+){0,40}") || expectedBounds == null || expectedBounds.size() != 4) return null;
+        AccessibilityNodeInfo editor = web;
+        String[] indices = id.split("\\.");
+        for (int i = 1; i < indices.length; i++) {
+            if (editor == null || !editor.refresh()) return null;
+            int index;
+            try { index = Integer.parseInt(indices[i]); } catch (NumberFormatException e) { return null; }
+            if (index >= editor.getChildCount()) return null;
+            editor = editor.getChild(index);
+        }
+        if (editor == null || !editor.refresh() || !editor.isVisibleToUser() ||
+                !editor.isEditable() || !editor.isEnabled() || editor.isPassword()) return null;
+        Rect bounds = new Rect(); editor.getBoundsInScreen(bounds);
+        Rect expected = new Rect(expectedBounds.get(0).intValue(), expectedBounds.get(1).intValue(),
+            expectedBounds.get(2).intValue(), expectedBounds.get(3).intValue());
+        return !bounds.isEmpty() && bounds.equals(expected) ? editor : null;
+    }
+
     /** ACTION_CLICK on the Post control beside the filled comment editor. */
     static boolean submitComment() {
         AccessibilityNodeInfo web = webRoot(AccessibilityListener.currentInstance());
@@ -661,6 +774,9 @@ final class SignupAccessibilityBridge {
     // with a Post control inside its own container (at most four levels up).
     private static boolean submitFrom(AccessibilityNodeInfo node, int depth) {
         if (node == null || depth > 40) return false;
+        // Cached nodes keep the editor's pre-paste (empty) text until refreshed;
+        // without this the filled editor and its Post are never matched.
+        if (Build.VERSION.SDK_INT < 33 && !node.refresh()) return false;
         if (node.isEditable() && !node.isPassword() && node.getText() != null &&
                 !comparableComment(node.getText()).isEmpty()) {
             AccessibilityNodeInfo scope = node;
@@ -682,12 +798,20 @@ final class SignupAccessibilityBridge {
     }
 
     private static AccessibilityNodeInfo findPost(AccessibilityNodeInfo node, int depth) {
+        return findPost(node, depth, true);
+    }
+
+    private static AccessibilityNodeInfo findPost(AccessibilityNodeInfo node, int depth, boolean requireEnabled) {
         if (node == null || depth > 12) return null;
-        String label = (node.getContentDescription() != null ? node.getContentDescription() : node.getText() != null ? node.getText() : "")
-            .toString().trim();
-        if (node.isEnabled() && !node.isEditable() && label.equalsIgnoreCase("Post")) return node;
+        if (Build.VERSION.SDK_INT < 33 && !node.refresh()) return null;
+        // Gecko exposes the search player's Post as text with an empty (not
+        // null) description; match SignupNode.name and skip empty labels.
+        CharSequence description = node.getContentDescription();
+        String label = (description != null && description.length() > 0 ? description
+            : node.getText() != null ? node.getText() : "").toString().trim();
+        if ((!requireEnabled || node.isEnabled()) && !node.isEditable() && label.equalsIgnoreCase("Post")) return node;
         for (int i=0; i<node.getChildCount(); i++) {
-            AccessibilityNodeInfo found = findPost(node.getChild(i), depth+1);
+            AccessibilityNodeInfo found = findPost(node.getChild(i), depth+1, requireEnabled);
             if (found != null) return found;
         }
         return null;

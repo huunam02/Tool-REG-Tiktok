@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
+import 'package:test_tiktok/core/controller/tiktok_controller.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/screen/proxy_management_page.dart';
 import 'package:test_tiktok/screen/settings_page.dart';
@@ -60,5 +61,32 @@ void main() {
     expect(find.text('Kiểm tra IP / User-Agent'), findsNothing);
     expect(find.text('Kiểm tra IP với WhatIsMyIP'), findsNothing);
     expect(find.text('Xuất dữ liệu Excel'), findsOneWidget);
+    // Without an action, the device browser check is hidden too.
+    expect(find.byKey(const Key('openBrowserCheck')), findsNothing);
+  });
+
+  testWidgets('Cài đặt opens the browser check without a proxy', (
+    tester,
+  ) async {
+    var opened = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsPage(
+          proxyStore: MemoryProxyStore(),
+          onBrowserCheck: () => opened++,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Kiểm tra trình duyệt'), findsOneWidget);
+    final button = find.byKey(const Key('openBrowserCheck'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(opened, 1);
+    expect(
+      TikTokController.deviceBrowserCheckUrl,
+      'https://www.whatsmybrowser.org/',
+    );
   });
 }

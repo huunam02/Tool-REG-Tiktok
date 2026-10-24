@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../core/controller/tiktok_controller.dart';
-import '../core/scripts/auto_cookie_script.dart';
-import '../core/scripts/auto_interest_script.dart';
-import '../core/scripts/auto_watch_script.dart';
 import '../core/app_configuration.dart';
 import '../core/app_action_theme.dart';
 import '../core/otp_api.dart';
@@ -31,6 +28,7 @@ class TikTokPage extends StatelessWidget {
     this.launchAction = TikTokLaunchAction.browse,
     this.startWithNurture = false,
     this.startWithBrowserCheck = false,
+    this.browserCheckPage,
     this.startWithIpCheck = false,
     bool useNativeWebView = false,
     this.useInstalledEngine = true,
@@ -45,6 +43,7 @@ class TikTokPage extends StatelessWidget {
   final TikTokLaunchAction launchAction;
   final bool startWithNurture;
   final bool startWithBrowserCheck;
+  final String? browserCheckPage;
   final bool startWithIpCheck;
   final bool useNativeWebView;
   final bool useInstalledEngine;
@@ -54,7 +53,7 @@ class TikTokPage extends StatelessWidget {
   final ProxyStore? proxyStore;
   final bool autoAdvance;
   String get initialUrl => startWithBrowserCheck
-      ? TikTokController.browserCheckUrl
+      ? browserCheckPage ?? TikTokController.browserCheckUrl
       : startWithIpCheck
       ? TikTokController.ipCheckUrl
       : manualViewingPlan?.initialUrl ?? launchAction.initialUrl;
@@ -67,6 +66,7 @@ class TikTokPage extends StatelessWidget {
       launchAction: launchAction,
       startWithNurture: startWithNurture,
       startWithBrowserCheck: startWithBrowserCheck,
+      browserCheckPage: browserCheckPage,
       startWithIpCheck: startWithIpCheck,
       useNativeWebView: useNativeWebView,
       useInstalledEngine: useInstalledEngine,
@@ -363,15 +363,6 @@ class _TikTokView extends StatelessWidget {
                     disableWebRtcScript,
                     if (forceEnglishWebViewLocale && !logic.useNativeWebView)
                       englishWebViewLocaleScript,
-                    if (!logic.useNativeWebView &&
-                        !logic.usesAccessibilityAccountFlow)
-                      inlineVideoScript,
-                    if (!logic.useNativeWebView &&
-                        !logic.usesAccessibilityAccountFlow)
-                      autoAcceptCookieScript,
-                    if (!logic.useNativeWebView &&
-                        !logic.usesAccessibilityAccountFlow)
-                      autoSelectInterestScript,
                   ],
                   onCreated: logic.onWebViewCreated,
                   onLoadStart: logic.onLoadStart,

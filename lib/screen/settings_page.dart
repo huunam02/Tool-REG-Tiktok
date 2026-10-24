@@ -13,10 +13,14 @@ class SettingsPage extends StatelessWidget {
     super.key,
     this.accessibilityPermission,
     this.proxyStore,
+    this.onBrowserCheck,
   });
 
   final AccessibilityPermissionService? accessibilityPermission;
   final ProxyStore? proxyStore;
+
+  /// Opens the browser check page without a proxy; hidden when null.
+  final VoidCallback? onBrowserCheck;
 
   @override
   Widget build(BuildContext context) => ControllerScope<SettingsController>(
@@ -24,14 +28,15 @@ class SettingsPage extends StatelessWidget {
       accessibilityPermission: accessibilityPermission,
       proxyStore: proxyStore,
     ),
-    builder: (controller) => _SettingsView(controller),
+    builder: (controller) => _SettingsView(controller, onBrowserCheck),
   );
 }
 
 class _SettingsView extends StatelessWidget {
-  const _SettingsView(this.controller);
+  const _SettingsView(this.controller, this.onBrowserCheck);
 
   final SettingsController controller;
+  final VoidCallback? onBrowserCheck;
 
   Future<void> _openGuide(BuildContext context) => Navigator.of(
     context,
@@ -91,7 +96,9 @@ class _SettingsView extends StatelessWidget {
                           : controller.checkingAccessibility
                           ? 'Đang kiểm tra quyền…'
                           : controller.accessibilityError ??
-                                (controller.accessibilityEnabled == true
+                                (controller.accessibilityStalled
+                                    ? 'Đã bật nhưng dịch vụ chưa chạy. Chạm để tắt rồi bật lại Trợ năng; nếu vẫn không chạy, khởi động lại điện thoại.'
+                                    : controller.accessibilityEnabled == true
                                     ? 'Đã bật. Chạm để thay đổi trong Cài đặt Android.'
                                     : 'Chưa bật. Bật switch để cấp quyền thao tác trên TikTok.'),
                       style: const TextStyle(
@@ -163,6 +170,38 @@ class _SettingsView extends StatelessWidget {
                 ],
               ),
             ),
+            if (onBrowserCheck case final check?) ...[
+              const SizedBox(height: 14),
+              SettingsPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Kiểm tra trình duyệt',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Mở whatsmybrowser.org bằng kết nối của máy, không dùng proxy.',
+                      style: TextStyle(
+                        color: SettingsStyle.muted,
+                        fontSize: 12,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    OutlinedButton(
+                      key: const Key('openBrowserCheck'),
+                      onPressed: check,
+                      child: const Text('Mở kiểm tra trình duyệt'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             SettingsPanel(
               child: Column(

@@ -33,6 +33,9 @@ void main() {
     'moving-button',
     'late-button',
     'never-ready',
+    'invalid-frame',
+    'service-stalled',
+    'webview-missing',
     'cancel-during-startup',
   ]) {
     testWidgets('waits before opening Log in: $scenario', (tester) async {
@@ -43,6 +46,19 @@ void main() {
         if (scenario == 'transient-webview' && elapsed().inSeconds < 4) {
           data['ready'] = false;
           data['webBounds'] = [0, 0, 0, 0];
+        }
+        if (scenario == 'webview-missing') {
+          // The service runs but no WebView node is exposed.
+          data['ready'] = false;
+        }
+        if (scenario == 'service-stalled') {
+          // Enabled in Android settings but not bound: nothing is readable.
+          data['ready'] = false;
+          data['serviceConnected'] = false;
+        }
+        if (scenario == 'invalid-frame') {
+          // A WebView frame clipped off its 1:2 ratio is never tapped.
+          data['webBounds'] = [0, 210, 1080, 1900];
         }
         final nodes = data['nodes'] as List;
         if (scenario == 'late-button' && elapsed().inSeconds < 6) {
@@ -107,8 +123,24 @@ void main() {
       }
       expect(finished, isTrue);
       await run;
-      if (scenario == 'never-ready') {
-        expect(failure, isA<StateError>());
+      if (scenario == 'webview-missing') {
+        expect(
+          '$failure',
+          contains(
+            'không đọc được WebView qua Trợ năng [active=app win=2 app=1 '
+            'n=40 foreign=0 web=GeckoView v1 c0 d12 942x1884]',
+          ),
+        );
+        expect(accessibility.actions, isEmpty);
+      } else if (scenario == 'service-stalled') {
+        expect('$failure', contains('dịch vụ Trợ năng chưa chạy'));
+        expect(tappedAt, isNull);
+        expect(accessibility.actions, isEmpty);
+      } else if (scenario == 'invalid-frame') {
+        expect(
+          '$failure',
+          contains('khung WebView 1080×1690 không đúng tỉ lệ 1:2'),
+        );
         expect(tappedAt, isNull);
         expect(accessibility.actions, isEmpty);
       } else if (scenario == 'cancel-during-startup') {
@@ -117,6 +149,8 @@ void main() {
         expect(accessibility.actions, isEmpty);
       } else {
         final minimumSeconds = switch (scenario) {
+          // No load event: a stable Log in is accepted after 20s.
+          'never-ready' => 20,
           'reload-during-wait' => 11,
           'delayed-load' || 'transient-webview' => 9,
           'moving-button' || 'late-button' => 8,
@@ -231,10 +265,15 @@ void main() {
       expect(finished, isTrue);
       await run;
       if (scenario.endsWith('signup-target') &&
-              scenario != 'moving-signup-target' ||
-          scenario == 'page-loading') {
+          scenario != 'moving-signup-target') {
         expect(failure, isA<StateError>());
         expect(accessibility.actions, isEmpty);
+        if (scenario == 'disabled-signup-target') {
+          expect('$failure', contains('nút "Sign up" đang bị tắt'));
+        }
+        if (scenario == 'missing-signup-target') {
+          expect('$failure', contains('không thấy nút "Sign up"'));
+        }
       } else if (scenario == 'cancel-modal') {
         expect(failure, isA<SignupCancelled>());
         expect(accessibility.actions, isEmpty);
@@ -246,7 +285,9 @@ void main() {
               ? ['signup-phone-email']
               : ['open-signup', 'signup-phone-email'],
         );
-        final minimumSeconds = scenario == 'moving-signup-target'
+        final minimumSeconds = scenario == 'page-loading'
+            ? 20
+            : scenario == 'moving-signup-target'
             ? 8
             : scenario.startsWith('auto-open')
             ? 6
@@ -874,6 +915,10 @@ class _RecordedAccessibility extends SignupAccessibility {
   bool failBirthdayReadback = false;
   bool freezeDropdown = false;
   bool hideNativeOptions = false;
+
+  @override
+  Future<String> diagnoseWeb() async =>
+      'active=app win=2 app=1 n=40 foreign=0 web=GeckoView v1 c0 d12 942x1884';
 
   /// GeckoView exposes a combobox as an EditText named "`<field>`. Double-tap
   /// for more options", with its selected value in a child node.

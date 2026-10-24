@@ -21,10 +21,29 @@ class FlutterAccessibilityService {
   static Future<bool> signupSetKeyboardSuppressed(bool suppressed) async =>
       await _methodChannel.invokeMethod<bool>('signupSetKeyboardSuppressed', {'suppressed': suppressed}) ?? false;
 
+  /// Short description of the app's windows and WebView/Gecko nodes when no
+  /// WebView can be read; shown in errors from devices without ADB access.
+  static Future<String> signupDiagnoseWeb() async =>
+      await _methodChannel.invokeMethod<String>('signupDiagnoseWeb') ?? '';
+
+  /// Whether the service is bound now. The permission setting alone can
+  /// stay on while Android has not reconnected it (e.g. after an update).
+  static Future<bool> isAccessibilityServiceRunning() async =>
+      await _methodChannel.invokeMethod<bool>('isAccessibilityServiceRunning') ?? false;
+
   /// Accessibility ACTION_CLICK on the Post button beside the focused,
   /// non-empty comment editor, for layouts where it is clipped off-screen.
   static Future<bool> signupSubmitComment() async =>
       await _methodChannel.invokeMethod<bool>('signupSubmitComment') ?? false;
+
+  /// Reveal the comment's Post control without entering or submitting text.
+  static Future<Map<String, dynamic>> signupRevealCommentPost(
+          String editorId, List<double> editorBounds) async =>
+      Map<String, dynamic>.from(await _methodChannel
+              .invokeMapMethod<String, dynamic>('signupRevealCommentPost', {
+                'editorId': editorId, 'editorBounds': editorBounds,
+              }) ??
+          {'ok': false, 'reason': 'post-unavailable'});
 
   static Future<bool> signupClearOtp(String expected) async =>
       await _methodChannel.invokeMethod<bool>('signupClearOtp', {'expected': expected}) ?? false;

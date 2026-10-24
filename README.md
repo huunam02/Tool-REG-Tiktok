@@ -45,7 +45,7 @@ APK debug được tạo tại `build/app/outputs/flutter-apk/app-debug.apk`.
 Galaxy S8 cần chạy Android 9/API 28 trở lên theo cấu hình hiện tại của project. Chạy lệnh sau từ thư mục gốc để build APK release chỉ chứa ARM64, giúp giảm dung lượng so với APK gộp nhiều kiến trúc CPU:
 
 ```bash
-./tool/flutterw build apk --release --target-platform=android-arm64
+./tool/flutter build apk --release --target-platform=android-arm64
 ```
 
 APK được tạo tại `build/app/outputs/flutter-apk/app-release.apk`. Chép file này sang Galaxy S8 và mở để cài đặt.
@@ -53,7 +53,7 @@ APK được tạo tại `build/app/outputs/flutter-apk/app-release.apk`. Chép 
 Để build kèm báo cáo phân tích dung lượng:
 
 ```bash
-./tool/flutterw build apk --release --target-platform=android-arm64 --analyze-size
+./tool/flutter build apk --release --target-platform=android-arm64 --analyze-size
 ```
 
 GeckoView được ghim ở `158.0.20261021001945`, với compileSdk 37.2. `hev-socks5-tunnel.aar` 2.19.1 nằm trong `android/app/libs/`.

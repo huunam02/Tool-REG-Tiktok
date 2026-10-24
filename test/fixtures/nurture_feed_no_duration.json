@@ -1,0 +1,162 @@
+{
+  "webBounds": [
+    92,
+    280,
+    1348,
+    2792
+  ],
+  "nodes": [
+    {
+      "editable": false,
+      "clickable": true,
+      "length": 0,
+      "description": "",
+      "className": "android.view.View",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        184,
+        280,
+        1287,
+        2792
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.1.2.0.0",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": true,
+      "length": 0,
+      "description": "",
+      "className": "android.view.View",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        246,
+        911,
+        1184,
+        2161
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.1.2.0.0.0",
+      "text": "Watch in full screen",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": true,
+      "length": 0,
+      "description": "",
+      "className": "android.view.View",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        1204,
+        1674,
+        1266,
+        1736
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.1.2.0.0.1.0.0",
+      "text": "fixture-creator",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": true,
+      "length": 0,
+      "description": "",
+      "className": "android.widget.Button",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        1204,
+        1862,
+        1266,
+        1962
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.1.2.0.0.1.2",
+      "text": "Read or add comments 895 comments",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": true,
+      "length": 0,
+      "description": "",
+      "className": "android.widget.Button",
+      "enabled": false,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        1286,
+        1485,
+        1328,
+        1526
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.1.2.1.0.0.0",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    },
+    {
+      "editable": false,
+      "clickable": true,
+      "length": 0,
+      "description": "",
+      "className": "android.widget.Button",
+      "enabled": true,
+      "password": false,
+      "hint": "",
+      "bounds": [
+        1286,
+        1546,
+        1328,
+        1587
+      ],
+      "focused": false,
+      "inputType": 0,
+      "id": "0.0.1.2.1.0.1.0",
+      "text": "",
+      "scrollable": false,
+      "selected": false
+    }
+  ],
+  "hidden": [
+    {
+      "editable": false,
+      "hint": "",
+      "bounds": [
+        581,
+        2062,
+        849,
+        2109
+      ],
+      "focused": false,
+      "length": 0,
+      "description": "",
+      "className": "android.view.View",
+      "id": "0.0.1.2.0.0.0.4.0.0",
+      "text": "00:00 / 00:00"
+    }
+  ],
+  "ready": true,
+  "keyboardVisible": false
+}

@@ -39,6 +39,7 @@ void main() {
       tester,
       AccessibilityPermissionService(
         supported: true,
+        isRunning: () async => true,
         isEnabled: () async => enabled,
         openSettings: () async {
           requests++;
@@ -72,6 +73,7 @@ void main() {
         tester,
         AccessibilityPermissionService(
           supported: true,
+          isRunning: () async => true,
           isEnabled: () async => enabled,
           openSettings: () async {
             requests++;
@@ -111,6 +113,7 @@ void main() {
         tester,
         AccessibilityPermissionService(
           supported: true,
+          isRunning: () async => true,
           isEnabled: () async {
             if (checkFailed) throw StateError('Permission unavailable');
             return true;
@@ -129,6 +132,24 @@ void main() {
       expect(find.textContaining('Không thể kiểm tra quyền'), findsNothing);
     },
   );
+
+  testWidgets('an enabled but unbound service asks to switch it off and on', (
+    tester,
+  ) async {
+    await _pumpAccessibilitySettings(
+      tester,
+      AccessibilityPermissionService(
+        supported: true,
+        isEnabled: () async => true,
+        isRunning: () async => false,
+      ),
+    );
+    final tile = tester.widget<SwitchListTile>(
+      find.byKey(const Key('accessibilitySettings')),
+    );
+    expect(tile.value, isFalse);
+    expect(find.textContaining('dịch vụ chưa chạy'), findsOneWidget);
+  });
 
   testWidgets('unsupported platforms hide accessibility without native calls', (
     tester,
@@ -155,6 +176,7 @@ void main() {
         tester,
         AccessibilityPermissionService(
           supported: true,
+          isRunning: () async => true,
           isEnabled: () => check.future,
         ),
         enlargedText: true,

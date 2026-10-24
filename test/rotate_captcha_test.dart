@@ -161,9 +161,9 @@ void main() {
     await expectLater(
       solver.solve(
         licenseKey: 'key',
-        read: () async => elapsed.elapsed < const Duration(seconds: 6)
-            ? null
-            : challenge,
+        attempts: 1,
+        read: () async =>
+            elapsed.elapsed < const Duration(seconds: 6) ? null : challenge,
         accessibility: SignupAccessibility(),
         guard: () async {},
         onStatus: (_) {},
@@ -423,6 +423,31 @@ void main() {
     },
     timeout: const Timeout(Duration(seconds: 40)),
   );
+
+  test('CAPTCHA service errors stop after exactly three attempts', () async {
+    var requests = 0;
+    final solver = RotateCaptchaSolver(
+      client: MockClient((_) async {
+        requests++;
+        return http.Response('unavailable', 503);
+      }),
+    );
+    addTearDown(solver.close);
+    await expectLater(
+      solver.solve(
+        licenseKey: 'fixture',
+        read: () async => challenge,
+        accessibility: SignupAccessibility(),
+        isPresent: () async => true,
+        guard: () async {},
+        onStatus: (_) {},
+        attempts: 3,
+      ),
+      throwsStateError,
+    );
+    expect(requests, 3);
+    expect(gestures, isEmpty);
+  });
 
   group('refresh', () {
     void snapshot(List<Map<String, Object>> nodes) =>

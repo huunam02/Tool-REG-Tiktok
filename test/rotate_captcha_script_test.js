@@ -6,6 +6,7 @@ const {readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync} = require('
 const {tmpdir} = require('node:os');
 const {join} = require('node:path');
 const {execFileSync} = require('node:child_process');
+const {runInNewContext} = require('node:vm');
 const source = readFileSync(join(__dirname, '../lib/core/scripts/rotate_captcha_script.dart'), 'utf8');
 const read = source.match(/readRotateCaptchaScript = r'''([\s\S]*?)''';/)[1];
 const present = source.match(/rotateCaptchaPresentScript = r'''([\s\S]*?)''';/)[1];
@@ -48,6 +49,10 @@ before(() => {
       '<div draggable="true" style="width:36px;height:36px;border-radius:50%"></div></div></div>' +
       '<button onclick="document.body.dataset.clicked=1">Refresh</button></div></div></div>';
     results.absent = sample();
+    await load('<div class="captcha-disable-scroll" style="width:100px;height:100px">Video feed</div>');
+    results.scrollLock = sample();
+    await load('<div class="captcha-verify-container" style="width:100px;height:100px"></div>');
+    results.emptyContainer = sample();
     await load(legacy()); results.legacy = sample();
     await load(legacy(true)); results.v1 = sample();
     await load(v2.replace('transform:scale(.35);', '').replace('top:700px', 'top:820px'));
@@ -63,6 +68,10 @@ before(() => {
     const modal = box.querySelector('.captcha-verify-container');
     modal.style.left = '1200px'; results.offscreen = sample();
     modal.style.left = '300px';
+    box.style.opacity = '0'; results.transparentParent = sample();
+    box.style.opacity = '';
+    box.style.visibility = 'hidden'; results.hiddenParent = sample();
+    box.style.visibility = '';
     box.querySelector('div[draggable]').style.marginLeft = '100px'; results.moved = sample();
     box.querySelector('div[draggable]').style.marginLeft = '';
     box.querySelector('img.cap-absolute').remove(); results.incomplete = sample();
@@ -104,12 +113,23 @@ test('scopes image and handle selection to the visible CAPTCHA', options, () => 
   assert.equal(results.clicked, null);
 });
 test('does not solve an offscreen, moved, incomplete or hidden challenge', options, () => {
-  for (const kind of ['offscreen', 'moved', 'incomplete']) {
+  for (const kind of ['moved', 'incomplete']) {
     assert.equal(results[kind].present, true);
     assert.equal(results[kind].challenge, null);
   }
   assert.deepEqual(results.hidden, {present:false, challenge:null});
   assert.deepEqual(results.absent, {present:false, challenge:null});
+  for (const kind of ['offscreen', 'scrollLock', 'emptyContainer', 'transparentParent', 'hiddenParent']) {
+    assert.deepEqual(results[kind], {present:false, challenge:null}, kind);
+  }
+});
+
+test('hidden or unrelated documents report unknown CAPTCHA presence', () => {
+  for (const [origin, hidden] of [
+    ['https://www.tiktok.com', true], ['https://example.com', false],
+  ]) {
+    assert.equal(runInNewContext(present, {location: {origin}, document: {hidden}}), null);
+  }
 });
 
 test('reads a desktop CSS viewport before WebView scales it to phone size', options, () => {

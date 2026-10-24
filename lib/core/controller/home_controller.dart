@@ -679,6 +679,36 @@ class HomeController extends AppController
   /// Quản lý cấu hình > Kiểm tra IP: load [entry] in a fresh session (proxy,
   /// User-Agent, time zone, GPU), then open WhatIsMyBrowser with it. A check
   /// leaves the configuration's Đã dùng state unchanged.
+  /// Cài đặt › Kiểm tra trình duyệt: the device's own connection (no proxy)
+  /// and the default identity, outside any configuration.
+  Future<void> openBrowserCheck(
+    Future<void> Function(AppConfiguration configuration) navigate,
+  ) async {
+    if (opening || autoRunning || checkingConfiguration) return;
+    mutate(() => opening = true);
+    try {
+      final browserUserAgent = await resolveWebViewUserAgent(directUserAgent);
+      if (!active) return;
+      await configureWebViewProxy(null);
+      if (!active) return;
+      await navigate(
+        AppConfiguration(
+          userAgent: browserUserAgent,
+          comments: const [],
+          signupEmail: '',
+          signupPassword: '',
+          loginUsername: '',
+          loginPassword: '',
+          gpuProfile: GpuProfile.forDevice().first,
+        ),
+      );
+    } catch (_) {
+      if (active) notify('Không mở được trang kiểm tra trình duyệt.');
+    } finally {
+      if (active) mutate(() => opening = false);
+    }
+  }
+
   Future<void> checkConfiguration(
     SavedProxy entry,
     Future<void> Function(AppConfiguration configuration) navigate,

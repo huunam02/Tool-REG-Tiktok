@@ -1,0 +1,69 @@
+{
+  "sessions": [
+    {
+      "configuration_id": 4,
+      "mode": "feed",
+      "phase": "completed",
+      "created_at": 1792768284319,
+      "updated_at": 1792768418335,
+      "watch_ms": 79000,
+      "videos": 2,
+      "full_videos": 2,
+      "skipped_videos": 0,
+      "likes": 0,
+      "comments": 1
+    },
+    {
+      "configuration_id": 5,
+      "mode": "search",
+      "phase": "completed",
+      "created_at": 1792768436587,
+      "updated_at": 1792768575689,
+      "watch_ms": 69000,
+      "videos": 2,
+      "full_videos": 1,
+      "skipped_videos": 1,
+      "likes": 2,
+      "comments": 0
+    },
+    {
+      "configuration_id": 1,
+      "mode": "search",
+      "phase": "completed",
+      "created_at": 1792768589034,
+      "updated_at": 1792768748037,
+      "watch_ms": 74000,
+      "videos": 1,
+      "full_videos": 1,
+      "skipped_videos": 0,
+      "likes": 0,
+      "comments": 0
+    }
+  ],
+  "settings": [
+    {
+      "id": 1,
+      "nurture_comment_percent": 40,
+      "nurture_like_percent": 30,
+      "nurture_long_watch_percent": 50,
+      "nurture_min_minutes": 2,
+      "nurture_max_minutes": 3
+    },
+    {
+      "id": 4,
+      "nurture_comment_percent": 20,
+      "nurture_like_percent": 30,
+      "nurture_long_watch_percent": 50,
+      "nurture_min_minutes": 2,
+      "nurture_max_minutes": 3
+    },
+    {
+      "id": 5,
+      "nurture_comment_percent": 20,
+      "nurture_like_percent": 30,
+      "nurture_long_watch_percent": 50,
+      "nurture_min_minutes": 2,
+      "nurture_max_minutes": 3
+    }
+  ]
+}

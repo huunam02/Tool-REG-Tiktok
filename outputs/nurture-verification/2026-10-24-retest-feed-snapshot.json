@@ -1,0 +1,118 @@
+{
+  "receivedAt": "2026-10-24T10:08:48.266212+07:00",
+  "ready": true,
+  "keyboardVisible": false,
+  "webBounds": [
+    92,
+    280,
+    1348,
+    2792
+  ],
+  "controls": [
+    {
+      "id": "0.0.1.1.1",
+      "bounds": [
+        112,
+        362,
+        163,
+        413
+      ],
+      "hint": "Search",
+      "length": 0,
+      "focused": false,
+      "enabled": true,
+      "clickable": true,
+      "className": "android.widget.EditText"
+    },
+    {
+      "id": "0.0.1.2.0.1.0.4.0.0",
+      "bounds": [
+        581,
+        921,
+        849,
+        967
+      ],
+      "hint": "",
+      "length": 0,
+      "focused": false,
+      "className": "android.view.View",
+      "text": "00:00 / 00:00",
+      "description": ""
+    },
+    {
+      "id": "0.0.1.2.0.1.1.2",
+      "bounds": [
+        1204,
+        653,
+        1266,
+        753
+      ],
+      "hint": "",
+      "length": 0,
+      "focused": false,
+      "className": "android.widget.Button",
+      "text": "Read or add comments 2303 comments",
+      "description": ""
+    },
+    {
+      "id": "0.0.1.2.0.2.0.4.0.0",
+      "bounds": [
+        583,
+        3433,
+        846,
+        3479
+      ],
+      "hint": "",
+      "length": 0,
+      "focused": false,
+      "className": "android.view.View",
+      "text": "00:02 / 00:28",
+      "description": ""
+    },
+    {
+      "id": "0.0.1.2.0.2.1.2",
+      "bounds": [
+        1204,
+        3165,
+        1266,
+        3265
+      ],
+      "hint": "",
+      "length": 0,
+      "focused": false,
+      "className": "android.widget.Button",
+      "text": "Read or add comments 28 comments",
+      "description": ""
+    },
+    {
+      "id": "0.0.1.2.0.3.0.4.0.0",
+      "bounds": [
+        581,
+        5945,
+        849,
+        5991
+      ],
+      "hint": "",
+      "length": 0,
+      "focused": false,
+      "className": "android.view.View",
+      "text": "00:00 / 00:00",
+      "description": ""
+    },
+    {
+      "id": "0.0.1.2.0.3.1.2",
+      "bounds": [
+        1204,
+        5677,
+        1266,
+        5777
+      ],
+      "hint": "",
+      "length": 0,
+      "focused": false,
+      "className": "android.widget.Button",
+      "text": "Read or add comments 4625 comments",
+      "description": ""
+    }
+  ]
+}

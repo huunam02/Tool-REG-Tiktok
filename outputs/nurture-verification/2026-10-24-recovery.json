@@ -1,0 +1,26 @@
+{
+  "snapshot": "default_boot (2026-10-23 22:02:37)",
+  "configurationSettingsMatched": true,
+  "reconstructedSessions": [
+    {
+      "configuration_id": 1,
+      "created_at": 1792809528006,
+      "watch_ms": 132000,
+      "videos": 4
+    },
+    {
+      "configuration_id": 5,
+      "created_at": 1792809711448,
+      "watch_ms": 99000,
+      "videos": 4
+    },
+    {
+      "configuration_id": 4,
+      "created_at": 1792809909951,
+      "watch_ms": 95000,
+      "videos": 3
+    }
+  ],
+  "sessionIdsReconstructed": true,
+  "backupStoredPrivately": true
+}

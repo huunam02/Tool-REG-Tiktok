@@ -1,0 +1,43 @@
+{
+  "sessions": [
+    {
+      "configuration_id": 4,
+      "mode": "feed",
+      "phase": "running",
+      "created_at": 1792812360770,
+      "updated_at": 1792812436782,
+      "watch_ms": 9000,
+      "videos": 1,
+      "full_videos": 0,
+      "skipped_videos": 1,
+      "likes": 0,
+      "comments": 0
+    }
+  ],
+  "settings": [
+    {
+      "id": 1,
+      "nurture_comment_percent": 40,
+      "nurture_like_percent": 30,
+      "nurture_long_watch_percent": 50,
+      "nurture_min_minutes": 2,
+      "nurture_max_minutes": 3
+    },
+    {
+      "id": 4,
+      "nurture_comment_percent": 20,
+      "nurture_like_percent": 30,
+      "nurture_long_watch_percent": 50,
+      "nurture_min_minutes": 2,
+      "nurture_max_minutes": 3
+    },
+    {
+      "id": 5,
+      "nurture_comment_percent": 20,
+      "nurture_like_percent": 30,
+      "nurture_long_watch_percent": 50,
+      "nurture_min_minutes": 2,
+      "nurture_max_minutes": 3
+    }
+  ]
+}

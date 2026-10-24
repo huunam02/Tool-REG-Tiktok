@@ -1,0 +1,89 @@
+{
+  "keyboardVisible": false,
+  "webBounds": [
+    92,
+    280,
+    1348,
+    2792
+  ],
+  "clocks": [
+    {
+      "label": "00:21/00:27 ",
+      "bounds": [
+        544,
+        2730,
+        641,
+        2751
+      ]
+    }
+  ],
+  "editors": [
+    {
+      "id": "0.0.1.1.1",
+      "hint": "Search",
+      "bounds": [
+        112,
+        362,
+        163,
+        413
+      ],
+      "length": 0,
+      "focused": false,
+      "visible": null,
+      "enabled": true
+    },
+    {
+      "id": "0.0.1.2.0.3.0.0.0.0",
+      "hint": "Find related content",
+      "bounds": [
+        230,
+        321,
+        675,
+        348
+      ],
+      "length": 0,
+      "focused": false,
+      "visible": null,
+      "enabled": true
+    },
+    {
+      "id": "0.0.1.2.0.3.3.0.0",
+      "hint": "",
+      "bounds": [
+        893,
+        2725,
+        1365,
+        2754
+      ],
+      "length": 38,
+      "focused": false,
+      "visible": null,
+      "enabled": true
+    },
+    {
+      "id": "0.0.1.2.0.3.3.0.0.0",
+      "hint": "",
+      "bounds": [
+        893,
+        2725,
+        1365,
+        2754
+      ],
+      "length": 0,
+      "focused": false,
+      "visible": null,
+      "enabled": true
+    }
+  ],
+  "post": [
+    {
+      "bounds": [
+        1497,
+        2719,
+        1538,
+        2760
+      ],
+      "enabled": null
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "keyboardVisible": false,
+  "webBounds": [
+    92,
+    280,
+    1348,
+    2792
+  ],
+  "controls": [
+    {
+      "label": "Read or add comments 59 comments ",
+      "bounds": [
+        1204,
+        2027,
+        1266,
+        2127
+      ],
+      "enabled": true
+    }
+  ]
+}

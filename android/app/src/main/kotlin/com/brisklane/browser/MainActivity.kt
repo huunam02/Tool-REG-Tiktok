@@ -4,21 +4,73 @@ import android.app.ActivityManager
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.BroadcastReceiver
+import android.content.ContentResolver
 import android.content.Context
 import android.content.IntentFilter
 import android.os.Build
+import android.view.View
+import android.view.accessibility.AccessibilityManager
 import org.json.JSONObject
 import com.brisklane.browser.gecko.GeckoViewFactory
 import com.brisklane.browser.gecko.GeckoPlatformView
 import com.brisklane.browser.proxy.ProfileVpnManager
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.systemchannels.AccessibilityChannel
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.platform.PlatformViewsAccessibilityDelegate
+import io.flutter.view.AccessibilityBridge
 
 class MainActivity: FlutterActivity() {
     private var signupCalibration: MethodChannel? = null
     private var calibrationReceiver: BroadcastReceiver? = null
     private var profileVpnManager: ProfileVpnManager? = null
+
+    override fun onStart() {
+        super.onStart()
+        exposePlatformViewsToAccessibility()
+    }
+
+    /**
+     * Before Android 10, Flutter makes its platform views reachable by
+     * overriding the hidden ViewGroup.findViewByAccessibilityIdTraversal.
+     * Samsung's Android 9 (the customer's Galaxy S8) blocks that override, so
+     * the GeckoView child resolves to null and signup reads no TikTok page
+     * (web=none). With no node provider on FlutterView, Android walks the real
+     * views instead and reaches GeckoView. The automation reads only the web
+     * and native picker nodes, never Flutter's own semantics.
+     */
+    private fun exposePlatformViewsToAccessibility() {
+        if (Build.VERSION.SDK_INT >= 29) return
+        val view = findViewById<FlutterView>(FLUTTER_VIEW_ID) ?: return
+        val engine = flutterEngine ?: return
+        // Matched by type: R8 may rename the field in release builds.
+        val field = FlutterView::class.java.declaredFields
+            .firstOrNull { it.type == AccessibilityBridge::class.java } ?: return
+        field.isAccessible = true
+        val current = field.get(view) as? AccessibilityBridge ?: return
+        if (current is ViewTreeAccessibilityBridge) return
+        current.release()
+        field.set(view, ViewTreeAccessibilityBridge(
+            view,
+            engine.accessibilityChannel,
+            getSystemService(AccessibilityManager::class.java),
+            contentResolver,
+            engine.platformViewsControllerDelegator,
+        ))
+    }
+
+    /** Keeps semantics updates flowing but stops FlutterView from returning a node provider. */
+    private class ViewTreeAccessibilityBridge(
+        view: View,
+        channel: AccessibilityChannel,
+        manager: AccessibilityManager,
+        resolver: ContentResolver,
+        platformViews: PlatformViewsAccessibilityDelegate,
+    ) : AccessibilityBridge(view, channel, manager, resolver, platformViews) {
+        override fun isAccessibilityEnabled() = false
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

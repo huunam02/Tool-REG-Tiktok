@@ -44,7 +44,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     this.launchAction = TikTokLaunchAction.browse,
     this.startWithNurture = false,
     this.startWithBrowserCheck = false,
-    this.browserCheckPage,
     this.startWithIpCheck = false,
     bool useNativeWebView = false,
     this.useInstalledEngine = true,
@@ -324,17 +323,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   final DateTime Function() _now;
   final bool? _accessibilityOverride;
   String get initialUrl => startWithBrowserCheck
-      ? browserCheckPage ?? browserCheckUrl
+      ? browserCheckUrl
       : startWithIpCheck
       ? ipCheckUrl
       : manualViewingPlan?.initialUrl ?? launchAction.initialUrl;
+  /// Quản lý cấu hình › Kiểm tra IP opens this with the configuration loaded.
   static const browserCheckUrl = 'https://www.whatismybrowser.com/';
-
-  /// Settings › Kiểm tra trình duyệt, opened without any proxy.
-  static const deviceBrowserCheckUrl = 'https://www.whatsmybrowser.org/';
-
-  /// The page [startWithBrowserCheck] opens; [browserCheckUrl] when null.
-  final String? browserCheckPage;
   static const ipCheckUrl = 'https://www.whatismyip.com/';
   bool browserCheckOpen;
   bool browserIdentityReady = false;
@@ -2097,8 +2091,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       browserCheckOpen =
           host == 'whatismybrowser.com' ||
           host.endsWith('.whatismybrowser.com') ||
-          host == 'whatsmybrowser.org' ||
-          host.endsWith('.whatsmybrowser.org') ||
           host == 'whatismyip.com' ||
           host.endsWith('.whatismyip.com');
       navigationId++;

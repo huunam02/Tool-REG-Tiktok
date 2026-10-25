@@ -28,7 +28,6 @@ class TikTokPage extends StatelessWidget {
     this.launchAction = TikTokLaunchAction.browse,
     this.startWithNurture = false,
     this.startWithBrowserCheck = false,
-    this.browserCheckPage,
     this.startWithIpCheck = false,
     bool useNativeWebView = false,
     this.useInstalledEngine = true,
@@ -43,7 +42,6 @@ class TikTokPage extends StatelessWidget {
   final TikTokLaunchAction launchAction;
   final bool startWithNurture;
   final bool startWithBrowserCheck;
-  final String? browserCheckPage;
   final bool startWithIpCheck;
   final bool useNativeWebView;
   final bool useInstalledEngine;
@@ -53,7 +51,7 @@ class TikTokPage extends StatelessWidget {
   final ProxyStore? proxyStore;
   final bool autoAdvance;
   String get initialUrl => startWithBrowserCheck
-      ? browserCheckPage ?? TikTokController.browserCheckUrl
+      ? TikTokController.browserCheckUrl
       : startWithIpCheck
       ? TikTokController.ipCheckUrl
       : manualViewingPlan?.initialUrl ?? launchAction.initialUrl;
@@ -66,7 +64,6 @@ class TikTokPage extends StatelessWidget {
       launchAction: launchAction,
       startWithNurture: startWithNurture,
       startWithBrowserCheck: startWithBrowserCheck,
-      browserCheckPage: browserCheckPage,
       startWithIpCheck: startWithIpCheck,
       useNativeWebView: useNativeWebView,
       useInstalledEngine: useInstalledEngine,

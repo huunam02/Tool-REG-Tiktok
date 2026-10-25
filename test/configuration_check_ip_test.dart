@@ -61,32 +61,13 @@ void main() {
     expect(find.text('Kiểm tra IP / User-Agent'), findsNothing);
     expect(find.text('Kiểm tra IP với WhatIsMyIP'), findsNothing);
     expect(find.text('Xuất dữ liệu Excel'), findsOneWidget);
-    // Without an action, the device browser check is hidden too.
-    expect(find.byKey(const Key('openBrowserCheck')), findsNothing);
+    expect(find.text('Kiểm tra trình duyệt'), findsNothing);
   });
 
-  testWidgets('Cài đặt opens the browser check without a proxy', (
-    tester,
-  ) async {
-    var opened = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsPage(
-          proxyStore: MemoryProxyStore(),
-          onBrowserCheck: () => opened++,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Kiểm tra trình duyệt'), findsOneWidget);
-    final button = find.byKey(const Key('openBrowserCheck'));
-    await tester.ensureVisible(button);
-    await tester.tap(button);
-    await tester.pumpAndSettle();
-    expect(opened, 1);
+  test('Kiểm tra IP opens WhatIsMyBrowser', () {
     expect(
-      TikTokController.deviceBrowserCheckUrl,
-      'https://www.whatsmybrowser.org/',
+      TikTokController.browserCheckUrl,
+      'https://www.whatismybrowser.com/',
     );
   });
 }

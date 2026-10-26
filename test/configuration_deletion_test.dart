@@ -15,7 +15,7 @@ import 'package:test_tiktok/core/proxy_store.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
-  const channel = MethodChannel('test_tiktok/gecko_storage');
+  const channel = MethodChannel('test_tiktok/browser_storage');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   late Directory directory;
@@ -112,9 +112,12 @@ void main() {
       expect(await store.getCurrentProfile(), isNull);
       expect(await store.canReuseCurrentAccountSession(), isFalse);
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.containsKey('tiktok_gecko_session_valid_$removed'), isFalse);
+      expect(
+        prefs.containsKey('tiktok_webview_session_valid_$removed'),
+        isFalse,
+      );
       expect(prefs.containsKey('tiktok_session_owner_v2'), isFalse);
-      expect(prefs.getBool('tiktok_gecko_session_valid_$kept'), isTrue);
+      expect(prefs.getBool('tiktok_webview_session_valid_$kept'), isTrue);
       final db = await inspect();
       expect((await db.query('configurations')).single['id'], kept);
       expect(

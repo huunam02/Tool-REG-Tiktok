@@ -31,7 +31,7 @@ import '../app_session.dart';
 import '../otp_api.dart';
 import '../proxy_store.dart';
 import '../webview_failure.dart';
-import '../gecko_browser.dart';
+import '../browser_view.dart';
 import '../webview_locale.dart';
 import '../tiktok_launch_action.dart';
 import '../tiktok_flow_result.dart';
@@ -327,6 +327,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       : startWithIpCheck
       ? ipCheckUrl
       : manualViewingPlan?.initialUrl ?? launchAction.initialUrl;
+
   /// Quản lý cấu hình › Kiểm tra IP opens this with the configuration loaded.
   static const browserCheckUrl = 'https://www.whatismybrowser.com/';
   static const ipCheckUrl = 'https://www.whatismyip.com/';
@@ -682,7 +683,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   static const _signupCalibrationChannel = MethodChannel(
     'test_tiktok/signup_calibration',
   );
-  GeckoController? webViewController;
+  BrowserController? webViewController;
   bool initialActionStarted = false;
   bool initialPageLoaded = false;
   bool autoLoginBusy = false;
@@ -1768,7 +1769,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           return pending.code!;
         },
         onOtpRejected: rejectedOtps.add,
-        // Same GeckoSession: proxy, identity and the login attempt remain.
+        // Same WebView: proxy, identity and the login attempt remain.
         reloadBlankPage: () async => webViewController?.reload(),
         cancelOtpRequest: () {
           request?.cancel();
@@ -2052,7 +2053,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     });
   }
 
-  Future<void> onWebViewCreated(GeckoController controller) async {
+  Future<void> onWebViewCreated(BrowserController controller) async {
     webViewController = controller;
     _startRotateCaptchaMonitor();
     if (usesAccessibilityAccountFlow && kDebugMode) {
@@ -2077,7 +2078,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     }
   }
 
-  void onLoadStart(GeckoController controller, Uri? url) {
+  void onLoadStart(BrowserController controller, Uri? url) {
     if (!active) return;
     _nurtureRecoveryTimer?.cancel();
     _nurtureRecoveryTimer = null;
@@ -2105,14 +2106,14 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     _startRotateCaptchaMonitor();
   }
 
-  void onProgressChanged(GeckoController controller, int progress) {
+  void onProgressChanged(BrowserController controller, int progress) {
     if (!active) return;
     mutate(() {
       loadingProgress = progress;
     });
   }
 
-  Future<void> onLoadStop(GeckoController controller, Uri? url) async {
+  Future<void> onLoadStop(BrowserController controller, Uri? url) async {
     await handlePageLoadComplete(url);
     final host = url?.host ?? '';
     final session = _manualSession;
@@ -2199,12 +2200,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   void onReceivedError(
-    GeckoController controller,
-    GeckoWebResourceRequest request,
-    GeckoWebResourceError error,
+    BrowserController controller,
+    BrowserWebResourceRequest request,
+    BrowserWebResourceError error,
   ) {
     if (error.description.contains('net::ERR_ABORTED') ||
-        error.type == GeckoWebResourceErrorType.cancelled) {
+        error.type == BrowserWebResourceErrorType.cancelled) {
       return;
     }
     final failure = WebViewFailure.network(
@@ -2228,7 +2229,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     cancelAutoActions();
     unawaited(
       webViewController?.loadUrl(
-        urlRequest: GeckoUrlRequest(
+        urlRequest: BrowserUrlRequest(
           url: Uri.parse(tiktokHomeUrl),
           headers: navigationHeaders,
         ),
@@ -2250,9 +2251,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     });
     await stopAutoWatch();
     if (!active) return;
-    // Navigate the existing GeckoSession: proxy, UA and context remain intact.
+    // Navigate the existing WebView: proxy, UA and context remain intact.
     await controller.loadUrl(
-      urlRequest: GeckoUrlRequest(
+      urlRequest: BrowserUrlRequest(
         url: Uri.parse(browserCheckUrl),
         headers: navigationHeaders,
       ),

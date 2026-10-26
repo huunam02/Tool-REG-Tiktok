@@ -5,7 +5,7 @@ import 'app_configuration.dart';
 import 'configuration_data.dart';
 import 'proxy_draft.dart';
 import 'desktop_user_agents.dart';
-import 'firefox_user_agent.dart';
+import 'chrome_user_agent.dart';
 import 'proxy_time_zone.dart';
 import 'device_memory.dart';
 import 'gpu_profile.dart';

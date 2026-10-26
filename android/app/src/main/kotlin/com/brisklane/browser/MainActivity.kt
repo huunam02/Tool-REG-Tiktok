@@ -11,8 +11,10 @@ import android.os.Build
 import android.view.View
 import android.view.accessibility.AccessibilityManager
 import org.json.JSONObject
-import com.brisklane.browser.gecko.GeckoViewFactory
-import com.brisklane.browser.gecko.GeckoPlatformView
+import com.brisklane.browser.webkit.BrowserPlatformView
+import com.brisklane.browser.webkit.BrowserProfiles
+import com.brisklane.browser.webkit.BrowserViewFactory
+import com.brisklane.browser.webkit.DesktopChromeIdentity
 import com.brisklane.browser.proxy.ProfileVpnManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterView
@@ -36,9 +38,9 @@ class MainActivity: FlutterActivity() {
      * Before Android 10, Flutter makes its platform views reachable by
      * overriding the hidden ViewGroup.findViewByAccessibilityIdTraversal.
      * Samsung's Android 9 (the customer's Galaxy S8) blocks that override, so
-     * the GeckoView child resolves to null and signup reads no TikTok page
+     * the WebView child resolves to null and signup reads no TikTok page
      * (web=none). With no node provider on FlutterView, Android walks the real
-     * views instead and reaches GeckoView. The automation reads only the web
+     * views instead and reaches the WebView. The automation reads only the web
      * and native picker nodes, never Flutter's own semantics.
      */
     private fun exposePlatformViewsToAccessibility() {
@@ -115,24 +117,27 @@ class MainActivity: FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         flutterEngine.platformViewsController.registry.registerViewFactory(
-            "test_tiktok/gecko_view",
-            GeckoViewFactory(this, flutterEngine.dartExecutor.binaryMessenger),
+            "test_tiktok/browser_view",
+            BrowserViewFactory(this, flutterEngine.dartExecutor.binaryMessenger),
         )
         profileVpnManager = ProfileVpnManager(this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/profile_vpn")
             .setMethodCallHandler(profileVpnManager)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/gecko_storage")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/browser_storage")
             .setMethodCallHandler { call, result ->
-                val storage = com.brisklane.browser.gecko.GeckoRuntimeHolder.runtime(this).storageController
-                when (call.method) {
-                    "clearContext" -> {
-                        val contextId = call.argument<String>("contextId")
-                        if (contextId.isNullOrBlank()) result.error("invalid_context", "Missing Gecko context ID", null)
-                        else { storage.clearDataForSessionContext(contextId); result.success(null) }
+                try {
+                    when (call.method) {
+                        "clearContext" -> {
+                            val contextId = call.argument<String>("contextId")
+                            if (contextId.isNullOrBlank()) result.error("invalid_context", "Missing browser context ID", null)
+                            else BrowserProfiles.clear(contextId) { result.success(null) }
+                        }
+                        "clearAll" -> BrowserProfiles.clearAll { result.success(null) }
+                        else -> result.notImplemented()
                     }
-                    "clearAll" -> storage.clearData(org.mozilla.geckoview.StorageController.ClearFlags.ALL)
-                        .accept({ result.success(null) }, { result.error("clear_failed", it?.message, null) })
-                    else -> result.notImplemented()
+                } catch (error: RuntimeException) {
+                    android.util.Log.e("BrowserProfiles", "${call.method} failed", error)
+                    result.error("clear_failed", error.message, null)
                 }
             }
         signupCalibration = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/signup_calibration")
@@ -146,9 +151,14 @@ class MainActivity: FlutterActivity() {
                 registerReceiver(calibrationReceiver, filter, "android.permission.DUMP", null, Context.RECEIVER_EXPORTED)
             } else registerReceiver(calibrationReceiver, filter, "android.permission.DUMP", null)
         }
-        // Physical RAM, from which Dart derives the phone's navigator.deviceMemory.
+        // Physical RAM, from which Dart derives the phone's navigator.deviceMemory,
+        // and the WebView's desktop Chrome identity for the app's own requests.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/device")
             .setMethodCallHandler { call, result ->
+                if (call.method == "webViewUserAgent") {
+                    result.success(DesktopChromeIdentity.userAgent(this))
+                    return@setMethodCallHandler
+                }
                 if (call.method != "totalMemory") {
                     result.notImplemented()
                     return@setMethodCallHandler
@@ -167,8 +177,8 @@ class MainActivity: FlutterActivity() {
                 val attempt = call.argument<Number>("attempt")
                 val context = call.argument<String>("context") ?: "login"
                 val action = call.argument<String>("action") ?: "send-code"
-                val gecko = GeckoPlatformView.active
-                if (gecko == null) {
+                val browser = BrowserPlatformView.active
+                if (browser == null) {
                     result.success(null)
                     return@setMethodCallHandler
                 }
@@ -176,7 +186,7 @@ class MainActivity: FlutterActivity() {
                 val method = sendCodeTargetMethod(context, action)
                 if (call.method == "invalidateTarget") {
                     val key = JSONObject.quote("$context/$action")
-                    gecko.evaluateNative("window.__flutterNativeTapTargets?.delete($key) === true") { value, _ ->
+                    browser.evaluateNative("window.__flutterNativeTapTargets?.delete($key) === true") { value, _ ->
                         result.success(value == true)
                     }
                     return@setMethodCallHandler
@@ -185,13 +195,13 @@ class MainActivity: FlutterActivity() {
                     result.success(null)
                     return@setMethodCallHandler
                 }
-                gecko.evaluateNative("window.$state?.$method?.(${attempt.toInt()}) ?? null") { value, _ ->
+                browser.evaluateNative("window.$state?.$method?.(${attempt.toInt()}) ?? null") { value, _ ->
                     val target = value as? Map<*, *>
                     val x = (target?.get("x") as? Number)?.toDouble()
                     val y = (target?.get("y") as? Number)?.toDouble()
                     val viewportWidth = (target?.get("viewportWidth") as? Number)?.toDouble()
                     val viewportHeight = (target?.get("viewportHeight") as? Number)?.toDouble()
-                    val view = gecko.view
+                    val view = browser.view
                     if (x == null || y == null || viewportWidth == null || viewportHeight == null ||
                         viewportWidth <= 0 || viewportHeight <= 0 || x !in 0.0..<viewportWidth || y !in 0.0..<viewportHeight) {
                         result.success(null)
@@ -208,8 +218,8 @@ class MainActivity: FlutterActivity() {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
-                val gecko = GeckoPlatformView.active
-                if (gecko == null) {
+                val browser = BrowserPlatformView.active
+                if (browser == null) {
                     result.success(false)
                     return@setMethodCallHandler
                 }
@@ -249,7 +259,7 @@ class MainActivity: FlutterActivity() {
                       return editor.value === value;
                     })()
                 """.trimIndent()
-                gecko.evaluateNative(script) { value, _ -> result.success(value == true) }
+                browser.evaluateNative(script) { value, _ -> result.success(value == true) }
             }
     }
 

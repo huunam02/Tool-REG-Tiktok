@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/captcha_settings_store.dart';
 import 'package:test_tiktok/core/controller/tiktok_controller.dart';
-import 'package:test_tiktok/core/gecko_browser.dart';
+import 'package:test_tiktok/core/browser_view.dart';
 import 'package:test_tiktok/core/nurture_coordinate_profile.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/signup_accessibility.dart';
@@ -126,7 +126,7 @@ class _Controller extends TikTokController {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  const channel = MethodChannel('test_tiktok/gecko_view_87');
+  const channel = MethodChannel('test_tiktok/browser_view_87');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
@@ -152,7 +152,7 @@ void main() {
           tester.binding.clock.now,
           automatic: automatic,
         )..onInit();
-        final browser = GeckoController.test(87);
+        final browser = BrowserController.test(87);
         var reloads = 0;
         messenger.setMockMethodCallHandler(channel, (call) async {
           if (call.method == 'getUrl') return 'https://www.tiktok.com/';
@@ -219,7 +219,7 @@ void main() {
         automatic: true,
         results: results,
       )..onInit();
-      final browser = GeckoController.test(87);
+      final browser = BrowserController.test(87);
       var reloads = 0;
       messenger.setMockMethodCallHandler(channel, (call) async {
         if (call.method == 'getUrl') return 'https://www.tiktok.com/';
@@ -272,7 +272,7 @@ void main() {
       ..dialog = true;
     final logic = _Controller(accessibility, settings, tester.binding.clock.now)
       ..onInit();
-    final browser = GeckoController.test(87);
+    final browser = BrowserController.test(87);
     var reloads = 0;
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'getUrl') return 'https://www.tiktok.com/';
@@ -321,7 +321,7 @@ void main() {
       tester.binding.clock.now,
       automatic: true,
     )..onInit();
-    final browser = GeckoController.test(87);
+    final browser = BrowserController.test(87);
     var reloads = 0;
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'getUrl') return 'https://www.tiktok.com/';
@@ -367,7 +367,7 @@ void main() {
         results: results,
         proxy: WebViewProxy(uri: Uri.parse('http://127.0.0.1:8080')),
       )..onInit();
-      final browser = GeckoController.test(87);
+      final browser = BrowserController.test(87);
       messenger.setMockMethodCallHandler(channel, (call) async {
         if (call.method == 'getUrl') return 'https://www.tiktok.com/';
         return null;
@@ -426,7 +426,7 @@ void main() {
           settings,
           tester.binding.clock.now,
         )..onInit();
-        final browser = GeckoController.test(87);
+        final browser = BrowserController.test(87);
         var reloads = 0;
         messenger.setMockMethodCallHandler(channel, (call) async {
           if (call.method == 'getUrl') return 'https://www.tiktok.com/';

@@ -438,7 +438,7 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedProxyUserAgent', index),
           controller: fields.userAgent,
-          // GeckoView sends only Firefox with "Desktop site" on.
+          // The WebView sends only Chrome with "Desktop site" on.
           readOnly: true,
           enabled: !fields.generating,
           autocorrect: false,
@@ -448,7 +448,7 @@ class _ProxyFormView extends StatelessWidget {
           style: const TextStyle(fontSize: 12, height: 1.6),
           decoration: InputDecoration(
             helperText: needsAndroidDesktopIdentity
-                ? 'Firefox trên điện thoại, bật chế độ trang web cho máy tính (GeckoView).'
+                ? 'Chrome trên điện thoại, bật chế độ trang web cho máy tính (WebView).'
                 : null,
             helperMaxLines: 4,
           ),
@@ -469,7 +469,7 @@ class _ProxyFormView extends StatelessWidget {
           ),
         const SizedBox(height: 20),
         _fieldLabel(
-          'Múi giờ GeckoView',
+          'Múi giờ WebView',
           action: TextButton.icon(
             key: _configurationKey('detectProxyTimeZone', index),
             onPressed: !logic.canDetectTimeZone || fields.detectingTimeZone
@@ -496,7 +496,7 @@ class _ProxyFormView extends StatelessWidget {
           onChanged: (_) => logic.mutate(() => fields.timeZoneError = null),
           decoration: const InputDecoration(
             hintText: 'America/New_York',
-            helperText: 'Mã múi giờ IANA. Để trống để tự tra khi mở GeckoView.',
+            helperText: 'Mã múi giờ IANA. Để trống để tự tra khi mở WebView.',
             helperMaxLines: 2,
             prefixIcon: Icon(Icons.schedule, size: 20),
           ),

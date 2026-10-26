@@ -38,8 +38,8 @@ class UsageGuidePage extends StatelessWidget {
         ),
         (
           'Thông tin của mỗi cấu hình',
-          'Proxy HTTP, HTTPS hoặc SOCKS5; User-Agent (Firefox bật chế độ máy tính, cố định); '
-              'Múi giờ GeckoView (Tra theo proxy, hoặc để trống để tự tra khi '
+          'Proxy HTTP, HTTPS hoặc SOCKS5; User-Agent (Chrome bật chế độ máy tính, theo phiên bản WebView); '
+              'Múi giờ WebView (Tra theo proxy, hoặc để trống để tự tra khi '
               'mở); Thiết bị (GPU) điện thoại được chọn ngẫu nhiên và giữ cố '
               'định, bấm Đổi để chọn máy khác; công tắc Đã đăng ký; ô Nuôi '
               'sau khi đăng ký.',
@@ -192,7 +192,7 @@ class UsageGuidePage extends StatelessWidget {
                 child: Text(
                   'Bảo mật: WebRTC luôn bị chặn nên trang web không đọc được IP '
                   'nội bộ của máy. Mỗi cấu hình có proxy, User-Agent, múi giờ và '
-                  'thiết bị GPU riêng. GeckoSession contextId giữ cookie và dữ liệu '
+                  'thiết bị GPU riêng. Profile WebView riêng giữ cookie và dữ liệu '
                   'đăng nhập tách biệt theo từng cấu hình. Đăng ký luôn bắt đầu bằng phiên sạch.',
                   style: TextStyle(color: SettingsStyle.muted, height: 1.55),
                 ),

@@ -3,14 +3,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_session.dart';
 
-/// Gecko partitions cookies and DOM storage natively by this context ID.
-String geckoProfileContextId(int id) => 'profile-$id';
+/// WebView profiles partition cookies and site storage natively by this
+/// context ID.
+String browserProfileContextId(int id) => 'profile-$id';
 
 class AccountSessions {
   static const _ownerKey = 'tiktok_session_owner_v2';
-  static const _storage = MethodChannel('test_tiktok/gecko_storage');
+  static const _storage = MethodChannel('test_tiktok/browser_storage');
   static String _identity(int id, String email) => '$id:${email.trim()}';
-  static String _validKey(int id) => 'tiktok_gecko_session_valid_$id';
+  static String _validKey(int id) => 'tiktok_webview_session_valid_$id';
 
   /// The context itself is persistent; this only marks a confirmed live login.
   static Future<void> save(int id, String email, {bool loggedIn = true}) async {
@@ -29,7 +30,7 @@ class AccountSessions {
     final prefs = await SharedPreferences.getInstance();
     if (fresh) {
       await _storage.invokeMethod<void>('clearContext', {
-        'contextId': geckoProfileContextId(id),
+        'contextId': browserProfileContextId(id),
       });
       await prefs.setBool(_validKey(id), false);
     }
@@ -38,7 +39,7 @@ class AccountSessions {
 
   static Future<void> delete(int id) async {
     await _storage.invokeMethod<void>('clearContext', {
-      'contextId': geckoProfileContextId(id),
+      'contextId': browserProfileContextId(id),
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_validKey(id));

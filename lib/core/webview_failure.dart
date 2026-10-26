@@ -1,4 +1,4 @@
-import 'gecko_browser.dart';
+import 'browser_view.dart';
 
 class WebViewFailure {
   const WebViewFailure(
@@ -33,18 +33,21 @@ class WebViewFailure {
   );
 
   factory WebViewFailure.network(
-    GeckoWebResourceError error, {
+    BrowserWebResourceError error, {
     required bool usingProxy,
   }) {
     final code = RegExp(
       r'(?:net::)?(ERR_[A-Z0-9_]+)',
     ).firstMatch(error.description)?.group(1);
+    if (error.type == BrowserWebResourceErrorType.unsupportedWebView) {
+      return WebViewFailure('WebView chưa được hỗ trợ', error.description);
+    }
     final title = usingProxy ? 'Lỗi kết nối proxy' : 'Không thể mở TikTok';
     final via = usingProxy ? ' qua proxy' : '';
     String message;
     var connectionFailure = true;
     if (usingProxy &&
-        (error.type == GeckoWebResourceErrorType.proxyAuthentication ||
+        (error.type == BrowserWebResourceErrorType.proxyAuthentication ||
             code == 'ERR_INVALID_AUTH_CREDENTIALS')) {
       return proxyAuth;
     } else if (code == 'ERR_PROXY_AUTH_UNSUPPORTED') {
@@ -61,27 +64,27 @@ class WebViewFailure {
       message =
           'Không kết nối được tới proxy. '
           'Kiểm tra địa chỉ, cổng và kết nối mạng.';
-    } else if (error.type == GeckoWebResourceErrorType.timeout ||
+    } else if (error.type == BrowserWebResourceErrorType.timeout ||
         code == 'ERR_CONNECTION_TIMED_OUT' ||
         code == 'ERR_TIMED_OUT') {
       message =
           'Kết nối$via quá thời gian chờ. '
           'Kiểm tra kết nối rồi thử lại.';
-    } else if (error.type == GeckoWebResourceErrorType.hostLookup ||
+    } else if (error.type == BrowserWebResourceErrorType.hostLookup ||
         code == 'ERR_NAME_NOT_RESOLVED') {
       message =
           'Không phân giải được địa chỉ kết nối$via. '
           'Kiểm tra địa chỉ và mạng rồi thử lại.';
-    } else if (error.type == GeckoWebResourceErrorType.cannotConnectToHost ||
-        error.type == GeckoWebResourceErrorType.networkConnectionLost ||
+    } else if (error.type == BrowserWebResourceErrorType.cannotConnectToHost ||
+        error.type == BrowserWebResourceErrorType.networkConnectionLost ||
         code == 'ERR_CONNECTION_RESET' ||
         code == 'ERR_CONNECTION_CLOSED' ||
         code == 'ERR_INTERNET_DISCONNECTED') {
       message =
           'Kết nối$via thất bại hoặc bị ngắt. '
           'Kiểm tra kết nối rồi thử lại.';
-    } else if (error.type == GeckoWebResourceErrorType.failedSslHandshake ||
-        error.type == GeckoWebResourceErrorType.secureConnectionFailed ||
+    } else if (error.type == BrowserWebResourceErrorType.failedSslHandshake ||
+        error.type == BrowserWebResourceErrorType.secureConnectionFailed ||
         (code?.startsWith('ERR_CERT_') ?? false)) {
       message =
           'Không thiết lập được kết nối HTTPS$via. '

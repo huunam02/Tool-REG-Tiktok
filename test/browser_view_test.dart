@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:test_tiktok/core/gecko_browser.dart';
+import 'package:test_tiktok/core/browser_view.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('test_tiktok/gecko_view_42');
+  const channel = MethodChannel('test_tiktok/browser_view_42');
   final calls = <MethodCall>[];
 
   setUp(() {
@@ -27,10 +27,10 @@ void main() {
   });
 
   test('maps browser operations to the per-view native channel', () async {
-    final controller = GeckoController.test(42);
+    final controller = BrowserController.test(42);
     await controller.start();
     await controller.loadUrl(
-      urlRequest: GeckoUrlRequest(url: Uri.parse('https://example.com/')),
+      urlRequest: BrowserUrlRequest(url: Uri.parse('https://example.com/')),
     );
     final evaluated = await controller.evaluateJavascript(source: '1 + 1');
     final url = await controller.getUrl();
@@ -46,11 +46,7 @@ void main() {
       'reload',
     ]);
     expect(calls[1].arguments, {'url': 'https://example.com/'});
-    expect(calls[2].arguments, {
-      'source': '1 + 1',
-      'pageWorld': false,
-      'timeoutMs': 30000,
-    });
+    expect(calls[2].arguments, {'source': '1 + 1', 'timeoutMs': 30000});
     controller.dispose();
   });
 
@@ -65,7 +61,7 @@ void main() {
             if (++count == 1) return await lostReply.future;
             return true;
           });
-      final controller = GeckoController.test(42);
+      final controller = BrowserController.test(42);
       final failure = expectLater(
         controller.evaluateJavascript(source: 'read page state'),
         throwsA(

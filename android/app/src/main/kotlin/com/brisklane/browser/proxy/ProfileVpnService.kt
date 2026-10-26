@@ -98,7 +98,7 @@ class ProfileVpnService : VpnService() {
             // hev's mapdns answers here; see buildConfig.
             .addDnsServer(mapDnsAddress)
             // Capture IPv6 too so it cannot bypass the proxy; the tunnel has no
-            // IPv6 upstream, so those connections fail and Gecko uses IPv4.
+            // IPv6 upstream, so those connections fail and the browser uses IPv4.
             .addAddress("fd00:7f3e:2a1c::1", 128)
             .addRoute("::", 0)
             .addAllowedApplication(packageName)

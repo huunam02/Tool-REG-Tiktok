@@ -7,7 +7,7 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
-import 'package:test_tiktok/core/firefox_user_agent.dart';
+import 'package:test_tiktok/core/chrome_user_agent.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -390,7 +390,7 @@ void main() {
       final registered = rows.singleWhere((row) => row.id == id);
       expect(registered.statusAccount, AccountStatus.registered);
       expect(registered.name, 'Signup');
-      expect(registered.userAgent, firefoxDesktopUserAgent);
+      expect(registered.userAgent, chromeDesktopUserAgent);
       expect(sameAccount(registered.account, account), isTrue);
       final current = (await store.getCurrentProfile())!;
       expect(current.configurationId, otherId);
@@ -489,7 +489,7 @@ void main() {
       expect(selected.configurationId, id);
       expect(selected.proxy!.username, 'user');
       expect(selected.proxy!.password, 'pass');
-      expect(selected.userAgent, firefoxDesktopUserAgent);
+      expect(selected.userAgent, chromeDesktopUserAgent);
       expect(selected.hasBeenUsed, isTrue);
       expect(selected.timeZoneId, isEmpty);
       await store.close();
@@ -570,7 +570,7 @@ void main() {
   );
 
   test(
-    'version 6 upgrades every saved UA to Firefox and preserves accounts',
+    'version 6 upgrades every saved UA to the browser identity and preserves accounts',
     () async {
       const oldAgent =
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -605,8 +605,8 @@ void main() {
       await previous.close();
       store = openStore();
       final selected = (await store.getCurrentProfile())!;
-      // GeckoView sends only Firefox with "Desktop site" on.
-      const expected = firefoxDesktopUserAgent;
+      // The WebView sends only Chrome with "Desktop site" on.
+      final expected = chromeDesktopUserAgent;
       expect(selected.configurationId, id);
       expect(selected.userAgent, expected);
       expect(selected.account!.email, account.email);
@@ -659,7 +659,7 @@ void main() {
       AccountStatus.unregistered,
     );
     expect(
-      saved.every((entry) => entry.userAgent == firefoxDesktopUserAgent),
+      saved.every((entry) => entry.userAgent == chromeDesktopUserAgent),
       isTrue,
     );
     expect(await store.getCurrentProfile(), isNull);
@@ -678,7 +678,7 @@ void main() {
     );
     final after = await store.list();
     expect(
-      after.every((entry) => entry.userAgent == firefoxDesktopUserAgent),
+      after.every((entry) => entry.userAgent == chromeDesktopUserAgent),
       isTrue,
     );
     expect(
@@ -886,7 +886,7 @@ void main() {
     await db.close();
     final current = (await store.getCurrentProfile())!;
     expect(current.proxy!.password, 'pass');
-    expect(current.userAgent, firefoxDesktopUserAgent);
+    expect(current.userAgent, chromeDesktopUserAgent);
     expect(current.account, isNull);
     const account = AccountCredentials(
       email: 'person@example.com',
@@ -906,7 +906,7 @@ void main() {
       sameAccount((await store.getCurrentProfile())!.account, account),
       isTrue,
     );
-    expect((await store.list()).single.userAgent, firefoxDesktopUserAgent);
+    expect((await store.list()).single.userAgent, chromeDesktopUserAgent);
   });
 
   test(
@@ -971,7 +971,7 @@ void main() {
   );
 
   test(
-    'every proxy shares the Firefox User-Agent across switches and edits',
+    'every proxy shares the Chrome User-Agent across switches and edits',
     () async {
       final first = WebViewProxy.parse('first.example.com:8080')!;
       final second = WebViewProxy.parse('second.example.com:8080')!;
@@ -981,8 +981,8 @@ void main() {
       final firstAgent = (await store.getCurrentProfile())!.userAgent;
       await store.setCurrent(second);
       final secondAgent = (await store.getCurrentProfile())!.userAgent;
-      // GeckoView sends only Firefox with "Desktop site" on.
-      expect(firstAgent, firefoxDesktopUserAgent);
+      // The WebView sends only Chrome with "Desktop site" on.
+      expect(firstAgent, chromeDesktopUserAgent);
       expect(secondAgent, firstAgent);
       await store.setCurrent(first);
       expect((await store.getCurrentProfile())!.userAgent, firstAgent);
@@ -1181,7 +1181,7 @@ void main() {
       final current = (await store.getCurrentProfile())!;
       expect(current.name, 'Active');
       expect(current.proxy!.password, 'secret');
-      expect(current.userAgent, firefoxDesktopUserAgent);
+      expect(current.userAgent, chromeDesktopUserAgent);
       expect(nextAgent, 0);
     },
   );

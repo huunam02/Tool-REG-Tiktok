@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/captcha_settings_store.dart';
 import 'package:test_tiktok/core/controller/tiktok_controller.dart';
-import 'package:test_tiktok/core/gecko_browser.dart';
+import 'package:test_tiktok/core/browser_view.dart';
 import 'package:test_tiktok/core/rotate_captcha.dart';
 import 'package:test_tiktok/core/scripts/rotate_captcha_script.dart';
 import 'package:test_tiktok/core/services/remote_config_service.dart';
@@ -62,7 +62,7 @@ class _Controller extends TikTokController {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  const browserChannel = MethodChannel('test_tiktok/gecko_view_73');
+  const browserChannel = MethodChannel('test_tiktok/browser_view_73');
   const accessibilityChannel = MethodChannel('x-slayer/accessibility_channel');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -125,7 +125,7 @@ void main() {
           solver,
           automatic: automatic,
         )..onInit();
-        final browser = GeckoController.test(73);
+        final browser = BrowserController.test(73);
         await logic.onWebViewCreated(browser);
         logic.onNotice = (notice) => notices.add(notice.message);
         logic.autoWatchEnabled = true;
@@ -188,7 +188,7 @@ void main() {
       await settings.load();
       final solver = _FailedVerification();
       final logic = _Controller(settings, results, solver)..onInit();
-      final browser = GeckoController.test(73);
+      final browser = BrowserController.test(73);
       await logic.onWebViewCreated(browser);
       logic.onNotice = (notice) => notices.add(notice.message);
       logic.autoWatchEnabled = true;
@@ -236,7 +236,7 @@ void main() {
     await settings.load();
     final solver = _FailedVerification();
     final logic = _Controller(settings, results, solver)..onInit();
-    final browser = GeckoController.test(73);
+    final browser = BrowserController.test(73);
     await logic.onWebViewCreated(browser);
     logic.autoWatchEnabled = true;
     final checking = logic.signupAccessibility.beforeSnapshot!();

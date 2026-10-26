@@ -10,7 +10,6 @@ plugins {
 
 android {
     namespace = "com.brisklane.browser"
-    // GeckoView 158 requires compileSdk 37.2.
     compileSdk {
         version = release(37) {
             minorApiLevel = 2
@@ -39,23 +38,6 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        // GeckoView bundles every ABI (~700 MB debug APK). When Flutter targets
-        // specific platforms (flutter run, --target-platform), ship only those.
-        def targetPlatform = project.findProperty("target-platform")
-        if (targetPlatform) {
-            def abis = [
-                "android-arm": "armeabi-v7a",
-                "android-arm64": "arm64-v8a",
-                "android-x86": "x86",
-                "android-x64": "x86_64",
-            ]
-            def filters = targetPlatform.toString().split(",").collect { abis[it] }.findAll()
-            // The Flutter Gradle plugin sets per-build-type filters; replace them.
-            buildTypes.configureEach {
-                ndk.abiFilters.clear()
-                ndk.abiFilters.addAll(filters)
-            }
-        }
     }
 
     buildTypes {
@@ -72,7 +54,7 @@ flutter {
 }
 
 dependencies {
-    implementation "org.mozilla.geckoview:geckoview:158.0.20261021001945"
+    implementation "androidx.webkit:webkit:1.16.0"
     implementation files("libs/hev-socks5-tunnel.aar")
     testImplementation "junit:junit:4.13.2"
     androidTestImplementation "androidx.test:runner:1.6.2"

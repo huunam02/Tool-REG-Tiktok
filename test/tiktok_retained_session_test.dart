@@ -9,7 +9,7 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/captcha_settings_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/controller/tiktok_controller.dart';
-import 'package:test_tiktok/core/gecko_browser.dart';
+import 'package:test_tiktok/core/browser_view.dart';
 import 'package:test_tiktok/core/nurture_coordinate_profile.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/signup_accessibility.dart';
@@ -103,7 +103,7 @@ class _LoginProbeController extends _Controller {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  const channel = MethodChannel('test_tiktok/gecko_view_84');
+  const channel = MethodChannel('test_tiktok/browser_view_84');
   final calls = <MethodCall>[];
 
   setUp(() {
@@ -153,7 +153,7 @@ void main() {
         startWithNurture: scenario == 'nurture-entry',
         now: tester.binding.clock.now,
       )..onInit();
-      final browser = GeckoController.test(84);
+      final browser = BrowserController.test(84);
       await logic.onWebViewCreated(browser);
       logic.initialPageLoaded = true;
       final action = logic.runInitialAction();
@@ -202,7 +202,7 @@ void main() {
       captchaSettingsStore: settings,
     )..onInit();
     logic.onNotice = (notice) => notices.add(notice.message);
-    final browser = GeckoController.test(84);
+    final browser = BrowserController.test(84);
     await logic.onWebViewCreated(browser);
     logic.initialPageLoaded = true;
     await logic.runInitialAction();
@@ -260,7 +260,7 @@ void main() {
           onFlowFinished: results.add,
           now: tester.binding.clock.now,
         )..onInit();
-        final browser = GeckoController.test(84);
+        final browser = BrowserController.test(84);
         await logic.onWebViewCreated(browser);
         logic.initialPageLoaded = true;
         await logic.runInitialAction();

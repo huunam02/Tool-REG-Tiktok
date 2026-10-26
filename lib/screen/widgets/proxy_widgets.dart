@@ -267,7 +267,7 @@ class ProxyDetails extends StatelessWidget {
         const SizedBox(height: 10),
         _field(
           context,
-          'Múi giờ GeckoView',
+          'Múi giờ WebView',
           profile.timeZoneId.isEmpty ? 'Chưa xác định' : profile.timeZoneId,
           Icons.schedule,
           valueKey: Key('${keyPrefix}TimeZone'),

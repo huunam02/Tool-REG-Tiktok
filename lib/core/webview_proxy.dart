@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'app_configuration.dart';
-import 'gecko_browser.dart';
+import 'browser_view.dart';
 
 Future<void>? _proxyQueue;
 WebViewProxy? _configuredProxy;
@@ -21,7 +21,7 @@ Future<T> _serializeProxy<T>(Future<T> Function() action) async {
   }
 }
 
-/// Switches the app-scoped Android VPN before constructing a GeckoSession.
+/// Switches the app-scoped Android VPN before constructing the WebView.
 /// [label] names the configuration in the VPN notification.
 Future<void> configureWebViewProxy(
   WebViewProxy? proxy, {

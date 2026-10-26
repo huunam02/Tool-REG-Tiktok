@@ -6,32 +6,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
-import 'gpu_profile.dart';
+typedef BrowserJavaScriptHandler =
+    FutureOr<dynamic> Function(List<dynamic> args);
 
-typedef GeckoJavaScriptHandler = FutureOr<dynamic> Function(List<dynamic> args);
-
-class GeckoController {
-  GeckoController._(this.viewId)
-    : _channel = MethodChannel('test_tiktok/gecko_view_$viewId') {
+class BrowserController {
+  BrowserController._(this.viewId)
+    : _channel = MethodChannel('test_tiktok/browser_view_$viewId') {
     _channel.setMethodCallHandler(_onNativeCall);
   }
 
   @visibleForTesting
-  factory GeckoController.test(int viewId) => GeckoController._(viewId);
+  factory BrowserController.test(int viewId) => BrowserController._(viewId);
 
   final int viewId;
   final MethodChannel _channel;
-  final Map<String, GeckoJavaScriptHandler> _handlers = {};
+  final Map<String, BrowserJavaScriptHandler> _handlers = {};
   FutureOr<void> Function(Map<dynamic, dynamic> event)? onEvent;
 
+  /// The completion value of [source] in the top document. Promises are not
+  /// awaited.
   Future<dynamic> evaluateJavascript({
     required String source,
-    bool pageWorld = false,
     Duration timeout = const Duration(seconds: 30),
   }) => _channel
       .invokeMethod<dynamic>('evaluateJavascript', {
         'source': source,
-        'pageWorld': pageWorld,
         'timeoutMs': timeout.inMilliseconds,
       })
       .timeout(
@@ -43,7 +42,7 @@ class GeckoController {
 
   Future<void> start() => _channel.invokeMethod<void>('start');
 
-  Future<void> loadUrl({required GeckoUrlRequest urlRequest}) => _channel
+  Future<void> loadUrl({required BrowserUrlRequest urlRequest}) => _channel
       .invokeMethod<void>('loadUrl', {'url': urlRequest.url.toString()});
 
   Future<void> reload() => _channel.invokeMethod<void>('reload');
@@ -58,7 +57,7 @@ class GeckoController {
 
   void addJavaScriptHandler({
     required String handlerName,
-    required GeckoJavaScriptHandler callback,
+    required BrowserJavaScriptHandler callback,
   }) => _handlers[handlerName] = callback;
 
   Future<dynamic> _onNativeCall(MethodCall call) async {
@@ -72,7 +71,7 @@ class GeckoController {
       }
       return callback(List<dynamic>.from(data['args'] as List? ?? const []));
     }
-    throw MissingPluginException('Unknown GeckoView callback: ${call.method}');
+    throw MissingPluginException('Unknown WebView callback: ${call.method}');
   }
 
   void dispose() {
@@ -81,18 +80,18 @@ class GeckoController {
   }
 }
 
-class GeckoUrlRequest {
-  const GeckoUrlRequest({required this.url, this.headers = const {}});
+class BrowserUrlRequest {
+  const BrowserUrlRequest({required this.url, this.headers = const {}});
   final Uri url;
   final Map<String, String>? headers;
 }
 
-class GeckoWebResourceRequest {
-  const GeckoWebResourceRequest({this.isForMainFrame = true});
+class BrowserWebResourceRequest {
+  const BrowserWebResourceRequest({this.isForMainFrame = true});
   final bool? isForMainFrame;
 }
 
-enum GeckoWebResourceErrorType {
+enum BrowserWebResourceErrorType {
   cancelled,
   timeout,
   hostLookup,
@@ -101,25 +100,27 @@ enum GeckoWebResourceErrorType {
   failedSslHandshake,
   secureConnectionFailed,
   proxyAuthentication,
+
+  /// The System WebView lacks a feature the browser needs.
+  unsupportedWebView,
   other,
 }
 
-class GeckoWebResourceError {
-  const GeckoWebResourceError(
+class BrowserWebResourceError {
+  const BrowserWebResourceError(
     this.description, {
-    this.type = GeckoWebResourceErrorType.other,
+    this.type = BrowserWebResourceErrorType.other,
   });
   final String description;
-  final GeckoWebResourceErrorType type;
+  final BrowserWebResourceErrorType type;
 }
 
-class GeckoBrowserView extends StatefulWidget {
-  const GeckoBrowserView({
+class BrowserView extends StatefulWidget {
+  const BrowserView({
     super.key,
     required this.initialUrl,
     required this.contextId,
     required this.userAgent,
-    required this.gpu,
     this.initialScripts = const [],
     required this.onCreated,
     required this.onLoadStart,
@@ -132,37 +133,36 @@ class GeckoBrowserView extends StatefulWidget {
   final String contextId;
   final String userAgent;
 
-  /// Set as Gecko's WebGL overrides, so documents, frames and workers all
-  /// report it from the first script on.
-  final GpuProfile gpu;
+  /// Run in every document and frame before page scripts.
   final List<String> initialScripts;
-  final FutureOr<void> Function(GeckoController controller) onCreated;
-  final void Function(GeckoController controller, Uri? url) onLoadStart;
-  final void Function(GeckoController controller, int progress)
+  final FutureOr<void> Function(BrowserController controller) onCreated;
+  final void Function(BrowserController controller, Uri? url) onLoadStart;
+  final void Function(BrowserController controller, int progress)
   onProgressChanged;
-  final FutureOr<void> Function(GeckoController controller, Uri? url)
+  final FutureOr<void> Function(BrowserController controller, Uri? url)
   onLoadStop;
   final void Function(
-    GeckoController controller,
-    GeckoWebResourceRequest request,
-    GeckoWebResourceError error,
+    BrowserController controller,
+    BrowserWebResourceRequest request,
+    BrowserWebResourceError error,
   )
   onReceivedError;
 
   @override
-  State<GeckoBrowserView> createState() => _GeckoBrowserViewState();
+  State<BrowserView> createState() => _BrowserViewState();
 }
 
-class _GeckoBrowserViewState extends State<GeckoBrowserView> {
-  GeckoController? _controller;
+class _BrowserViewState extends State<BrowserView> {
+  BrowserController? _controller;
 
   @override
   Widget build(BuildContext context) {
     if (defaultTargetPlatform != TargetPlatform.android) {
       return const Center(child: Text('Ứng dụng chỉ hỗ trợ Android.'));
     }
-    // GeckoView renders into a SurfaceView, which needs Hybrid Composition.
-    const viewType = 'test_tiktok/gecko_view';
+    // Hybrid Composition: Accessibility reads the real WebView in the
+    // window, and touches reach it at the recorded screen points.
+    const viewType = 'test_tiktok/browser_view';
     return PlatformViewLink(
       viewType: viewType,
       surfaceFactory: (context, controller) => AndroidViewSurface(
@@ -179,8 +179,6 @@ class _GeckoBrowserViewState extends State<GeckoBrowserView> {
             'initialUrl': widget.initialUrl,
             'contextId': widget.contextId,
             'userAgent': widget.userAgent,
-            'webGlVendor': widget.gpu.webGlVendor,
-            'webGlRenderer': widget.gpu.webGlRenderer,
             'initialScripts': widget.initialScripts,
           },
           creationParamsCodec: const StandardMessageCodec(),
@@ -196,7 +194,7 @@ class _GeckoBrowserViewState extends State<GeckoBrowserView> {
   }
 
   void _onPlatformViewCreated(int id) {
-    final controller = GeckoController._(id);
+    final controller = BrowserController._(id);
     _controller = controller;
     controller.onEvent = (event) {
       if (!mounted) return;
@@ -211,21 +209,23 @@ class _GeckoBrowserViewState extends State<GeckoBrowserView> {
           );
         case 'loadStop':
           // false also means a newer navigation (a redirect, a script
-          // setting location) replaced this load, like WebView's
-          // ERR_ABORTED; real failures arrive as loadError.
+          // setting location) replaced this load (ERR_ABORTED); real
+          // failures arrive as loadError.
           if (event['success'] != false) {
             unawaited(Future.sync(() => widget.onLoadStop(controller, url)));
           }
         case 'loadError':
-          final type = GeckoWebResourceErrorType.values.firstWhere(
+          final type = BrowserWebResourceErrorType.values.firstWhere(
             (value) => value.name == event['errorType'],
-            orElse: () => GeckoWebResourceErrorType.other,
+            orElse: () => BrowserWebResourceErrorType.other,
           );
           widget.onReceivedError(
             controller,
-            const GeckoWebResourceRequest(),
-            GeckoWebResourceError(
-              'Gecko không tải được trang (mã ${event['code']}).',
+            const BrowserWebResourceRequest(),
+            BrowserWebResourceError(
+              event['description']?.toString().isNotEmpty == true
+                  ? 'WebView không tải được trang: ${event['description']}'
+                  : 'WebView không tải được trang (mã ${event['code']}).',
               type: type,
             ),
           );

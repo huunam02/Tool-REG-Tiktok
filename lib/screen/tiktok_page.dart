@@ -14,7 +14,7 @@ import '../core/webview_locale.dart';
 import '../core/webview_privacy.dart';
 import '../core/webview_user_agent.dart';
 import '../core/webview_timezone.dart';
-import '../core/gecko_browser.dart';
+import '../core/browser_view.dart';
 import '../core/account_sessions.dart';
 import 'widgets/controller_scope.dart';
 import 'widgets/signup_viewport.dart';
@@ -318,7 +318,7 @@ class _TikTokView extends StatelessWidget {
                   key: const Key('nativeWebView'),
                   tooltip: logic.usesEngineIdentity
                       ? 'Dùng User-Agent đã chọn (thủ công)'
-                      : 'Desktop theo GeckoView (thủ công)',
+                      : 'Desktop theo WebView (thủ công)',
                   icon: const Icon(Icons.web, color: Colors.black),
                   onPressed: () {
                     logic.cancelAutoActions();
@@ -340,16 +340,14 @@ class _TikTokView extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               _signupViewport(
-                GeckoBrowserView(
+                BrowserView(
                   initialUrl: logic.initialUrl,
                   contextId: logic.configuration.configurationId == null
                       ? 'profile-${logic.configuration.userAgent.hashCode}'
-                      : geckoProfileContextId(
+                      : browserProfileContextId(
                           logic.configuration.configurationId!,
                         ),
                   userAgent: logic.configuration.userAgent,
-                  // Every mode reports the configuration's phone GPU.
-                  gpu: logic.configuration.gpuProfile,
                   initialScripts: [
                     if (!logic.useNativeWebView &&
                         needsAndroidDesktopIdentity &&

@@ -15,7 +15,7 @@ import '../nurture_data.dart';
 import '../proxy_time_zone.dart';
 import '../proxy_time_zone_detector.dart';
 import '../webview_user_agent.dart';
-import '../firefox_user_agent.dart';
+import '../chrome_user_agent.dart';
 import 'app_controller.dart';
 
 class ProxyFormController extends AppController {
@@ -82,7 +82,7 @@ class ProxyFormController extends AppController {
     try {
       await previous;
       if (!active || fields.disposed) return;
-      // The store hands out the Firefox identity and normalizes on save.
+      // The store hands out the Chrome identity and normalizes on save.
       final generatedAgent = await selectUserAgent();
       if (!active || fields.disposed) return;
       fields.userAgent.text = generatedAgent;

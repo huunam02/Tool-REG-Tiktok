@@ -11,7 +11,7 @@ import '../app_session.dart';
 import '../account_sessions.dart';
 import '../account_proxy.dart';
 import '../device_memory.dart';
-import '../gecko_browser.dart';
+import '../browser_view.dart';
 import '../gpu_profile.dart';
 import '../nurture_data.dart';
 import '../proxy_geolocation.dart';

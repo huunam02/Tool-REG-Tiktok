@@ -356,7 +356,7 @@ class SignupAccessibility {
     }
   });
 
-  /// Why no WebView is readable (windows, WebView/Gecko nodes); diagnostics
+  /// Why no WebView is readable (windows, WebView nodes); diagnostics
   /// only, never used to pick a target.
   Future<String> diagnoseWeb() =>
       FlutterAccessibilityService.signupDiagnoseWeb();

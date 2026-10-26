@@ -10,7 +10,9 @@ Future<bool> hasTikTokLoginSession({DateTime? now}) async {
 }
 
 Future<void> clearAppSession() async {
-  if (kIsWeb) throw UnsupportedError('Native Gecko session required');
-  await const MethodChannel('test_tiktok/gecko_storage').invokeMethod<void>('clearAll');
+  if (kIsWeb) throw UnsupportedError('Native WebView session required');
+  await const MethodChannel(
+    'test_tiktok/browser_storage',
+  ).invokeMethod<void>('clearAll');
   await AccountSessions.clearMarkers();
 }

@@ -6,7 +6,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 
-import 'firefox_user_agent.dart';
+import 'chrome_user_agent.dart';
 import 'signup_accessibility.dart';
 
 class RotateCaptchaChallenge {
@@ -170,7 +170,7 @@ class RotateCaptchaSolver {
     // TikTok's CDN sees the same browser as the page, not dart:io.
     final request = http.Request('GET', uri)
       ..followRedirects = false
-      ..headers['User-Agent'] = firefoxDesktopUserAgent;
+      ..headers['User-Agent'] = chromeDesktopUserAgent;
     final response = await _client
         .send(request)
         .timeout(const Duration(seconds: 15));

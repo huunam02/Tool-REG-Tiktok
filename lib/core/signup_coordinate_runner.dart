@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'app_configuration.dart';
 import 'cookie_consent_accessibility.dart';
+import 'privacy_notice_accessibility.dart';
 import 'signup_accessibility.dart';
 import 'signup_birthday_menu.dart';
 
@@ -170,6 +171,7 @@ class SignupCoordinateRunner {
     while (now().isBefore(deadline)) {
       final value = await _snapshot();
       if (matches(value)) return value;
+      if (await _dismissPrivacyNoticeIfShown(value)) continue;
       await _pause(300);
     }
     throw StateError('Chưa xác nhận được bước: $status');
@@ -361,6 +363,25 @@ class SignupCoordinateRunner {
     if (node == null) return false;
     onStatus('Đang bấm Allow all cho cookie TikTok…');
     _actions.add('accept-cookies'); // One attempt even if the banner stays.
+    await accessibility.tapScreen(
+      snapshot.viewport.bounds,
+      node.bounds.intersect(snapshot.viewport.bounds).center,
+    );
+    await _pauseAfterAction();
+    return true;
+  }
+
+  static const _maxPrivacyNoticeTaps = 3;
+  int _privacyNoticeTaps = 0;
+
+  /// TikTok's one-time privacy notice appears once the new account exists
+  /// and hides the page until Got it is tapped. Returns whether it tapped.
+  Future<bool> _dismissPrivacyNoticeIfShown(SignupSnapshot snapshot) async {
+    if (_privacyNoticeTaps >= _maxPrivacyNoticeTaps) return false;
+    final node = PrivacyNoticeAccessibility.button(snapshot);
+    if (node == null) return false;
+    _privacyNoticeTaps++;
+    onStatus('Đang bấm Got it cho thông báo quyền riêng tư của TikTok…');
     await accessibility.tapScreen(
       snapshot.viewport.bounds,
       node.bounds.intersect(snapshot.viewport.bounds).center,

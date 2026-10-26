@@ -12,6 +12,7 @@ import '../rotate_captcha.dart';
 import '../captcha_settings_store.dart';
 import '../send_code_accessibility.dart';
 import '../cookie_consent_accessibility.dart';
+import '../privacy_notice_accessibility.dart';
 import '../signup_accessibility.dart';
 import '../signup_birthday_menu.dart';
 import '../signup_coordinate_runner.dart';
@@ -327,6 +328,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       : startWithIpCheck
       ? ipCheckUrl
       : manualViewingPlan?.initialUrl ?? launchAction.initialUrl;
+
   /// Quản lý cấu hình › Kiểm tra IP opens this with the configuration loaded.
   static const browserCheckUrl = 'https://www.whatismybrowser.com/';
   static const ipCheckUrl = 'https://www.whatismyip.com/';
@@ -481,11 +483,17 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     accessibility: SignupAccessibility(),
     now: _now,
   );
+  late final _privacyNotice = PrivacyNoticeAccessibility(
+    accessibility: SignupAccessibility(),
+    now: _now,
+  );
   Timer? _cookieConsentTimer;
 
   /// The JS auto-accept is off in Accessibility mode, so the banner is
   /// accepted with a gesture while no signup/login runner is acting (both
   /// accept it themselves) and no other Accessibility action is in flight.
+  /// TikTok's one-time privacy notice is closed the same way, e.g. when a
+  /// nurtured account opens it.
   void _startCookieConsentMonitor() {
     if (_cookieConsentTimer != null || !active) return;
     _cookieConsentTimer = Timer(const Duration(seconds: 2), () async {
@@ -500,9 +508,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
             !autoLoginBusy &&
             !verificationPaused &&
             _rotateCaptchaWork == null &&
-            !signupAccessibility.actionBusy &&
-            await _cookieConsent.check()) {
-          debugPrint('[Cookie] Tapped Allow all.');
+            !signupAccessibility.actionBusy) {
+          if (await _cookieConsent.check()) {
+            debugPrint('[Cookie] Tapped Allow all.');
+          } else if (await _privacyNotice.check()) {
+            debugPrint('[Privacy notice] Tapped Got it.');
+          }
         }
       } catch (error) {
         debugPrint('[Cookie] Check failed (${error.runtimeType}).');

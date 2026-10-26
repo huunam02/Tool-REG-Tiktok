@@ -892,6 +892,31 @@ void main() {
       expect(accessibility.pastes, ['email', 'otp', 'password']);
     });
   }
+
+  for (final after in ['submit-password', 'skip-username']) {
+    testWidgets('the new-account privacy notice is dismissed after $after', (
+      tester,
+    ) async {
+      final (failure, accessibility, _) = await runSignup(
+        tester,
+        otpResults: ['123456'],
+        setup: (a) => a.onAction = (name) {
+          if (name == after) a.privacyNotice = true;
+        },
+      );
+      expect(failure, isNull, reason: '${accessibility.actions}');
+      expect(accessibility.state, 'authenticated-home');
+      expect(
+        accessibility.actions.where((a) => a == 'dismiss-privacy'),
+        hasLength(1),
+      );
+      expect(
+        accessibility.actions[accessibility.actions.indexOf('dismiss-privacy') -
+            1],
+        after,
+      );
+    });
+  }
 }
 
 class _BoundaryRandom implements Random {
@@ -975,6 +1000,11 @@ class _RecordedAccessibility extends SignupAccessibility {
   bool cookieBannerStays = false;
   static const _cookieButton = [560, 2340, 1060, 2400];
 
+  /// TikTok's one-time privacy notice for a new account. It is modal, so
+  /// only the notice is in the tree while it is open.
+  bool privacyNotice = false;
+  static const _privacyButton = [380, 2300, 700, 2350];
+
   List<dynamic> _shifted(List<dynamic> nodes, List<dynamic> web) => [
     for (final node in nodes)
       if (shiftY == 0 || '${node['bounds']}' == '$web')
@@ -996,6 +1026,26 @@ class _RecordedAccessibility extends SignupAccessibility {
     if (state == 'home-ready') onHomeSnapshot?.call(data);
     onSnapshot?.call(data);
     data['nodes'] = _shifted(data['nodes'] as List, data['webBounds'] as List);
+    if (privacyNotice) {
+      data['nodes'] = [
+        for (final node in data['nodes'] as List)
+          if ('${node['bounds']}' == '${data['webBounds']}') node,
+        {
+          'id': 'privacy.title',
+          'text': 'Your privacy is our priority',
+          'bounds': [380, 560, 1000, 610],
+          'enabled': true,
+        },
+        {
+          'id': 'privacy.ok',
+          'text': 'Got it',
+          'bounds': _privacyButton,
+          'className': 'android.widget.Button',
+          'enabled': true,
+          'clickable': true,
+        },
+      ];
+    }
     if (cookieBanner) {
       (data['nodes'] as List)
         ..add({
@@ -1107,6 +1157,11 @@ class _RecordedAccessibility extends SignupAccessibility {
 
   @override
   Future<void> tapScreen(Rect bounds, Offset point) async {
+    if (privacyNotice && SignupNode.rectFrom(_privacyButton).contains(point)) {
+      actions.add('dismiss-privacy');
+      privacyNotice = false;
+      return;
+    }
     if (!cookieBanner || !SignupNode.rectFrom(_cookieButton).contains(point)) {
       throw StateError('Screen tap at $point hit no cookie button.');
     }

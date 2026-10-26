@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show PlatformException;
 
 import 'app_configuration.dart';
 import 'cookie_consent_accessibility.dart';
+import 'privacy_notice_accessibility.dart';
 import 'login_coordinate_profile.dart';
 import 'signup_accessibility.dart';
 
@@ -481,6 +482,12 @@ class LoginAccessibilityRunner {
         final cookie = CookieConsentAccessibility.button(snapshot);
         if (cookie != null && !_actions.contains('accept-cookies')) {
           await _tap('accept-cookies', snapshot, cookie);
+          continue;
+        }
+        // The privacy notice hides the logged-in page behind it.
+        final privacy = PrivacyNoticeAccessibility.button(snapshot);
+        if (privacy != null && !_actions.contains('dismiss-privacy')) {
+          await _tap('dismiss-privacy', snapshot, privacy);
           continue;
         }
 

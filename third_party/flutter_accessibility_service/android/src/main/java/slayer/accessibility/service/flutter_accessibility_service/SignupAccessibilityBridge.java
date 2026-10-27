@@ -90,12 +90,18 @@ final class SignupAccessibilityBridge {
 
     private static AccessibilityNodeInfo findWeb(AccessibilityNodeInfo node, String pkg, int depth) {
         if (node == null || depth > 40 || !pkg.contentEquals(node.getPackageName() == null ? "" : node.getPackageName())) return null;
-        if ("android.webkit.WebView".contentEquals(node.getClassName()) && node.isVisibleToUser()) return node;
+        // During GeckoView startup/rotation Android 9 can expose nodes whose
+        // class name is still null. Keep walking until the web root is ready.
+        if (isWebClass(node.getClassName()) && node.isVisibleToUser()) return node;
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo found = findWeb(node.getChild(i), pkg, depth + 1);
             if (found != null) return found;
         }
         return null;
+    }
+
+    static boolean isWebClass(CharSequence className) {
+        return className != null && "android.webkit.WebView".contentEquals(className);
     }
 
     /**
@@ -369,6 +375,7 @@ final class SignupAccessibilityBridge {
             // Infer only a fixed label from the visible, unambiguous signup form;
             // never expose the editor's value as a hint.
             if (hint.isEmpty() && signupEmailEditor(web, node)) hint = "Email address";
+            if (hint.isEmpty() && signupOtpEditor(web, node)) hint = "Verification code";
             if (hint.isEmpty() && loginUsernameEditor(node)) hint = "Username or email";
             item.put("hint", hint);
             nodes.add(item);
@@ -407,6 +414,23 @@ final class SignupAccessibilityBridge {
         return !input.isEmpty() && prompt.exactCenterY() <= input.top &&
             input.top - prompt.bottom <= input.height() * 3 &&
             prompt.left < input.right && input.left < prompt.right;
+    }
+
+    /** Desktop Gecko can expose a single OTP input as plain text with no hint. */
+    private static boolean signupOtpEditor(AccessibilityNodeInfo web, AccessibilityNodeInfo editor) {
+        if (web == null || editor == null || !editor.isEditable() || !editor.isEnabled() ||
+                !editor.isVisibleToUser() || editor.isPassword()) return false;
+        AccessibilityNodeInfo prompt = staticLabel(web, "Enter 6-digit code", 0);
+        if (prompt == null) prompt = staticLabel(web, "Verify your email", 0);
+        if (prompt == null) return false;
+        Rect title = new Rect(), input = new Rect();
+        prompt.getBoundsInScreen(title);
+        editor.getBoundsInScreen(input);
+        // A header search input is above the verification title. Only the
+        // field directly below that title, in the same modal column, qualifies.
+        return !input.isEmpty() && input.top >= title.bottom &&
+            input.top - title.bottom <= input.height() * 6 &&
+            title.left < input.right && input.left < title.right;
     }
 
     private static boolean loginUsernameEditor(AccessibilityNodeInfo editor) {
@@ -528,7 +552,7 @@ final class SignupAccessibilityBridge {
         int otpSlots = field.equals("otp") ? rowEditableCount(web, editor) : 0;
         boolean splitOtp = otpSlots == 6;
         if (field.equals("otp") && !splitOtp && inputClass != InputType.TYPE_CLASS_NUMBER && inputClass != InputType.TYPE_CLASS_PHONE &&
-                !hint.contains("code") && !hint.contains("otp") && !hint.contains("mã")) {
+                !hint.contains("code") && !hint.contains("otp") && !hint.contains("mã") && !signupOtpEditor(web, editor)) {
             result.success(status(false, "wrong-otp-field:slots=" + otpSlots + ",page=" + editableCount(web, 0) +
                 ",class=" + inputClass)); return;
         }

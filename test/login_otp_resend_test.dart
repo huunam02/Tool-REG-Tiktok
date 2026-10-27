@@ -120,6 +120,10 @@ class _OtpForm extends SignupAccessibility {
   @override
   Future<void> setKeyboardSuppressed(bool suppressed) async {}
   @override
+  Future<void> renewKeyboardSuppression() async {}
+  @override
+  Future<void> releaseKeyboardSuppression() async {}
+  @override
   Future<void> dismissKeyboard() async {}
 }
 

@@ -734,6 +734,13 @@ class NurtureAccessibilityRunner {
   /// across resumes so a dead connection cannot skip post after post.
   int _playbackSkips = 0;
   bool _cancelled = false, _running = false;
+
+  /// Gecko ignores ACTION_CLEAR_FOCUS, so a used editor keeps input focus and
+  /// the IME returns whenever suppression ends. Nurture never types through
+  /// the IME: it stays hidden for the whole session, renewed before the
+  /// native 10s lease expires.
+  bool _holdingKeyboard = false;
+  DateTime? _keyboardRenewedAt;
   NurtureVideo? _previous;
   DateTime? _sampledAt;
   Future<void>? _done;
@@ -815,6 +822,31 @@ class NurtureAccessibilityRunner {
     if (_cancelled || !isActive()) throw NurtureCancelled();
   }
 
+  /// Fire and forget; steps that type still await their own suppression.
+  void _renewKeyboard({bool force = false}) {
+    final at = _keyboardRenewedAt;
+    if (!_holdingKeyboard ||
+        (!force &&
+            at != null &&
+            _now().difference(at) < const Duration(seconds: 4))) {
+      return;
+    }
+    _keyboardRenewedAt = _now();
+    // Without CAPTCHA hooks: renewing must not run them every 4s.
+    unawaited(
+      accessibility.renewKeyboardSuppression().catchError((Object _) {
+        // Best effort: no WebView root during a reload (or no service); the
+        // next snapshot renews it.
+        _keyboardRenewedAt = null;
+      }),
+    );
+  }
+
+  /// Ends a step's suppression, except while the session holds the IME.
+  Future<void> _releaseKeyboard() async {
+    if (!_holdingKeyboard) await accessibility.setKeyboardSuppressed(false);
+  }
+
   Future<void> _sleep([int milliseconds = 400]) async {
     for (var left = milliseconds; left > 0; left -= 200) {
       _check();
@@ -874,6 +906,8 @@ class NurtureAccessibilityRunner {
   Future<void> _emit() => onProgress(totals, ++_sequence);
 
   Future<SignupSnapshot> _snapshot({bool trackPlayback = true}) async {
+    // Never wait on the lease: a read must not stall behind a platform call.
+    _renewKeyboard();
     final reader = _snapshotWaiter = Completer<SignupSnapshot>();
     // A document bridge may disappear during a read. Cancelling must release
     // the runner immediately, even if the underlying platform call is pending.
@@ -920,7 +954,7 @@ class NurtureAccessibilityRunner {
     }
     check();
     if (!s.ready || !s.viewport.valid) {
-      throw StateError('Khung nuôi cần cố định 400×800.');
+      throw StateError('Không đọc được khung WebView chuẩn qua Accessibility.');
     }
     // Hover cards and popovers can expose a Dialog briefly and close by
     // themselves. Nothing is tapped while one is open; only a dialog that
@@ -1215,7 +1249,9 @@ class NurtureAccessibilityRunner {
     String? frozenKey;
     int? frozenAt;
     var frozenSince = _now();
+    _holdingKeyboard = true;
     try {
+      _renewKeyboard(force: true);
       final keyword = searchKeyword?.trim() ?? '';
       if (keyword.isNotEmpty && !_searchFinished) {
         await _search(keyword);
@@ -1382,6 +1418,13 @@ class NurtureAccessibilityRunner {
     } on NurtureCancelled {
       // A timer, navigation or app lifecycle stopped this session.
     } finally {
+      _holdingKeyboard = false;
+      _keyboardRenewedAt = null;
+      unawaited(
+        accessibility.releaseKeyboardSuppression().catchError((Object _) {
+          // The native lease restores the IME by itself.
+        }),
+      );
       await _emit();
     }
   }
@@ -1424,7 +1467,27 @@ class NurtureAccessibilityRunner {
         }
         last[name] = _now();
         debugPrint('Nurture search step: $name');
-        if (name == 'paste') {
+        if (name == 'scroll-results') {
+          final region = node.bounds.intersect(s.viewport.bounds);
+          Future<Offset> endpoint(String key, double fraction) =>
+              profile.target(
+                'search/scroll-results/$key',
+                s.viewport,
+                SignupNode({
+                  'id': node.id,
+                  'bounds': [
+                    region.right - region.width * .08,
+                    region.top + region.height * fraction - 2,
+                    region.right - region.width * .04,
+                    region.top + region.height * fraction + 2,
+                  ],
+                }),
+              );
+          final from = await endpoint('from', .8);
+          final to = await endpoint('to', .2);
+          _check();
+          await accessibility.swipe(s.viewport, from, to);
+        } else if (name == 'paste') {
           final result = await accessibility.paste(keyword, 'search');
           _check();
           if (result['ok'] != true) {
@@ -1459,7 +1522,7 @@ class NurtureAccessibilityRunner {
         'Không mở được video từ kết quả tìm kiếm "$keyword"; đã dừng nuôi.',
       );
     } finally {
-      await accessibility.setKeyboardSuppressed(false);
+      await _releaseKeyboard();
     }
   }
 
@@ -1488,7 +1551,11 @@ class NurtureAccessibilityRunner {
         .where(
           (n) =>
               n.editable &&
-              n.bounds.width > v.width * .2 &&
+              // The desktop drawer's box is narrower (about 15% of the
+              // page) but sits right of the sidebar column the open step uses.
+              (n.bounds.width > v.width * .2 ||
+                  (n.bounds.width > v.width * .1 &&
+                      n.bounds.center.dx >= v.left + v.width * .1)) &&
               n.bounds.center.dx < v.left + v.width * .5 &&
               !n.bounds.intersect(v).isEmpty &&
               !RegExp('comment', caseSensitive: false).hasMatch(n.hint),
@@ -1572,6 +1639,25 @@ class NurtureAccessibilityRunner {
         .toList();
     if (tiles.isNotEmpty) {
       return ('result', tiles[_random.nextInt(min(tiles.length, 8))]);
+    }
+    // Desktop combined results can show two rows of LIVE before any post,
+    // with no Videos tab. Scroll only a verified results container holding
+    // an offscreen post; never guess a tile or enter a LIVE preview.
+    if (videosTab == null && (fired['scroll-results'] ?? 0) < 2) {
+      final below = s.hiddenNodes.where(
+        (n) => n.name == 'Watch in full screen' && n.bounds.top >= v.bottom,
+      );
+      final scroll = s.nodes
+          .where(
+            (n) =>
+                n.scrollable &&
+                n.enabled &&
+                n.bounds.intersect(v).width >= v.width * .5 &&
+                n.bounds.intersect(v).height >= v.height * .7 &&
+                below.any((tile) => tile.id.startsWith('${n.id}.')),
+          )
+          .firstOrNull;
+      if (scroll != null) return ('scroll-results', scroll);
     }
     return null;
   }
@@ -2141,7 +2227,7 @@ class NurtureAccessibilityRunner {
         if (!video.detail) await accessibility.dismissKeyboard();
         keepSuppressed = video.detail;
       } finally {
-        if (!keepSuppressed) await accessibility.setKeyboardSuppressed(false);
+        if (!keepSuppressed) await _releaseKeyboard();
       }
       if (video.detail) {
         // In the search-result player the editor keeps focus after the
@@ -2238,7 +2324,7 @@ class NurtureAccessibilityRunner {
             await _sleep(500);
           }
         } finally {
-          await accessibility.setKeyboardSuppressed(false);
+          await _releaseKeyboard();
         }
         return;
       } else {

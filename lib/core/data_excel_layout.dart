@@ -44,7 +44,8 @@ const nurtureSettingsExcelHeaders = [
   'Nuôi tối đa (phút)',
 ];
 
-/// The configuration's phone GPU (a GpuProfile id); restored by the importer.
+/// The desktop GPU pages see (`firefoxDesktopGpuLabel`); the same for every
+/// configuration, so the importer ignores it.
 const gpuProfileExcelHeader = 'Thiết bị GPU';
 
 const dataExcelSheetName = 'Data';

@@ -1,6 +1,5 @@
 package com.brisklane.browser
 
-import android.app.ActivityManager
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.BroadcastReceiver
@@ -88,7 +87,7 @@ class MainActivity: FlutterActivity() {
         val action = intent.getStringExtra("signupCalibration") ?: return
         val requestId = intent.getStringExtra("requestId") ?: return
         if (!requestId.matches(Regex("[a-f0-9]{32}"))) return
-        if (action !in listOf("snapshot", "login-profile", "nurture-profile", "nurture-layout", "nurture-swipe", "nurture-prepare-input", "nurture-release-input", "paste-comment", "submit-comment", "diagnose-web", "select-birthday", "paste-email", "paste-password", "paste-otp", "paste-user-otp", "back", "tap")) return
+        if (action !in listOf("snapshot", "captcha-layout", "login-profile", "nurture-profile", "nurture-layout", "nurture-swipe", "nurture-prepare-input", "nurture-release-input", "paste-comment", "submit-comment", "diagnose-web", "select-birthday", "paste-email", "paste-password", "paste-otp", "paste-user-otp", "back", "tap")) return
         signupCalibration?.invokeMethod("calibrate", mapOf(
             "action" to action,
             "userOtp" to intent.getStringExtra("userOtp"),
@@ -146,17 +145,6 @@ class MainActivity: FlutterActivity() {
                 registerReceiver(calibrationReceiver, filter, "android.permission.DUMP", null, Context.RECEIVER_EXPORTED)
             } else registerReceiver(calibrationReceiver, filter, "android.permission.DUMP", null)
         }
-        // Physical RAM, from which Dart derives the phone's navigator.deviceMemory.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/device")
-            .setMethodCallHandler { call, result ->
-                if (call.method != "totalMemory") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
-                }
-                val memory = ActivityManager.MemoryInfo()
-                (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(memory)
-                result.success(memory.totalMem)
-            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "test_tiktok/send_code_target")
             .setMethodCallHandler { call, result ->
                 if (call.method != "getTarget" && call.method != "invalidateTarget") {

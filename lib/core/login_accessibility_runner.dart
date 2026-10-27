@@ -70,9 +70,34 @@ class LoginAccessibilityRunner {
   }
 
   Future<void> _pause(int milliseconds) async {
+    _renewKeyboard();
     final duration = Duration(milliseconds: milliseconds);
     await (_delay?.call(duration) ?? Future<void>.delayed(duration));
     await _guard();
+  }
+
+  // Gecko ignores ACTION_CLEAR_FOCUS, so a pasted field keeps focus and the
+  // IME reopens as soon as suppression ends, covering Continue. The run
+  // keeps the keyboard hidden throughout, renewing the native 10s lease.
+  bool _holdingKeyboard = false;
+  DateTime? _keyboardRenewedAt;
+
+  /// Fire and forget; filling a field still awaits its own suppression.
+  void _renewKeyboard({bool force = false}) {
+    final at = _keyboardRenewedAt;
+    if (!_holdingKeyboard ||
+        (!force &&
+            at != null &&
+            now().difference(at) < const Duration(seconds: 4))) {
+      return;
+    }
+    _keyboardRenewedAt = now();
+    unawaited(
+      accessibility.renewKeyboardSuppression().catchError((Object _) {
+        // No WebView root during a reload (or no service): retry next time.
+        _keyboardRenewedAt = null;
+      }),
+    );
   }
 
   static RegExp _exact(String value) =>
@@ -90,13 +115,30 @@ class LoginAccessibilityRunner {
     RegExp pattern, {
     bool requireClickable = false,
     String? action,
+    SignupNode? afterEditor,
   }) {
+    final dialog = snapshot.nodes
+        .where((n) => n.className.endsWith('Dialog'))
+        .lastOrNull;
+    bool inDialog(SignupNode node) =>
+        dialog != null &&
+        (node.id.startsWith('${dialog.id}.') ||
+            dialog.bounds.contains(node.bounds.center));
     final matches = snapshot.nodes
         .where(
           (node) =>
               node.enabled &&
               (!requireClickable || node.clickable) &&
               !node.editable &&
+              // The modal is titled "Log in" and is clickable, but tapping it
+              // presses nothing; a point once recorded on it kept winning.
+              !node.className.endsWith('Dialog') &&
+              // Desktop exposes the "Log in" heading as a clickable View.
+              // A form submit must follow its editor in the same dialog,
+              // even when a saved point happens to land on that heading.
+              (afterEditor == null ||
+                  (node.bounds.top >= afterEditor.bounds.bottom &&
+                      (dialog == null || inDialog(node)))) &&
               _matches(node, pattern) &&
               node.bounds.width > 0 &&
               node.bounds.height > 0 &&
@@ -106,17 +148,12 @@ class LoginAccessibilityRunner {
     // Chromium reports TikTok's web modal as android.app.Dialog while the
     // page behind it stays in the tree; its sidebar "Log in" icon also
     // matches Continue patterns and is smaller than the modal's button.
-    final dialog = snapshot.nodes
-        .where((n) => n.className.endsWith('Dialog'))
-        .lastOrNull;
-    bool inDialog(SignupNode node) =>
-        dialog != null &&
-        (node.id.startsWith('${dialog.id}.') ||
-            dialog.bounds.contains(node.bounds.center));
     // Prefer actionable nodes over their text children or large containers.
     matches.sort((a, b) {
       if (inDialog(a) != inDialog(b)) return inDialog(a) ? -1 : 1;
-      final recorded = action == null ? null : profile.point(action);
+      final recorded = action == null
+          ? null
+          : profile.point(action, desktop: snapshot.viewport.landscape);
       if (recorded != null) {
         final physical = snapshot.viewport.toScreen(recorded);
         final aMatches = a.bounds.contains(physical),
@@ -147,6 +184,12 @@ class LoginAccessibilityRunner {
     'log in|login|continue|next|verify|confirm|đăng nhập|tiếp tục|tiếp theo|xác nhận',
   );
   static final _login = _exact('log in|login|đăng nhập');
+  /// The switch from the phone form; desktop TikTok labels it "Use email or
+  /// username".
+  @visibleForTesting
+  static final useEmailLabel = _exact(
+    'use (email|username)( or (email|username))?|email / username|username or email|email or username|sử dụng email|tên người dùng hoặc email',
+  );
   static const _maxOpenLoginTaps = 3;
   static const _openLoginRetryAfter = Duration(seconds: 10);
   static const _focusWait = Duration(seconds: 2);
@@ -166,10 +209,9 @@ class LoginAccessibilityRunner {
   bool _authenticated(SignupSnapshot snapshot) =>
       _has(snapshot, _exact('messages|tin nhắn')) &&
       _has(snapshot, _exact('profile|hồ sơ')) &&
-      snapshot.editors.every(
-        (n) =>
-            RegExp(r'^search|^tìm kiếm', caseSensitive: false).hasMatch(n.hint),
-      ) &&
+      // Signed-in search fields can show a trending topic as their hint;
+      // comments can also remain editable. Authentication depends on the
+      // signed-in UI and absence of account/verification dialogs below.
       !_has(
         snapshot,
         _exact(
@@ -181,6 +223,7 @@ class LoginAccessibilityRunner {
 
   Future<SignupSnapshot> _snapshot() async {
     await _guard();
+    _renewKeyboard();
     final snapshot = await accessibility.snapshot();
     await _guard();
     // Only the foreground web dialog may supply controls. Home remains
@@ -307,7 +350,7 @@ class LoginAccessibilityRunner {
       // Blur while suppressed so restoring the policy does not reopen it.
       await accessibility.dismissKeyboard();
     } finally {
-      await accessibility.setKeyboardSuppressed(false);
+      if (!_holdingKeyboard) await accessibility.setKeyboardSuppressed(false);
     }
     await _hideKeyboard();
     await _pause(field == 'otp' ? 250 : 2000 + _random.nextInt(5001));
@@ -428,6 +471,20 @@ class LoginAccessibilityRunner {
   }
 
   Future<void> run() async {
+    _holdingKeyboard = true;
+    _renewKeyboard(force: true);
+    try {
+      await _run();
+    } finally {
+      _holdingKeyboard = false;
+      _keyboardRenewedAt = null;
+      unawaited(
+        accessibility.releaseKeyboardSuppression().catchError((Object _) {}),
+      );
+    }
+  }
+
+  Future<void> _run() async {
     onStatus('Đang chờ trang đăng nhập sẵn sàng…');
     var deadline = now().add(const Duration(seconds: 180));
     DateTime? readySince, emailStableSince, blankSince, reloadedAt;
@@ -504,14 +561,11 @@ class LoginAccessibilityRunner {
         final email = editors
             .where((n) => !n.password && _emailHint.hasMatch(n.hint))
             .firstOrNull;
-        final switchEmail = _find(
-          snapshot,
-          _exact(
-            'use (email|username)|email / username|username or email|email or username|sử dụng email|tên người dùng hoặc email',
-          ),
-        );
+        final switchEmail = _find(snapshot, useEmailLabel);
+        // The phone form keeps a hidden, unlabelled password editor; only an
+        // email/username editor shows the switch has happened.
         if (!identity &&
-            password == null &&
+            email == null &&
             switchEmail != null &&
             !_actions.contains('use-email') &&
             !_actions.contains('submit-password')) {
@@ -661,6 +715,7 @@ class LoginAccessibilityRunner {
             _continue,
             requireClickable: true,
             action: 'submit-password',
+            afterEditor: password,
           );
           if (submit != null) {
             await _tap('submit-password', snapshot, submit, fast: true);
@@ -668,12 +723,7 @@ class LoginAccessibilityRunner {
             onStatus('Đang chờ kết quả đăng nhập…');
           }
         } else if (!_actions.contains('submit-password') && !otpFetched) {
-          final useEmail = _find(
-            snapshot,
-            _exact(
-              'use (email|username)|email / username|username or email|email or username|sử dụng email|tên người dùng hoặc email',
-            ),
-          );
+          final useEmail = _find(snapshot, useEmailLabel);
           final phoneEmail = _find(
             snapshot,
             _exact(

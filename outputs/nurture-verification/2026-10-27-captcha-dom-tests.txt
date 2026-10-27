@@ -1,0 +1,17 @@
+✔ reads a small, scaled desktop modal: legacy (0.327291ms)
+✔ reads a small, scaled desktop modal: v1 (0.071917ms)
+✔ reads a small, scaled desktop modal: v2 (0.050917ms)
+✔ scopes image and handle selection to the visible CAPTCHA (0.364ms)
+✔ does not solve an offscreen, moved, incomplete or hidden challenge (0.094958ms)
+✔ hidden or unrelated documents report unknown CAPTCHA presence (1.299459ms)
+✔ reads a desktop CSS viewport before WebView scales it to phone size (0.0855ms)
+✔ reads rotation and refresh geometry in the current 1920x955 desktop frame (0.082291ms)
+✔ subtracts visual viewport offsets for both the slider and refresh (0.077ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1761.135375

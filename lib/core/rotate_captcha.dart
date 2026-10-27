@@ -70,13 +70,13 @@ class RotateCaptchaChallenge {
       bounds.topLeft +
       Offset(
         (x + travel * angle / 360) * bounds.width / viewportWidth,
-        y * bounds.width / viewportWidth,
+        y * bounds.height / viewportHeight,
       );
 }
 
 /// Taps the puzzle's refresh control through Accessibility: the control the
 /// Accessibility tree names, else the one [readGeometry] locates in CSS
-/// pixels (`{viewportWidth, x, y}`).
+/// pixels (`{viewportWidth, viewportHeight, x, y}`).
 Future<void> refreshRotateCaptcha({
   required SignupAccessibility accessibility,
   required Future<dynamic> Function() readGeometry,
@@ -109,16 +109,25 @@ Future<void> refreshRotateCaptcha({
     final raw = value is String ? jsonDecode(value) : value;
     if (raw is Map &&
         raw['viewportWidth'] is num &&
+        raw['viewportHeight'] is num &&
         raw['x'] is num &&
         raw['y'] is num &&
-        (raw['viewportWidth'] as num) > 0) {
-      final scale = bounds.width / (raw['viewportWidth'] as num);
+        (raw['viewportWidth'] as num).isFinite &&
+        (raw['viewportHeight'] as num).isFinite &&
+        (raw['viewportWidth'] as num) > 0 &&
+        (raw['viewportHeight'] as num) > 0) {
       point =
           bounds.topLeft +
-          Offset((raw['x'] as num) * scale, (raw['y'] as num) * scale);
+          Offset(
+            (raw['x'] as num) * bounds.width / (raw['viewportWidth'] as num),
+            (raw['y'] as num) * bounds.height / (raw['viewportHeight'] as num),
+          );
     }
   }
-  if (point == null || !bounds.contains(point)) {
+  if (point == null ||
+      !point.dx.isFinite ||
+      !point.dy.isFinite ||
+      !bounds.contains(point)) {
     throw StateError('Không tìm thấy nút đổi mã CAPTCHA. Hãy xử lý thủ công.');
   }
   await accessibility.tapScreen(bounds, point);
@@ -209,9 +218,7 @@ class RotateCaptchaSolver {
       streamed,
     ).timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
-      throw StateError(
-        'SadCaptcha trả lỗi HTTP ${response.statusCode}. Hãy kiểm tra API key và số dư.',
-      );
+      throw RotateCaptchaApiFailure(response.statusCode);
     }
     final body = jsonDecode(response.body);
     final value = body is Map ? body['angle'] : null;
@@ -299,7 +306,11 @@ class RotateCaptchaSolver {
         }
         if (!await isPresent()) return true;
       } on StateError catch (error) {
-        if (error is RotateCaptchaCancelled || attempt >= attempts) rethrow;
+        if (error is RotateCaptchaCancelled ||
+            (error is RotateCaptchaApiFailure && !error.retryable) ||
+            attempt >= attempts) {
+          rethrow;
+        }
         onStatus('Chưa xử lý được CAPTCHA; thử lại ($attempt/$attempts)…');
         await guard();
         await _pause(1000);
@@ -429,4 +440,21 @@ class _CaptchaNotSolved implements Exception {
 
 class RotateCaptchaCancelled extends StateError {
   RotateCaptchaCancelled() : super('Đã dừng xử lý CAPTCHA.');
+}
+
+/// Retrying the same key/images cannot repair a rejected client request.
+class RotateCaptchaApiFailure extends StateError {
+  RotateCaptchaApiFailure(this.statusCode)
+    : super(switch (statusCode) {
+        401 =>
+          'SadCaptcha từ chối API key (HTTP 401). Kiểm tra sadcaptcha_license_key trong Firebase Remote Config.',
+        402 => 'SadCaptcha yêu cầu kiểm tra số dư hoặc gói dịch vụ (HTTP 402).',
+        403 =>
+          'SadCaptcha từ chối quyền truy cập (HTTP 403). Kiểm tra quyền của API key.',
+        _ =>
+          'SadCaptcha trả lỗi HTTP $statusCode. Hãy kiểm tra dịch vụ và dữ liệu CAPTCHA.',
+      });
+
+  final int statusCode;
+  bool get retryable => statusCode >= 500 && statusCode <= 599;
 }

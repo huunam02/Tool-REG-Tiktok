@@ -1,0 +1,44 @@
+[
+  {
+    "id": "1793098757921827-3381519146",
+    "configuration_id": 14,
+    "mode": "search",
+    "phase": "stopped",
+    "created_at": 1793098757922,
+    "updated_at": 1793099237116,
+    "watch_ms": 0,
+    "videos": 0,
+    "full_videos": 0,
+    "skipped_videos": 0,
+    "likes": 0,
+    "comments": 0
+  },
+  {
+    "id": "1793099266745803-230042134",
+    "configuration_id": 14,
+    "mode": "search",
+    "phase": "stopped",
+    "created_at": 1793099266746,
+    "updated_at": 1793099528010,
+    "watch_ms": 0,
+    "videos": 0,
+    "full_videos": 0,
+    "skipped_videos": 0,
+    "likes": 0,
+    "comments": 0
+  },
+  {
+    "id": "1793099554086965-3936543678",
+    "configuration_id": 14,
+    "mode": "feed",
+    "phase": "completed",
+    "created_at": 1793099554087,
+    "updated_at": 1793099721095,
+    "watch_ms": 157000,
+    "videos": 2,
+    "full_videos": 1,
+    "skipped_videos": 1,
+    "likes": 0,
+    "comments": 0
+  }
+]

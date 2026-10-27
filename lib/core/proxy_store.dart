@@ -7,8 +7,6 @@ import 'proxy_draft.dart';
 import 'desktop_user_agents.dart';
 import 'firefox_user_agent.dart';
 import 'proxy_time_zone.dart';
-import 'device_memory.dart';
-import 'gpu_profile.dart';
 import 'nurture_data.dart';
 import 'nurture_store.dart';
 import 'signup_failure.dart';
@@ -25,7 +23,6 @@ class ProxyProfile {
     this.timeZoneId = '',
     this.nurtureAfterSignup = false,
     this.nurtureSettings = NurtureSettings.defaults,
-    this.gpuProfileId = '',
     this.signupFailed = false,
   });
 
@@ -42,18 +39,10 @@ class ProxyProfile {
   /// Like/comment/long-watch rates and session length for this account.
   final NurtureSettings nurtureSettings;
 
-  /// The phone GPU pages see over WebGL; fixed per configuration.
-  final String gpuProfileId;
-  GpuProfile get gpuProfile => GpuProfile.byId(gpuProfileId);
-
   /// The last automatic signup of this configuration failed.
   final bool signupFailed;
 
-  ProxyProfile copyWith({
-    String? userAgent,
-    String? timeZoneId,
-    String? gpuProfileId,
-  }) => ProxyProfile(
+  ProxyProfile copyWith({String? userAgent, String? timeZoneId}) => ProxyProfile(
     proxy: proxy,
     userAgent: userAgent ?? this.userAgent,
     timeZoneId: timeZoneId ?? this.timeZoneId,
@@ -64,7 +53,6 @@ class ProxyProfile {
     configurationId: configurationId,
     nurtureAfterSignup: nurtureAfterSignup,
     nurtureSettings: nurtureSettings,
-    gpuProfileId: gpuProfileId ?? this.gpuProfileId,
     signupFailed: signupFailed,
   );
 }
@@ -81,7 +69,6 @@ class SavedProxy extends ProxyProfile {
     super.timeZoneId,
     super.nurtureAfterSignup,
     super.nurtureSettings,
-    super.gpuProfileId,
     super.signupFailed,
   }) : super(configurationId: id);
   final int id;
@@ -154,7 +141,6 @@ class ProxyStore {
       signup_failed INTEGER NOT NULL DEFAULT 0
         CHECK (signup_failed IN (0, 1)),
       registered_at INTEGER,
-      gpu_profile TEXT NOT NULL DEFAULT '',
       $_nurtureSettingsColumns
     )''');
     await db.execute(
@@ -202,20 +188,17 @@ class ProxyStore {
     }
   }
 
-  /// Give every configuration without a known phone GPU a random one.
-  static Future<void> _fillGpuProfiles(DatabaseExecutor db) async {
-    final rows = await db.query(
-      'configurations',
-      columns: ['id', 'gpu_profile'],
-    );
-    for (final row in rows) {
-      if (GpuProfile.isKnown(row['gpu_profile'] as String? ?? '')) continue;
-      await db.update(
-        'configurations',
-        {'gpu_profile': GpuProfile.random().id},
-        where: 'id = ?',
-        whereArgs: [row['id']],
-      );
+  /// Older versions gave each configuration a phone GPU that no page ever
+  /// saw: pages get the desktop GPU in desktop_identity.js. Erase it like
+  /// [_removeLocalIps].
+  static Future<void> _removeGpuProfiles(DatabaseExecutor db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(configurations)');
+    if (!columns.any((column) => column['name'] == 'gpu_profile')) return;
+    await db.execute("UPDATE configurations SET gpu_profile = ''");
+    try {
+      await db.execute('ALTER TABLE configurations DROP COLUMN gpu_profile');
+    } on DatabaseException {
+      // Older Android SQLite: the column stays, empty and unused.
     }
   }
 
@@ -250,7 +233,7 @@ class ProxyStore {
       db = await factory.openDatabase(
         filename,
         options: OpenDatabaseOptions(
-          version: 20,
+          version: 21,
           onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
           onOpen: (db) async {
             await db.update('nurture_sessions', {
@@ -350,15 +333,7 @@ class ProxyStore {
               );
             }
             await _removeLocalIps(db);
-            final gpuColumns = await db.rawQuery(
-              'PRAGMA table_info(configurations)',
-            );
-            if (!gpuColumns.any((column) => column['name'] == 'gpu_profile')) {
-              await db.execute(
-                "ALTER TABLE configurations ADD COLUMN gpu_profile TEXT NOT NULL DEFAULT ''",
-              );
-            }
-            await _fillGpuProfiles(db);
+            await _removeGpuProfiles(db);
           },
         ),
       );
@@ -476,7 +451,6 @@ class ProxyStore {
     timeZoneId: row['time_zone_id'] as String? ?? '',
     nurtureAfterSignup: row['nurture_after_signup'] == 1,
     nurtureSettings: NurtureSettings.fromMap(row),
-    gpuProfileId: row['gpu_profile'] as String? ?? '',
     signupFailed: row['signup_failed'] == 1,
   );
 
@@ -560,7 +534,6 @@ class ProxyStore {
         'user_agent': normalizeDesktopUserAgentForPlatform(
           await _selectUserAgent(),
         ),
-        'gpu_profile': GpuProfile.random().id,
         'listed': 0,
       });
       await _applyCurrent(txn, id);
@@ -628,40 +601,8 @@ class ProxyStore {
     hasBeenUsed: row['has_been_used'] == 1,
     nurtureAfterSignup: row['nurture_after_signup'] == 1,
     nurtureSettings: NurtureSettings.fromMap(row),
-    gpuProfileId: row['gpu_profile'] as String? ?? '',
     signupFailed: row['signup_failed'] == 1,
   );
-
-  /// Give each unregistered configuration whose phone GPU was never sold
-  /// with this device's RAM ([deviceMemoryGb]) a phone that was. Registered
-  /// accounts keep theirs, so TikTok never sees their phone change. Returns
-  /// the new GPU id of each changed configuration.
-  Future<Map<int, String>> fitGpuProfilesToDevice([double? memory]) async {
-    memory ??= deviceMemoryGb;
-    if (memory == null) return const {};
-    final db = await _database;
-    final rows = await db.query(
-      'configurations',
-      columns: ['id', 'gpu_profile', 'statusAccount'],
-    );
-    final changed = <int, String>{};
-    for (final row in rows) {
-      if (row['statusAccount'] == 'registered') continue;
-      if (GpuProfile.byId(row['gpu_profile'] as String? ?? '').fits(memory)) {
-        continue;
-      }
-      final id = row['id'] as int;
-      final gpu = GpuProfile.random(null, memory).id;
-      await db.update(
-        'configurations',
-        {'gpu_profile': gpu},
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-      changed[id] = gpu;
-    }
-    return changed;
-  }
 
   Future<List<SavedProxy>> list() async {
     final rows = await (await _database).query(
@@ -682,7 +623,6 @@ class ProxyStore {
     String? timeZoneId,
     bool? nurtureAfterSignup,
     NurtureSettings? nurtureSettings,
-    String? gpuProfileId,
   }) async {
     final db = await _database;
     return db.transaction(
@@ -697,7 +637,6 @@ class ProxyStore {
         timeZoneId: timeZoneId,
         nurtureAfterSignup: nurtureAfterSignup,
         nurtureSettings: nurtureSettings,
-        gpuProfileId: gpuProfileId,
       ),
     );
   }
@@ -718,7 +657,6 @@ class ProxyStore {
             timeZoneId: draft.timeZoneId,
             nurtureAfterSignup: draft.nurtureAfterSignup,
             nurtureSettings: draft.nurtureSettings,
-            gpuProfileId: draft.gpuProfileId,
           ),
         );
       }
@@ -737,12 +675,8 @@ class ProxyStore {
     String? timeZoneId,
     bool? nurtureAfterSignup,
     NurtureSettings? nurtureSettings,
-    String? gpuProfileId,
   }) async {
     account?.validate();
-    if (gpuProfileId != null && !GpuProfile.isKnown(gpuProfileId)) {
-      throw const FormatException('Thiết bị GPU không có trong danh sách.');
-    }
     final nurtureError = nurtureSettings?.error;
     if (nurtureError != null) throw FormatException(nurtureError);
     final requestedTimeZone = timeZoneId == null
@@ -786,7 +720,6 @@ class ProxyStore {
       if (nurtureAfterSignup != null)
         'nurture_after_signup': nurtureAfterSignup ? 1 : 0,
       ...?nurtureSettings?.toMap(),
-      if (gpuProfileId != null) 'gpu_profile': gpuProfileId.trim(),
       if (account != null &&
           existing != null &&
           existing['account_email'] != account.email.trim())
@@ -834,11 +767,7 @@ class ProxyStore {
         (current.isNotEmpty && sameProxy(_readProxy(current.single), proxy)
             ? current.single['user_agent'] as String
             : normalizeDesktopUserAgentForPlatform(await _selectUserAgent()));
-    return txn.insert('configurations', {
-      ...values,
-      'user_agent': agent,
-      'gpu_profile': values['gpu_profile'] ?? GpuProfile.random().id,
-    });
+    return txn.insert('configurations', {...values, 'user_agent': agent});
   }
 
   /// Fill an old active configuration after lookup without changing selection.

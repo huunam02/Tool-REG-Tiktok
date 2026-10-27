@@ -3,7 +3,6 @@
 Tài liệu này hướng dẫn cách gọi API của SadCaptcha để giải mã dạng **TikTok Rotate Captcha** (Captcha xoay hình) và quy trình phát hiện / xử lý tự động trong các script tự động hóa trình duyệt.
 
 ---
- đay
 ## 1. Tổng Quan về API
 
 API nhận dữ liệu 2 bức ảnh (ảnh nền bên ngoài và ảnh hình tròn bên trong) dạng Base64, sau đó trả về **góc xoay** ($a$) cần thiết từ $0^\circ$ đến $360^\circ$ để xoay hình về đúng vị trí.
@@ -182,8 +181,18 @@ với một stroke liên tục, chờ Android báo hoàn tất thao tác.
 DOM chỉ cung cấp URL ảnh (HTTPS hoặc data URI) và hình học thanh kéo. App tải ảnh,
 gửi `outerImageB64` / `innerImageB64` đến SadCaptcha, kiểm tra trường `angle` là số
 hữu hạn trong `[0, 360]`, rồi tính khoảng kéo theo công thức ở mục 3.
-Tọa độ CSS được đổi trực tiếp sang pixel màn hình bằng tỷ lệ chiều rộng WebView
-thật / chiều rộng visual viewport và cộng vị trí WebView từ Accessibility.
+Tọa độ CSS được đổi trực tiếp sang pixel màn hình theo hai trục, dùng bounds
+WebView thật từ Accessibility và kích thước visual viewport:
+
+```text
+screenX = webLeft + cssX × webWidth / viewportWidth
+screenY = webTop  + cssY × webHeight / viewportHeight
+```
+
+`cssX/cssY` đã trừ `visualViewport.offsetLeft/offsetTop`. Cách tính áp dụng cho
+cả kéo slider và bấm Refresh, kể cả khung desktop nằm giữa màn hình điện thoại.
+Chiều cao dùng số đo riêng vì việc làm tròn frame theo pixel có thể làm tỷ lệ
+hai trục hơi khác nhau.
 Không nhân trực tiếp với `devicePixelRatio` vì bố cục desktop có thể thu nhỏ;
 điểm kéo phải nằm trong bounds WebView hiện tại.
 
@@ -194,9 +203,13 @@ thành công. Không lặp gọi API/kéo cùng CAPTCHA khi xác minh thất b�
 
 Chỉ hỗ trợ CAPTCHA xoay với các selector ở tài liệu này trong document chính.
 CAPTCHA trong iframe khác origin, dạng puzzle/chọn hình, ảnh `blob:`, ảnh bị chặn
-hoặc markup khác cần xử lý thủ công. Khi ảnh đang tải, app chờ tối đa 5 giây.
-Lỗi mạng/API, góc sai, thay đổi CAPTCHA hoặc chưa xác nhận kết quả sẽ dừng luồng
-để giữ màn hiện tại. Chưa kiểm chứng với một CAPTCHA TikTok thật trên thiết bị.
+hoặc markup khác cần xử lý thủ công. Khi ảnh đang tải, app chờ tối đa 15 giây.
+Lỗi dịch vụ HTTP 5xx có tối đa 3 lượt thử. HTTP 4xx dừng ngay: 401 báo API key
+bị từ chối và chỉ rõ `sadcaptcha_license_key` trong Firebase Remote Config;
+402 yêu cầu kiểm tra số dư/gói dịch vụ; 403 báo quyền truy cập bị từ chối.
+Các lỗi này không được coi là lỗi tọa độ và không được thử bằng cách kéo mò.
+Nếu đã kéo nhưng CAPTCHA vẫn hiện, app chờ mã mới hoặc bấm Refresh qua Trợ năng,
+rồi thử lại, tối đa 3 lần kéo. Hết lượt hoặc geometry thay đổi thì giữ màn hiện tại.
 
 Tham chiếu hợp đồng API: [SadCaptcha chính thức](https://www.sadcaptcha.com/api/v1/swagger-ui/index.html).
 
@@ -220,8 +233,8 @@ Nếu đưa ứng dụng ra nền hoặc TikTok bị màn khác che, bộ theo d
 khi quay lại chỉ chạy tiếp nếu Auto nuôi vẫn đang bật.
 
 Khi chưa bật Auto nuôi, đang đăng nhập/đăng ký, xem thủ công hoặc ở Native WebView,
-bộ theo dõi không chạy và không gọi API giải. Nếu giải lỗi hoặc thiếu Trợ năng,
-app dừng phiên nuôi và thông báo để kiểm tra; không tự thử lại CAPTCHA đó.
+bộ theo dõi không chạy và không gọi API giải. Nếu hết lượt giải, API từ chối
+yêu cầu hoặc thiếu Trợ năng, app dừng phiên nuôi và thông báo để kiểm tra.
 Muốn chạy tiếp cần bật lại Auto nuôi. App không tự chuyển từ Profile về Home.
 
 Tính năng chỉ tự giải dạng **xoay hình** đã mô tả; puzzle/chọn hình hoặc CAPTCHA
@@ -252,3 +265,34 @@ Bộ tạm dừng nuôi và kiểm tra xác minh cũng nhận cả wrapper V1 l�
 CSS transform, phần tử cũ bị ẩn và thanh kéo ngoài vùng nhìn thấy; kiểm thử
 Flutter xác nhận đổi tọa độ CSS sang một WebView 318×636 pixel. Đây là kiểm thử
 mô phỏng bố cục, chưa phải một lượt giải thành công trên CAPTCHA TikTok thật.
+
+## 9. Khung desktop hiện tại và kiểm tra bằng ADB — 27/10/2026
+
+Ứng dụng giữ màn hình điện thoại dọc và đặt trang desktop 1920×955 ở giữa.
+Máy ảo Galaxy S8 trong lượt kiểm tra có màn hình 1440×2960; bounds GeckoView
+đọc qua Trợ năng là `(0,1186)–(1440,1902)`, tức 1440×716 pixel. Chỉ bounds
+đọc được ở từng lần kiểm tra mới quyết định tọa độ; không dùng toàn màn hình,
+chiều cao 800 của thiết kế cũ, khoảng đệm cố định hay DPR nhận diện trình duyệt.
+
+Trong APK debug có lệnh chỉ đọc để đối chiếu geometry khi CAPTCHA đang hiện:
+
+```bash
+adb shell am broadcast -a com.brisklane.browser.SIGNUP_CALIBRATE \
+  --es signupCalibration captcha-layout \
+  --es requestId 20261027000000000000000000000001
+adb shell run-as com.brisklane.browser cat \
+  files/signup-calibration-20261027000000000000000000000001.json
+```
+
+`requestId` phải gồm đúng 32 ký tự hex. Kết quả có `viewport`, `webBounds`,
+`handle`, `travel`, `from`, `mid`, `end`; ba điểm tương ứng 0°, 180°, 360°,
+không phải góc giải thực tế. Lệnh không kéo, không Refresh, không gọi SadCaptcha
+và không xuất API key hay URL ảnh. Khi không có CAPTCHA đọc được, trả
+`captcha-geometry-unavailable`.
+
+Kiểm thử bao phủ khung 1920×955 được thu thành 1440×716, offset của visual
+viewport, CSS transform, Refresh và trường hợp API từ chối key chỉ gọi một lần.
+Trong lượt ADB của cấu hình enoch, trang đã đăng nhập và CAPTCHA xoay xuất hiện
+ở Search; SadCaptcha trả HTTP 401. Vì vậy chưa có bằng chứng giải CAPTCHA thành
+công với key đó. Cần key hợp lệ trong Remote Config để kiểm chứng đầu cuối;
+thay tọa độ không sửa được lỗi xác thực API.

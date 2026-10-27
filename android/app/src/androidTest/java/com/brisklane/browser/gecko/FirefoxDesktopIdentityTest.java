@@ -32,6 +32,8 @@ public class FirefoxDesktopIdentityTest {
         + "orientation:'orientation' in window,screenOrientation:screen.orientation.type,"
         + "pointerType:new PointerEvent('pointerdown',{pointerType:'touch'}).pointerType,"
         + "share:typeof navigator.share,"
+        + "pointer:['(pointer: fine)','(hover: hover)','(any-pointer: coarse)','(any-hover: none)']"
+        + ".map(q=>matchMedia(q).matches),"
         + "renderer:document.createElement('canvas').getContext('webgl').getParameter(0x1F01),"
         + "screen:[screen.width,screen.height,screen.colorDepth],"
         + "outer:[outerWidth,outerHeight],dpr:devicePixelRatio,"
@@ -143,6 +145,7 @@ public class FirefoxDesktopIdentityTest {
                 assertEquals(1.0, readout.getDouble("dpr"), 0.0);
                 assertEquals("mouse", readout.getString("pointerType"));
                 assertEquals("undefined", readout.getString("share"));
+                assertEquals("[true,true,false,false]", readout.getJSONArray("pointer").toString());
                 assertEquals(FirefoxDesktopIdentity.WEBGL_RENDERER, readout.getString("renderer"));
                 assertEquals(FirefoxDesktopIdentity.WEBGL_VENDOR, readout.getJSONArray("gpu").getString(0));
                 assertEquals(FirefoxDesktopIdentity.WEBGL_RENDERER, readout.getJSONArray("gpu").getString(1));

@@ -55,12 +55,6 @@ class MemoryProxyStore extends ProxyStore {
               nurtureAfterSignup: entries.any(
                 (entry) => entry.id == currentId && entry.nurtureAfterSignup,
               ),
-              gpuProfileId:
-                  entries
-                      .where((entry) => entry.id == currentId)
-                      .firstOrNull
-                      ?.gpuProfileId ??
-                  '',
               nurtureSettings:
                   entries
                       .where((entry) => entry.id == currentId)
@@ -154,7 +148,6 @@ class MemoryProxyStore extends ProxyStore {
     String? timeZoneId,
     bool? nurtureAfterSignup,
     NurtureSettings? nurtureSettings,
-    String? gpuProfileId,
   }) async {
     if (failWrites) throw StateError('Storage unavailable');
     account?.validate();
@@ -192,7 +185,6 @@ class MemoryProxyStore extends ProxyStore {
             nurtureAfterSignup ?? old?.nurtureAfterSignup ?? false,
         nurtureSettings:
             nurtureSettings ?? old?.nurtureSettings ?? NurtureSettings.defaults,
-        gpuProfileId: gpuProfileId ?? old?.gpuProfileId ?? '',
         signupFailed: _signupFailedOverride ?? old?.signupFailed ?? false,
       ),
     );
@@ -217,7 +209,6 @@ class MemoryProxyStore extends ProxyStore {
           statusAccount: draft.statusAccount,
           nurtureAfterSignup: draft.nurtureAfterSignup,
           nurtureSettings: draft.nurtureSettings,
-          gpuProfileId: draft.gpuProfileId,
         ),
     ];
   }
@@ -249,7 +240,6 @@ class MemoryProxyStore extends ProxyStore {
         hasBeenUsed: entry.hasBeenUsed,
         nurtureAfterSignup: entry.nurtureAfterSignup,
         nurtureSettings: entry.nurtureSettings,
-        gpuProfileId: entry.gpuProfileId,
         signupFailed: entry.signupFailed,
       );
     }
@@ -300,7 +290,6 @@ class MemoryProxyStore extends ProxyStore {
       hasBeenUsed: used,
       nurtureAfterSignup: entry.nurtureAfterSignup,
       nurtureSettings: entry.nurtureSettings,
-      gpuProfileId: entry.gpuProfileId,
       signupFailed: entry.signupFailed,
     );
   }

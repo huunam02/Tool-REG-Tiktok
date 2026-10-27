@@ -90,7 +90,7 @@ class _TikTokView extends StatelessWidget {
 
   Widget _signupViewport(Widget child) => logic.usesAccessibilityAccountFlow
       ? StandardSignupViewport(
-          landscape: logic.usesCoordinateSignup,
+          landscape: true,
           onWidth: (width) => logic.signupViewportWidth = width,
           child: child,
         )
@@ -129,7 +129,7 @@ class _TikTokView extends StatelessWidget {
             foregroundColor: AppActionTheme.onPrimary,
             disabledBackgroundColor: const Color(0xFFF1F3F5),
             disabledForegroundColor: const Color(0xFF9AA0A8),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             minimumSize: const Size(0, 36),
             shape: const StadiumBorder(),
             side: BorderSide(
@@ -190,7 +190,8 @@ class _TikTokView extends StatelessWidget {
                                         logic.activeLoginOtp.isEmpty) ||
                                     (logic.autoSignupBusy &&
                                         logic.signupOtpRequest != null &&
-                                        logic.activeSignupOtp.isEmpty)
+                                        logic.signupOtpRequest!.code == null &&
+                                        logic.signupOtpRequest!.error == null)
                                 ? 'Đang chờ API lấy OTP… (tối đa ${logic.configuration.otpApi?.waitSeconds ?? 180} giây)'
                                 : logic.autoLoginBusy
                                 ? logic.loginStatus
@@ -243,6 +244,136 @@ class _TikTokView extends StatelessWidget {
     ),
   );
 
+  AppBar _appBar(BuildContext context) => AppBar(
+    backgroundColor: Colors.white,
+    iconTheme: const IconThemeData(color: Colors.black),
+    // Compact so the title still fits beside Auto nuôi on a phone.
+    leadingWidth: 44,
+    titleSpacing: 0,
+    title: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          logic.browserCheckOpen
+              ? 'Kiểm tra trình duyệt'
+              : logic.useNativeWebView
+              ? 'TikTok · Tương thích'
+              : 'TikTok',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
+          ),
+        ),
+        if (logic.detectedIp != null)
+          Text(
+            'IP: ${logic.detectedIp}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 10,
+              color: Colors.black54,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        if (logic.manualViewingPlan != null)
+          Text(
+            '${logic.manualViewingPlan!.mode.label}${logic.manualViewingPlan!.keyword.isEmpty ? '' : ' · ${logic.manualViewingPlan!.keyword}'} · xem thủ công',
+            key: const Key('manualViewingStatus'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10, color: Colors.black54),
+          ),
+      ],
+    ),
+    actionsPadding: const EdgeInsets.only(right: 4),
+    actions: [
+      if (!logic.browserCheckOpen && !logic.useNativeWebView)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: _autoWatchButton(),
+        ),
+      IconButton(
+        visualDensity: VisualDensity.compact,
+        tooltip: 'Tải lại',
+        onPressed: logic.reloadPage,
+        icon: const Icon(Icons.refresh, color: Colors.black),
+      ),
+      if (needsAndroidDesktopIdentity && logic.manualViewingPlan == null)
+        IconButton(
+          key: const Key('nativeWebView'),
+          visualDensity: VisualDensity.compact,
+          tooltip: logic.usesEngineIdentity
+              ? 'Dùng User-Agent đã chọn (thủ công)'
+              : 'Desktop theo GeckoView (thủ công)',
+          icon: const Icon(Icons.web, color: Colors.black),
+          onPressed: () {
+            logic.cancelAutoActions();
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => TikTokPage(
+                  configuration: logic.configuration,
+                  proxyStore: logic.proxyStore,
+                  useNativeWebView: true,
+                  useInstalledEngine: !logic.usesEngineIdentity,
+                ),
+              ),
+            );
+          },
+        ),
+    ],
+  );
+
+  Widget _body() => Stack(
+    fit: StackFit.expand,
+    children: [
+      _signupViewport(
+        GeckoBrowserView(
+          initialUrl: logic.initialUrl,
+          contextId: logic.configuration.configurationId == null
+              ? 'profile-${logic.configuration.userAgent.hashCode}'
+              : geckoProfileContextId(logic.configuration.configurationId!),
+          userAgent: logic.configuration.userAgent,
+          initialScripts: [
+            // The proxy's own zone, so the clock matches the IP.
+            webViewTimeZoneScript(
+              logic.configuration.webViewTimeZone ?? firefoxDesktopTimeZone,
+            ),
+          ],
+          onCreated: logic.onWebViewCreated,
+          onLoadStart: logic.onLoadStart,
+          onProgressChanged: logic.onProgressChanged,
+          onLoadStop: logic.onLoadStop,
+          onReceivedError: logic.onReceivedError,
+        ),
+      ),
+      if (logic.loadingProgress < 100)
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: IgnorePointer(
+            child: LinearProgressIndicator(
+              value: logic.loadingProgress / 100,
+              minHeight: 2,
+              backgroundColor: Colors.white12,
+              color: AppActionTheme.primary,
+            ),
+          ),
+        ),
+      if (logic.pageFailure != null)
+        _ErrorView(failure: logic.pageFailure!, onRetry: logic.retryPage),
+      if (logic.verificationPaused)
+        _verificationPauseNotice()
+      else if (logic.autoLoginBusy ||
+          logic.autoSignupBusy ||
+          logic.autoRunFailing)
+        _autoControls(),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     logic.setTikTokScreenVisible(ModalRoute.of(context)?.isCurrent ?? true);
@@ -259,136 +390,8 @@ class _TikTokView extends StatelessWidget {
         data: AppActionTheme.apply(Theme.of(context)),
         child: Scaffold(
           resizeToAvoidBottomInset: logic.useNativeWebView,
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            iconTheme: const IconThemeData(color: Colors.black),
-            titleSpacing: 16,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  logic.browserCheckOpen
-                      ? 'Kiểm tra trình duyệt'
-                      : logic.useNativeWebView
-                      ? 'TikTok · Tương thích'
-                      : 'TikTok',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
-                ),
-                if (logic.detectedIp != null)
-                  Text(
-                    'IP: ${logic.detectedIp}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.black54,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                if (logic.manualViewingPlan != null)
-                  Text(
-                    '${logic.manualViewingPlan!.mode.label}${logic.manualViewingPlan!.keyword.isEmpty ? '' : ' · ${logic.manualViewingPlan!.keyword}'} · xem thủ công',
-                    key: const Key('manualViewingStatus'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11, color: Colors.black54),
-                  ),
-              ],
-            ),
-            actionsPadding: const EdgeInsets.only(right: 8),
-            actions: [
-              if (!logic.browserCheckOpen && !logic.useNativeWebView)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: _autoWatchButton(),
-                ),
-              IconButton(
-                tooltip: 'Tải lại',
-                onPressed: logic.reloadPage,
-                icon: const Icon(Icons.refresh, color: Colors.black),
-              ),
-              if (needsAndroidDesktopIdentity &&
-                  logic.manualViewingPlan == null)
-                IconButton(
-                  key: const Key('nativeWebView'),
-                  tooltip: logic.usesEngineIdentity
-                      ? 'Dùng User-Agent đã chọn (thủ công)'
-                      : 'Desktop theo GeckoView (thủ công)',
-                  icon: const Icon(Icons.web, color: Colors.black),
-                  onPressed: () {
-                    logic.cancelAutoActions();
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute<void>(
-                        builder: (_) => TikTokPage(
-                          configuration: logic.configuration,
-                          proxyStore: logic.proxyStore,
-                          useNativeWebView: true,
-                          useInstalledEngine: !logic.usesEngineIdentity,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-            ],
-          ),
-          body: Stack(
-            fit: StackFit.expand,
-            children: [
-              _signupViewport(
-                GeckoBrowserView(
-                  initialUrl: logic.initialUrl,
-                  contextId: logic.configuration.configurationId == null
-                      ? 'profile-${logic.configuration.userAgent.hashCode}'
-                      : geckoProfileContextId(
-                          logic.configuration.configurationId!,
-                        ),
-                  userAgent: logic.configuration.userAgent,
-                  initialScripts: [
-                    // The proxy's own zone, so the clock matches the IP.
-                    webViewTimeZoneScript(
-                      logic.configuration.webViewTimeZone ??
-                          firefoxDesktopTimeZone,
-                    ),
-                  ],
-                  onCreated: logic.onWebViewCreated,
-                  onLoadStart: logic.onLoadStart,
-                  onProgressChanged: logic.onProgressChanged,
-                  onLoadStop: logic.onLoadStop,
-                  onReceivedError: logic.onReceivedError,
-                ),
-              ),
-              if (logic.loadingProgress < 100)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: IgnorePointer(
-                    child: LinearProgressIndicator(
-                      value: logic.loadingProgress / 100,
-                      minHeight: 2,
-                      backgroundColor: Colors.white12,
-                      color: AppActionTheme.primary,
-                    ),
-                  ),
-                ),
-              if (logic.pageFailure != null)
-                _ErrorView(
-                  failure: logic.pageFailure!,
-                  onRetry: logic.retryPage,
-                ),
-              if (logic.verificationPaused)
-                _verificationPauseNotice()
-              else if (logic.autoLoginBusy ||
-                  logic.autoSignupBusy ||
-                  logic.autoRunFailing)
-                _autoControls(),
-            ],
-          ),
+          appBar: _appBar(context),
+          body: _body(),
         ),
       ),
     );

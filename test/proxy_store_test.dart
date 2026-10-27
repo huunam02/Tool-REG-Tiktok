@@ -6,6 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
+import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
 import 'package:test_tiktok/core/firefox_user_agent.dart';
 
@@ -54,6 +55,31 @@ void main() {
     expect(
       columns.map((column) => column['name']),
       isNot(contains('local_ip')),
+    );
+    await migrated.close();
+    store = openStore();
+  });
+
+  test('upgrading erases the unused phone GPU column', () async {
+    await store.save(name: 'A', proxy: WebViewProxy.parse('192.0.2.7:8080')!);
+    await store.close();
+    final old = await databaseFactoryFfi.openDatabase(filename);
+    await old.execute(
+      "ALTER TABLE configurations ADD COLUMN gpu_profile TEXT NOT NULL DEFAULT ''",
+    );
+    await old.execute("UPDATE configurations SET gpu_profile = 'galaxy-s23'");
+    await old.setVersion(20);
+    await old.close();
+    store = openStore();
+    expect((await store.list()).single.name, 'A');
+    await store.close();
+    final migrated = await databaseFactoryFfi.openDatabase(filename);
+    final columns = await migrated.rawQuery(
+      'PRAGMA table_info(configurations)',
+    );
+    expect(
+      columns.map((column) => column['name']),
+      isNot(contains('gpu_profile')),
     );
     await migrated.close();
     store = openStore();
@@ -494,7 +520,7 @@ void main() {
       expect(selected.timeZoneId, isEmpty);
       await store.close();
       final migrated = await databaseFactoryFfi.openDatabase(filename);
-      expect(await migrated.getVersion(), 20);
+      expect(await migrated.getVersion(), 21);
       expect(
         (await migrated.rawQuery(
           'PRAGMA table_info(configurations)',
@@ -671,8 +697,13 @@ void main() {
           'changed-agent',
           account: drafts.first.account,
         ),
-        // An unknown phone fails the batch after the first row was written.
-        ProxyDraft('invalid', drafts.last.proxy, '', gpuProfileId: 'unknown'),
+        // Invalid nurture settings fail the batch after the first row.
+        ProxyDraft(
+          'invalid',
+          drafts.last.proxy,
+          '',
+          nurtureSettings: const NurtureSettings(likePercent: 101),
+        ),
       ]),
       throwsFormatException,
     );

@@ -10,7 +10,6 @@ import 'package:xml/xml.dart';
 import 'configuration_data.dart';
 import 'account_password.dart';
 import 'data_excel_layout.dart';
-import 'gpu_profile.dart';
 import 'nurture_data.dart';
 
 class ConfigurationImportFile {
@@ -133,9 +132,6 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
         final nurtureSettings = withNurtureSettings
             ? _readNurtureSettings(cells, columns)
             : null;
-        final gpuProfileId = withNurtureSettings
-            ? _readGpuProfile(cells, columns)
-            : null;
         // Header-based import keeps Data Mail in one cell even though it
         // contains pipes. Email is always derived from this cell.
         if (columns.containsKey('Data Mail')) {
@@ -176,12 +172,7 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
                   '${read('Proxy')}|$dataMail|${read('Password')}${status.isEmpty ? '' : '|$status'}',
                 );
           record.account.validate();
-          records.add(
-            record.copyWith(
-              nurtureSettings: nurtureSettings,
-              gpuProfileId: gpuProfileId,
-            ),
-          );
+          records.add(record.copyWith(nurtureSettings: nurtureSettings));
           continue;
         }
         // Additional exported configuration columns are for reference only.
@@ -197,10 +188,9 @@ List<ImportedConfiguration> _decodeExcel(Uint8List bytes) {
           ),
         };
         records.add(
-          ImportedConfiguration.parse(line).copyWith(
-            nurtureSettings: nurtureSettings,
-            gpuProfileId: gpuProfileId,
-          ),
+          ImportedConfiguration.parse(
+            line,
+          ).copyWith(nurtureSettings: nurtureSettings),
         );
       } on FormatException catch (error) {
         throw FormatException(
@@ -325,18 +315,4 @@ NurtureSettings _readNurtureSettings(
   final error = settings.error;
   if (error != null) throw FormatException(error);
   return settings;
-}
-
-/// The Thiết bị GPU cell (id or device name); null when absent or empty.
-String? _readGpuProfile(List<String> cells, Map<String, int> columns) {
-  final index = columns[gpuProfileExcelHeader];
-  final text = index != null && index < cells.length ? cells[index] : '';
-  if (text.trim().isEmpty) return null;
-  final profile = GpuProfile.find(text);
-  if (profile == null) {
-    throw FormatException(
-      'Cột "$gpuProfileExcelHeader": không có thiết bị "${text.trim()}".',
-    );
-  }
-  return profile.id;
 }

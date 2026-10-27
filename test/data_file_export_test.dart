@@ -7,6 +7,7 @@ import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/configuration_file_import.dart';
 import 'package:test_tiktok/core/data_excel_layout.dart';
 import 'package:test_tiktok/core/data_file_export.dart';
+import 'package:test_tiktok/core/firefox_user_agent.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 
@@ -431,7 +432,7 @@ void main() {
     expect(record.nurtureSettings!.likePercent, 45);
   });
 
-  test('each configuration\'s phone GPU survives export and import', () {
+  test('Thiết bị GPU exports the desktop GPU and import ignores it', () {
     final bytes = encodeDataExport(
       configurations: [
         SavedProxy(
@@ -444,57 +445,45 @@ void main() {
             password: 'secret',
             mailboxPassword: 'mail',
           ),
-          gpuProfileId: 'galaxy-s23',
         ),
       ],
       accounts: const [],
     );
     final rows = Excel.decodeBytes(bytes)[dataExcelSheetName].rows;
-    expect(rows[1][8]!.displayText, 'galaxy-s23');
+    expect(rows[0][8]!.displayText, gpuProfileExcelHeader);
+    expect(rows[1][8]!.displayText, firefoxDesktopGpuLabel);
     expect(
       decodeConfigurationImportFile(
         ConfigurationImportFile('gpu.xlsx', bytes),
-      ).single.gpuProfileId,
-      'galaxy-s23',
+      ).single.account.email,
+      'gpu@example.com',
     );
   });
 
-  test('a Thiết bị GPU cell accepts a device name and rejects others', () {
-    List<ImportedConfiguration> decode(String gpu) {
-      final workbook = Excel.createExcel();
-      workbook.rename('Sheet1', dataExcelSheetName);
-      final sheet = workbook[dataExcelSheetName];
-      sheet.appendRow(dataExcelHeaders.map(TextCellValue.new).toList());
-      sheet.appendRow([
-        TextCellValue('192.0.2.7:8080:user:pass'),
-        TextCellValue('person@example.com'),
-        TextCellValue('secret'),
-        TextCellValue('mail'),
-        IntCellValue(1),
-        null,
-        null,
-        null,
-        TextCellValue(gpu),
-      ]);
-      return decodeConfigurationImportFile(
-        ConfigurationImportFile(
-          'gpu.xlsx',
-          Uint8List.fromList(workbook.encode()!),
-        ),
-      );
-    }
-
-    expect(decode('samsung galaxy s23').single.gpuProfileId, 'galaxy-s23');
-    expect(
-      () => decode('Desktop PC'),
-      throwsA(
-        isA<FormatException>().having(
-          (error) => error.message,
-          'message',
-          contains('Thiết bị GPU'),
-        ),
+  test('an older export with a phone GPU still imports', () {
+    final workbook = Excel.createExcel();
+    workbook.rename('Sheet1', dataExcelSheetName);
+    final sheet = workbook[dataExcelSheetName];
+    sheet.appendRow(dataExcelHeaders.map(TextCellValue.new).toList());
+    sheet.appendRow([
+      TextCellValue('192.0.2.7:8080:user:pass'),
+      TextCellValue('person@example.com'),
+      TextCellValue('secret'),
+      TextCellValue('mail'),
+      IntCellValue(1),
+      null,
+      null,
+      null,
+      TextCellValue('galaxy-s23'),
+    ]);
+    final record = decodeConfigurationImportFile(
+      ConfigurationImportFile(
+        'gpu.xlsx',
+        Uint8List.fromList(workbook.encode()!),
       ),
-    );
+    ).single;
+    expect(record.account.email, 'person@example.com');
+    expect(record.statusAccount, AccountStatus.registered);
   });
 
   test('an invalid Cấu hình nuôi cell names the column', () {

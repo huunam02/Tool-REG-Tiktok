@@ -25,6 +25,70 @@ void main() {
     );
   });
 
+  for (final width in [1920.0, 1280.0, 960.0]) {
+    testWidgets('desktop signup follows live fields at frame width $width', (
+      tester,
+    ) async {
+      final accessibility = _RecordedAccessibility(profile, recording)
+        ..desktopBounds = Rect.fromLTWH(317, 219, width, width * 955 / 1920)
+        ..geckoComboboxes = true
+        ..otpNeedsSubmit = true
+        ..otpAutofocusKeyboard = true;
+      final runner = SignupCoordinateRunner(
+        profile: profile,
+        accessibility: accessibility,
+        configuration: AppConfiguration(
+          userAgent: 'desktop',
+          comments: [],
+          signupEmail: 'test@example.org',
+          signupPassword: 'Example12!a',
+          loginUsername: '',
+          loginPassword: '',
+          birthday: DateTime(2000, 2, 29),
+        ),
+        isActive: () => true,
+        isTikTok: () async => true,
+        getOtp: () async => '123456',
+        onStatus: (_) {},
+        now: tester.binding.clock.now,
+      );
+      Object? failure;
+      var finished = false;
+      final run = runner.run().then<void>(
+        (_) => finished = true,
+        onError: (Object error) {
+          failure = error;
+          finished = true;
+        },
+      );
+      for (var i = 0; i < 600 && !finished; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(finished, isTrue);
+      await run;
+      expect(failure, isNull, reason: '${accessibility.actions}');
+      expect(accessibility.state, 'authenticated-home');
+      expect(accessibility.pastes, ['email', 'otp', 'password']);
+      expect(accessibility.keyboardPolicies, [
+        true, // Hold through all account transitions, including OTP autofocus.
+        true, true, // Email: suppress and renew.
+        true, true, // OTP.
+        true, true, // Password.
+        false, // Always restore at the end.
+      ]);
+      expect(accessibility.keyboardRenewals, greaterThan(0));
+      expect(
+        accessibility.actions.where((a) => a == 'submit-otp'),
+        hasLength(1),
+      );
+      expect(accessibility.selected, {
+        'Year': '2000',
+        'Month': 'February',
+        'Day': '29',
+      });
+    });
+  }
+
   for (final scenario in [
     'loaded-page',
     'delayed-load',
@@ -317,6 +381,11 @@ void main() {
     'html-dropdown',
     'html-dropdown-not-moving',
     'gecko-combobox',
+    'transient-after-otp',
+    'transient-after-skip',
+    'login-required-after-skip',
+    'signed-out-after-skip',
+    'signed-out-before-sign-in',
   ]) {
     testWidgets('recorded Android Accessibility flow: $scenario', (
       tester,
@@ -346,9 +415,46 @@ void main() {
       accessibility.freezeDropdown = scenario.endsWith('dropdown-not-moving');
       accessibility.hideNativeOptions = scenario.startsWith('html-');
       accessibility.geckoComboboxes = scenario == 'gecko-combobox';
+      var missingReads = 0;
+      accessibility.onSnapshot = (data) {
+        final transition = scenario == 'transient-after-otp'
+            ? 'otp-context-paste-result'
+            : scenario == 'transient-after-skip'
+            ? 'authenticated-home'
+            : null;
+        if (transition != null &&
+            accessibility.state == transition &&
+            missingReads++ < 3) {
+          data['ready'] = false;
+          data['webBounds'] = [0, 0, 0, 0];
+        }
+      };
       var otpRequests = 0;
       var skipped = 0;
       accessibility.rejectSkip = scenario == 'skip-rejected';
+      if (scenario == 'login-required-after-skip') {
+        accessibility.afterTap = (name) {
+          if (name == 'skip-username') accessibility.state = 'login-modal';
+        };
+      }
+      // TikTok closes the modal on a signed-out feed: for good, or briefly
+      // before the reload that signs the page in.
+      var signedOutReads = 0;
+      if (scenario.startsWith('signed-out-')) {
+        accessibility.afterTap = (name) {
+          if (name == 'skip-username') accessibility.state = 'home-ready';
+        };
+        final onSnapshot = accessibility.onSnapshot;
+        accessibility.onSnapshot = (data) {
+          onSnapshot?.call(data);
+          if (scenario == 'signed-out-before-sign-in' &&
+              accessibility.state == 'home-ready' &&
+              skipped == 1 &&
+              ++signedOutReads == 3) {
+            accessibility.state = 'authenticated-home';
+          }
+        };
+      }
       final runner = SignupCoordinateRunner(
         profile: profile,
         accessibility: accessibility,
@@ -401,10 +507,27 @@ void main() {
         'earliest-year',
         'html-dropdown',
         'gecko-combobox',
+        'transient-after-otp',
+        'transient-after-skip',
+        'login-required-after-skip',
+        'signed-out-after-skip',
+        'signed-out-before-sign-in',
       ].contains(scenario)) {
         expect(failure, isNull);
         expect(skipped, 1);
-        expect(accessibility.state, 'authenticated-home');
+        final requiresLogin = [
+          'login-required-after-skip',
+          'signed-out-after-skip',
+        ].contains(scenario);
+        expect(
+          accessibility.state,
+          switch (scenario) {
+            'login-required-after-skip' => 'login-modal',
+            'signed-out-after-skip' => 'home-ready',
+            _ => 'authenticated-home',
+          },
+        );
+        expect(runner.requiresLogin, requiresLogin);
         expect(otpRequests, 1);
         expect(accessibility.pastes, ['email', 'otp', 'password']);
         expect(
@@ -940,6 +1063,17 @@ class _RecordedAccessibility extends SignupAccessibility {
   bool failBirthdayReadback = false;
   bool freezeDropdown = false;
   bool hideNativeOptions = false;
+  Rect? desktopBounds;
+  bool otpNeedsSubmit = false;
+  bool otpPasted = false;
+  bool otpAutofocusKeyboard = false;
+  bool keyboardHidden = false;
+  int keyboardRenewals = 0;
+  String? focusedId;
+  final keyboardPolicies = <bool>[];
+  static const phoneViewport = SignupViewport(
+    Rect.fromLTRB(6, 289, 1073, 2423),
+  );
 
   @override
   Future<String> diagnoseWeb() async =>
@@ -1065,6 +1199,7 @@ class _RecordedAccessibility extends SignupAccessibility {
         });
     }
     for (final node in data['nodes'] as List) {
+      if (focusedId != null) node['focused'] = node['id'] == focusedId;
       if (node['text'] == 'Resend code') {
         node['enabled'] = resendReady && !resent;
       }
@@ -1122,6 +1257,47 @@ class _RecordedAccessibility extends SignupAccessibility {
         );
       }
     }
+    if (otpNeedsSubmit && otpPasted && state == 'otp-form') {
+      (data['nodes'] as List).add({
+        'id': 'otp.next',
+        'text': 'Next',
+        'enabled': true,
+        'clickable': true,
+        'bounds': [400, 1700, 700, 1800],
+      });
+    }
+    if (desktopBounds case final frame?) {
+      // Keep the header search box exposed while an account modal is open.
+      (data['nodes'] as List).add({
+        'id': 'header.search',
+        'hint': 'Search',
+        'editable': true,
+        'enabled': true,
+        'bounds': [300, 300, 650, 350],
+      });
+      List<double> scale(dynamic raw) {
+        final r = SignupNode.rectFrom(raw);
+        final a = phoneViewport.fromScreen(r.topLeft);
+        final b = phoneViewport.fromScreen(r.bottomRight);
+        return [
+          frame.left + a.dx * frame.width / 400,
+          frame.top + a.dy * frame.height / 800,
+          frame.left + b.dx * frame.width / 400,
+          frame.top + b.dy * frame.height / 800,
+        ];
+      }
+
+      data['webBounds'] = scale(data['webBounds']);
+      for (final n in data['nodes'] as List) {
+        n['bounds'] = scale(n['bounds']);
+      }
+    }
+    if (otpAutofocusKeyboard && state == 'otp-form' && !keyboardHidden) {
+      // Real Gecko OTP autofocus opens the numeric IME immediately after
+      // Send code, hiding the form before the runner can see Resend code.
+      data['keyboardVisible'] = true;
+      data['nodes'] = [];
+    }
     return SignupSnapshot(data);
   }
 
@@ -1172,6 +1348,23 @@ class _RecordedAccessibility extends SignupAccessibility {
 
   @override
   Future<void> tap(SignupViewport viewport, Offset point) async {
+    if (desktopBounds != null) {
+      point = Offset(point.dx * 400 / 1920, point.dy * 800 / 955);
+      viewport = phoneViewport;
+    }
+    if (otpNeedsSubmit &&
+        otpPasted &&
+        state == 'otp-form' &&
+        const Rect.fromLTRB(
+          400,
+          1700,
+          700,
+          1800,
+        ).contains(viewport.toScreen(point))) {
+      actions.add('submit-otp');
+      state = 'otp-context-paste-result';
+      return;
+    }
     if (picker != null) {
       final physical = viewport.toScreen(point);
       final index = ((physical.dy - 1280) / 60).floor() + optionStart;
@@ -1183,6 +1376,16 @@ class _RecordedAccessibility extends SignupAccessibility {
       return;
     }
     final name = _actionAt(viewport, point);
+    if (name.startsWith('focus-')) {
+      final at = viewport.toScreen(point) - Offset(0, shiftY);
+      focusedId =
+          (recording[state]['nodes'] as List).firstWhere(
+                (n) =>
+                    n['editable'] == true &&
+                    SignupNode.rectFrom(n['bounds']).contains(at),
+              )['id']
+              as String;
+    }
     actions.add(name);
     onAction?.call(name);
     if (name == 'resend-code') resent = true;
@@ -1270,16 +1473,29 @@ class _RecordedAccessibility extends SignupAccessibility {
     }
     state = switch (field) {
       'email' => 'email-live',
-      'otp' => 'otp-context-paste-result',
+      'otp' => otpNeedsSubmit ? 'otp-form' : 'otp-context-paste-result',
       'password' => 'password-ready',
       _ => state,
     };
+    if (field == 'otp') otpPasted = true;
     if (field == 'otp') afterOtpPaste?.call();
     return {'ok': true};
   }
 
   @override
   Future<void> dismissKeyboard() async {}
+  @override
+  Future<void> setKeyboardSuppressed(bool value) async {
+    keyboardPolicies.add(value);
+    keyboardHidden = value;
+  }
+
+  @override
+  Future<void> renewKeyboardSuppression() async {
+    keyboardRenewals++;
+    keyboardHidden = true;
+  }
+
   @override
   Future<void> cancelPaste() async {}
 }

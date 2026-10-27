@@ -8,8 +8,8 @@ const signupDesignSize = Size(400, 800);
 
 /// Signup runs in a desktop-shaped window: maximized Firefox on a 1920 x 1080
 /// screen shows pages at 1920 x 955 CSS px, so one design unit is one CSS
-/// px. Recorded profile points belong to the 1:2 frame, so in this frame
-/// controls are found by their labels alone.
+/// px. Each layout has its own recorded points; live Accessibility bounds
+/// determine where gestures land after scaling and centering the frame.
 const signupLandscapeDesignSize = Size(1920, 955);
 
 /// The design space a frame or page of this size uses, or null.
@@ -137,6 +137,7 @@ class SignupNode {
       selected = data['selected'] == true,
       picker = data['picker'] == true,
       scrollable = data['scrollable'] == true,
+      inputType = (data['inputType'] as num?)?.toInt() ?? 0,
       length = (data['length'] as num?)?.toInt() ?? 0,
       bounds = rectFrom(data['bounds']);
   final String id, text, description, hint, className;
@@ -148,7 +149,7 @@ class SignupNode {
       selected,
       picker,
       scrollable;
-  final int length;
+  final int length, inputType;
   final Rect bounds;
   String get label =>
       [text, description, hint].where((s) => s.isNotEmpty).join(' ').trim();
@@ -380,9 +381,22 @@ class SignupAccessibility {
     if (!await FlutterAccessibilityService.signupSetKeyboardSuppressed(
       suppressed,
     )) {
-      throw StateError('Không điều khiển được bàn phím để nhập bình luận.');
+      throw StateError('Không điều khiển được bàn phím để nhập dữ liệu.');
     }
   });
+
+  /// Refresh an already-owned keyboard lease without running CAPTCHA hooks
+  /// concurrently with the gesture or paste that currently owns them.
+  Future<void> renewKeyboardSuppression() async {
+    if (!await FlutterAccessibilityService.signupSetKeyboardSuppressed(true)) {
+      throw StateError('Không giữ được bàn phím ẩn khi chờ OTP.');
+    }
+  }
+
+  /// Ends a held lease, also without CAPTCHA hooks (cleanup paths).
+  Future<void> releaseKeyboardSuppression() async {
+    await FlutterAccessibilityService.signupSetKeyboardSuppressed(false);
+  }
 
   /// Why no WebView is readable (windows, WebView/Gecko nodes); diagnostics
   /// only, never used to pick a target.

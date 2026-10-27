@@ -30,6 +30,12 @@ import static org.junit.Assert.*;
 @SuppressWarnings({"deprecation", "unchecked"})
 @RunWith(AndroidJUnit4.class)
 public class SignupAccessibilityBridgeTest {
+    @Test public void missingClassNameDuringGeckoStartupIsNotAWebRoot() {
+        assertFalse(SignupAccessibilityBridge.isWebClass(null));
+        assertFalse(SignupAccessibilityBridge.isWebClass("android.view.View"));
+        assertTrue(SignupAccessibilityBridge.isWebClass("android.webkit.WebView"));
+    }
+
     @Rule public ActivityTestRule<SignupFixtureActivity> activity = new ActivityTestRule<>(SignupFixtureActivity.class);
     private WebView web;
     private Instrumentation instrumentation() { return InstrumentationRegistry.getInstrumentation(); }
@@ -97,6 +103,25 @@ public class SignupAccessibilityBridgeTest {
             @Override public void notImplemented() { done.countDown(); }
         }));
         assertTrue("Paste completed", done.await(10, TimeUnit.SECONDS)); return value.get();
+    }
+
+    @Test public void pastesSingleTextOtpWithoutHintButRejectsHeaderSearch() throws Exception {
+        instrumentation().runOnMainSync(() -> web.requestFocus());
+        keyboardSuppressed(true);
+        evaluate("document.body.innerHTML='<input id=\"search\" placeholder=\"Search\" " +
+            "style=\"position:absolute;top:8px;left:8px\">' + " +
+            "'<h1 style=\"margin-top:100px\">Enter 6-digit code</h1>' + " +
+            "'<input id=\"otp\" type=\"text\" maxlength=\"6\" style=\"margin-top:60px\">';otp.focus();true");
+        Thread.sleep(800);
+        Map<String,Object> result = paste("123456", "otp");
+        assertEquals(result.toString(), Boolean.TRUE, result.get("ok"));
+        assertEquals("\"123456\"", evaluate("otp.value"));
+        evaluate("search.focus();true");
+        Thread.sleep(800);
+        result = paste("123456", "otp");
+        assertEquals(Boolean.FALSE, result.get("ok"));
+        assertEquals("\"\"", evaluate("search.value"));
+        keyboardSuppressed(false);
     }
 
     private void keyboardSuppressed(boolean suppressed) throws Exception {
@@ -331,9 +356,9 @@ public class SignupAccessibilityBridgeTest {
             "if(otp.value==='123456')" +
             "document.body.innerHTML='<nav><a href=\"/messages\">Messages</a><a href=\"/profile\">Profile</a></nav>';});" +
             "otp.focus();true");
-        Thread.sleep(500);
-        tapFocusedEditor();
-        Thread.sleep(500);
+        // Focus is fixture preparation. A second tap can blur the input
+        // while Android's focus zoom updates its Accessibility bounds.
+        Thread.sleep(800);
         assertEquals("\"\"", evaluate("otp.value"));
         AtomicReference<Map<String,Object>> editorState = new AtomicReference<>();
         instrumentation().runOnMainSync(() -> {
@@ -353,9 +378,7 @@ public class SignupAccessibilityBridgeTest {
         // Focus is fixture preparation. All paste input is the service's gesture/menu path.
         instrumentation().runOnMainSync(() -> web.requestFocus());
         evaluate("email.style.visibility='hidden';slots.firstElementChild.focus();true");
-        Thread.sleep(500);
-        tapFocusedEditor();
-        Thread.sleep(500);
+        Thread.sleep(800);
         Map<String,Object> result = paste("123456", "otp");
         if (!Boolean.TRUE.equals(result.get("ok"))) {
             android.graphics.Bitmap screenshot = instrumentation().getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();

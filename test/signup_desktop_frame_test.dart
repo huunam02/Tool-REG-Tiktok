@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:test_tiktok/core/signup_accessibility.dart';
 import 'package:test_tiktok/core/signup_coordinate_runner.dart';
 import 'package:test_tiktok/screen/widgets/signup_viewport.dart';
@@ -55,4 +55,28 @@ void main() {
     expect(narrow, lessThanOrEqualTo(1600));
     expect(desktopCssWidth * 60 % narrow, 0);
   });
+
+  for (final ratio in [1.0, 2.625, 3.0, 4.0]) {
+    testWidgets('desktop frame has no compensation pixel at DPR $ratio', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = ratio;
+      tester.view.physicalSize = const Size(2960, 1440);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: StandardSignupViewport(
+              landscape: true,
+              child: ColoredBox(key: Key('deviceFrame'), color: Colors.white),
+            ),
+          ),
+        ),
+      );
+      final frame = tester.getRect(find.byKey(const Key('deviceFrame')));
+      expect(frame.width * ratio, closeTo(1920, .001));
+      expect(frame.height * ratio, closeTo(955, .001));
+      expect(frame.left * ratio, closeTo(520, .001));
+    });
+  }
 }

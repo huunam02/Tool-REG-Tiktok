@@ -20,7 +20,12 @@ class LoginCoordinateProfile {
   final Map<String, Offset> _points;
   final String label;
   final Future<void> Function(Map<String, List<double>>)? save;
-  Offset? point(String action) => _points[action];
+  /// Points recorded in the desktop frame are kept apart from the 1:2
+  /// frame's: the two design spaces do not share coordinates.
+  static String key(String action, {required bool desktop}) =>
+      desktop ? 'desktop/$action' : action;
+  Offset? point(String action, {bool desktop = false}) =>
+      _points[key(action, desktop: desktop)];
   Map<String, List<double>> get points => {
     for (final entry in _points.entries)
       entry.key: [entry.value.dx, entry.value.dy],
@@ -64,7 +69,8 @@ class LoginCoordinateProfile {
     SignupViewport viewport,
     SignupNode node,
   ) async {
-    final existing = _points[action];
+    final name = key(action, desktop: viewport.landscape);
+    final existing = _points[name];
     if (existing != null) return viewport.tapPoint(node.bounds, existing);
     // Validates the design range and viewport before saving.
     final point = viewport.tapPoint(node.bounds);
@@ -77,10 +83,10 @@ class LoginCoordinateProfile {
     }
     final updated = {
       ...points,
-      action: [rounded.dx, rounded.dy],
+      name: [rounded.dx, rounded.dy],
     };
     await save?.call(updated); // Persistence must finish before the first tap.
-    _points[action] = rounded;
+    _points[name] = rounded;
     return rounded;
   }
 }

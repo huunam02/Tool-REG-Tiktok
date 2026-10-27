@@ -10,9 +10,7 @@ import '../services/remote_config_service.dart';
 import '../app_session.dart';
 import '../account_sessions.dart';
 import '../account_proxy.dart';
-import '../device_memory.dart';
 import '../gecko_browser.dart';
-import '../gpu_profile.dart';
 import '../nurture_data.dart';
 import '../proxy_geolocation.dart';
 import '../configuration_data.dart';
@@ -531,42 +529,10 @@ class HomeController extends AppController
       if (tabIndex == failedTab) unawaited(loadFailedConfigurations());
     });
     proxyStore = store;
-    unawaited(_fitGpuProfilesToDevice());
     unawaited(restoreProxy());
     unawaited(loadNurtureAccounts());
     unawaited(loadFailedConfigurations());
     unawaited(loadSignupConfigurations());
-  }
-
-  /// Keep each unregistered configuration's phone GPU consistent with this
-  /// device's RAM; see [ProxyStore.fitGpuProfilesToDevice].
-  Future<void> _fitGpuProfilesToDevice() async {
-    try {
-      final changed = await store.fitGpuProfilesToDevice();
-      final profile = currentProxy;
-      final gpu = changed[profile?.configurationId];
-      if (active && profile != null && gpu != null) {
-        mutate(() => currentProxy = profile.copyWith(gpuProfileId: gpu));
-      }
-    } catch (_) {
-      // Each run checks again before it starts.
-    }
-  }
-
-  /// The phone GPU a run reports: the configuration's, refitted first when
-  /// it could not have this device's RAM and the account is unregistered.
-  Future<GpuProfile> _runGpuProfile() async {
-    final profile = currentProxy;
-    if (profile?.gpuProfile.fits(deviceMemoryGb) == true) {
-      return profile!.gpuProfile;
-    }
-    // Without a saved configuration: a fixed phone that fits.
-    if (profile?.configurationId == null) return GpuProfile.forDevice().first;
-    if (profile!.statusAccount == AccountStatus.registered) {
-      return profile.gpuProfile;
-    }
-    await _fitGpuProfilesToDevice();
-    return currentProxy?.gpuProfile ?? profile.gpuProfile;
   }
 
   Future<void> loadNurtureAccounts() async {
@@ -892,8 +858,6 @@ class HomeController extends AppController
           mutate(() => currentProxy = profile.copyWith(timeZoneId: timeZone));
         }
       }
-      final gpuProfile = await _runGpuProfile();
-      if (!active) return;
       if (proxy != null) {
         await ProfileVpn.requireRunning(profileId?.toString() ?? 'default');
         if (!active) return;
@@ -918,7 +882,6 @@ class HomeController extends AppController
         nurtureAfterSignup: currentProxy?.nurtureAfterSignup ?? false,
         nurtureSettings:
             currentProxy?.nurtureSettings ?? NurtureSettings.defaults,
-        gpuProfile: gpuProfile,
         birthday: action == TikTokLaunchAction.signup
             ? AppConfiguration.randomSignupBirthday()
             : null,

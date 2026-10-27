@@ -96,15 +96,26 @@ class SignupCoordinateRunner {
   final bool Function()? isForeground;
   final Set<String> _actions = {};
   bool _cancelled = false;
+  bool _holdingKeyboard = false;
+  Timer? _keyboardLease;
+  Object? _keyboardLeaseError;
   bool readyToSubmit = false;
   bool alreadyLoggedIn = false;
+
+  /// Desktop signup can finish by returning to TikTok's login dialog.
+  bool requiresLogin = false;
   void cancel() {
     _cancelled = true;
+    _keyboardLease?.cancel();
+    _holdingKeyboard = false;
     unawaited(accessibility.cancelPaste().catchError((_) {}));
   }
 
   Future<void> _guard() async {
     if (_cancelled || !isActive()) throw const SignupCancelled();
+    if (_keyboardLeaseError != null) {
+      throw StateError('Không giữ được bàn phím ẩn khi chờ OTP.');
+    }
     // Wait out a shade or dialog: a gesture now would land on it, not TikTok.
     while (!(isForeground?.call() ?? true)) {
       await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -132,8 +143,19 @@ class SignupCoordinateRunner {
 
   Future<SignupSnapshot> _snapshot({bool allowNotReady = false}) async {
     await _guard();
-    final value = await accessibility.snapshot();
+    var value = await accessibility.snapshot();
     await _guard();
+    // Gecko briefly removes its document root during real navigations,
+    // including the redirect after Skip. Wait without repeating any input.
+    final frameDeadline = now().add(const Duration(seconds: 8));
+    while (!allowNotReady &&
+        (!value.ready || !value.viewport.valid) &&
+        value.serviceConnected &&
+        now().isBefore(frameDeadline)) {
+      await _pause(250);
+      value = await accessibility.snapshot();
+      await _guard();
+    }
     if (!allowNotReady && (!value.ready || !value.viewport.valid)) {
       throw StateError('Không đọc được khung WebView chuẩn qua Accessibility.');
     }
@@ -351,7 +373,11 @@ class SignupCoordinateRunner {
     );
     final recorded = _recorded(name, snapshot.viewport);
     if (recorded != null) {
-      return snapshot.viewport.nearest(candidates, recorded);
+      final nearest = snapshot.viewport.nearest(candidates, recorded);
+      if (nearest != null) return nearest;
+      // Desktop modals can move independently of the frame (for example
+      // after a validation message). A unique semantic match stays usable.
+      if (!snapshot.viewport.landscape) return null;
     }
     final visible = candidates
         .where((n) => !n.bounds.intersect(snapshot.viewport.bounds).isEmpty)
@@ -361,6 +387,104 @@ class SignupCoordinateRunner {
     final actionable = visible.where((n) => n.clickable || n.editable).toList();
     final pool = actionable.isEmpty ? visible : actionable;
     return pool.length == 1 ? pool.single : null;
+  }
+
+  /// Desktop pages retain the header search box and expose birthday
+  /// comboboxes as EditText. Restrict field input before using coordinates.
+  bool _input(SignupNode node, String field) {
+    if (!node.editable || !node.enabled) return false;
+    if (field == 'password') return node.password;
+    if (node.password) return false;
+    final label = node.label.toLowerCase();
+    if (RegExp(r'search|comment|month|day|year').hasMatch(label)) return false;
+    return switch (field) {
+      'email' =>
+        label.contains('email') ||
+            (node.inputType & 0xff0) ==
+                0x20, // TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+      'otp' =>
+        RegExp(r'code|otp|digit').hasMatch(label) ||
+            const [2, 3].contains(node.inputType & 0xf),
+      _ => false,
+    };
+  }
+
+  Future<void> _focusInput(String field) async {
+    final snapshot = await _snapshot();
+    bool matches(SignupNode n) => _input(n, field);
+    // Older engines omit the hint/type. Only accept a single unnamed editor;
+    // never guess between a search box, birthday selector and account input.
+    final named = snapshot.editors.where(matches).toList();
+    final unnamed = snapshot.editors
+        .where((n) => n.label.isEmpty && !n.password)
+        .toList();
+    final fallback = named.isEmpty && unnamed.length == 1
+        ? unnamed.single
+        : null;
+    SignupNode? firstOtp;
+    final slots = named.isEmpty ? unnamed : named;
+    if (field == 'otp' &&
+        slots.length == 6 &&
+        snapshot.contains(
+          RegExp(r'code|verify.*email', caseSensitive: false),
+        )) {
+      slots.sort((a, b) => a.bounds.left.compareTo(b.bounds.left));
+      final row = slots.first.bounds;
+      if (slots.every(
+        (n) => n.bounds.top < row.bottom && n.bounds.bottom > row.top,
+      )) {
+        firstOtp = slots.first;
+      }
+    }
+    final otp = firstOtp;
+    await _tap(
+      'focus-$field',
+      editable: true,
+      where: (n) =>
+          otp != null ? n.id == otp.id : matches(n) || n.id == fallback?.id,
+    );
+  }
+
+  Future<void> _fill(String field, String text) async {
+    await _guard();
+    // In landscape the Android IME covers the modal and Gecko marks its
+    // focused editor hidden. Accessibility paste does not need the IME.
+    await accessibility.setKeyboardSuppressed(true);
+    try {
+      await _focusInput(field);
+      await _wait(
+        (s) => s.editors.any(
+          (n) =>
+              n.focused &&
+              n.password == (field == 'password') &&
+              (_input(n, field) || n.label.isEmpty),
+        ),
+        'Đang chờ ô $field nhận focus…',
+        seconds: 5,
+      );
+      await accessibility.setKeyboardSuppressed(true);
+      await _paste(field, text);
+      await accessibility.dismissKeyboard();
+    } finally {
+      if (!_holdingKeyboard) await accessibility.setKeyboardSuppressed(false);
+    }
+    await _hideKeyboard();
+  }
+
+  Future<void> _holdKeyboard() async {
+    await _guard();
+    await accessibility.setKeyboardSuppressed(true);
+    _holdingKeyboard = true;
+    // The native policy expires after 10s. OTP mail can take minutes, while
+    // TikTok autofocuses OTP/password fields as soon as those pages open.
+    _keyboardLease = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (_cancelled || !_holdingKeyboard) return;
+      unawaited(
+        accessibility.renewKeyboardSuppression().catchError((Object e) {
+          _keyboardLeaseError = e;
+        }),
+      );
+    });
   }
 
   /// TikTok's cookie banner (EU IPs) can appear at any step and covers the
@@ -553,6 +677,17 @@ class SignupCoordinateRunner {
         RegExp(r'^create (a |your )?username$', caseSensitive: false),
       );
 
+  /// The page behind a closed signup modal, without a session.
+  bool _signedOutHome(SignupSnapshot s) =>
+      s.contains(exact('Log in')) &&
+      s.find(exact('Skip')) == null &&
+      !s.contains(exact('Sign up')) &&
+      !s.contains(exact('Sign up for TikTok')) &&
+      !s.nodes.any((n) => n.password) &&
+      !s.contains(
+        RegExp(r'^create (a |your )?username$', caseSensitive: false),
+      );
+
   Future<void> selectBirthday() async {
     final date = birthday;
     onStatus(
@@ -713,6 +848,24 @@ class SignupCoordinateRunner {
     bool stopBeforeSubmit = false,
     bool stopBeforeSendCode = false,
   }) async {
+    try {
+      await _run(
+        stopBeforeSubmit: stopBeforeSubmit,
+        stopBeforeSendCode: stopBeforeSendCode,
+      );
+    } finally {
+      _keyboardLease?.cancel();
+      if (_holdingKeyboard) {
+        _holdingKeyboard = false;
+        await accessibility.setKeyboardSuppressed(false);
+      }
+    }
+  }
+
+  Future<void> _run({
+    required bool stopBeforeSubmit,
+    required bool stopBeforeSendCode,
+  }) async {
     if (!profile.complete) {
       throw StateError('Profile tọa độ chưa thu thập đầy đủ.');
     }
@@ -741,10 +894,9 @@ class SignupCoordinateRunner {
       'Đang chờ ô email…',
     );
     await selectBirthday();
+    await _holdKeyboard();
     onStatus('Đang dán email bằng Accessibility…');
-    await _tap('focus-email', editable: true, where: (n) => !n.password);
-    await _paste('email', configuration.signupEmail.trim());
-    await _hideKeyboard();
+    await _fill('email', configuration.signupEmail.trim());
     await _wait(
       (s) => s.find(exact('Send code')) != null,
       'Đang kiểm tra nút gửi mã…',
@@ -768,19 +920,21 @@ class SignupCoordinateRunner {
       throw StateError('OTP không đủ 6 số.');
     }
     await _wait((s) => s.editors.any((n) => !n.password), 'Đang chờ ô OTP…');
-    await _tap('focus-otp', editable: true, where: (n) => !n.password);
-    await _paste('otp', otp);
-    final afterOtp = await _snapshot();
-    if (!afterOtp.editors.any((n) => n.password) &&
-        _recorded('submit-otp', afterOtp.viewport) != null) {
+    await _fill('otp', otp);
+    final otpNext = RegExp(
+      r'^(next|continue|verify|confirm)$',
+      caseSensitive: false,
+    );
+    final afterOtp = await _wait(
+      (s) =>
+          s.editors.any((n) => n.password) ||
+          _target(s, 'submit-otp', expected: otpNext) != null,
+      'Đang chờ xác nhận OTP…',
+      seconds: 15,
+    );
+    if (!afterOtp.editors.any((n) => n.password)) {
       await _hideKeyboard();
-      await _tap(
-        'submit-otp',
-        expected: RegExp(
-          r'^(next|continue|verify|confirm)$',
-          caseSensitive: false,
-        ),
-      );
+      await _tap('submit-otp', expected: otpNext);
     }
     await _wait(
       (s) => s.editors.any((n) => n.password),
@@ -788,9 +942,7 @@ class SignupCoordinateRunner {
       seconds: 15,
     );
     onStatus('Đang dán mật khẩu bằng Accessibility…');
-    await _tap('focus-password', editable: true, where: (n) => n.password);
-    await _paste('password', configuration.signupPassword);
-    await _hideKeyboard();
+    await _fill('password', configuration.signupPassword);
     await _wait(
       (s) =>
           s.nodes.any(
@@ -830,9 +982,31 @@ class SignupCoordinateRunner {
         expected: exact('Skip'),
         onTapped: onUsernameSkipped,
       );
-      await _wait(_authenticated, 'Đang xác nhận hoàn tất…', seconds: 30);
+      // TikTok may also just reload the feed signed out. It can close the
+      // modal shortly before a reload that signs in, so that state must hold.
+      DateTime? signedOutSince;
+      final completed = await _wait(
+        (s) {
+          if (_authenticated(s) || s.contains(exact('Log in to TikTok'))) {
+            return true;
+          }
+          if (!_signedOutHome(s)) {
+            signedOutSince = null;
+            return false;
+          }
+          final since = signedOutSince ??= now();
+          return !now().isBefore(since.add(const Duration(seconds: 8)));
+        },
+        'Đang xác nhận hoàn tất…',
+        seconds: 40,
+      );
+      requiresLogin = !_authenticated(completed);
     }
-    onStatus('Đã qua luồng đăng ký.');
+    onStatus(
+      requiresLogin
+          ? 'Đã tạo tài khoản; TikTok yêu cầu đăng nhập lại.'
+          : 'Đã qua luồng đăng ký.',
+    );
   }
 }
 

@@ -10,7 +10,6 @@ import '../proxy_store.dart';
 import '../proxy_draft.dart';
 import '../configuration_data.dart';
 import '../configuration_file_import.dart';
-import '../gpu_profile.dart';
 import '../nurture_data.dart';
 import '../proxy_time_zone.dart';
 import '../proxy_time_zone_detector.dart';
@@ -302,9 +301,6 @@ class ConfigurationFormFields {
         text: entry?.account?.mailboxPassword,
       ),
       statusAccount = entry?.statusAccount ?? AccountStatus.unregistered,
-      gpuProfileId = GpuProfile.isKnown(entry?.gpuProfileId ?? '')
-          ? entry!.gpuProfileId
-          : GpuProfile.random().id,
       nurtureAfterSignup = entry?.nurtureAfterSignup ?? false {
     showNurtureSettings(entry?.nurtureSettings ?? NurtureSettings.defaults);
     for (final field in [url, username, password]) {
@@ -381,12 +377,6 @@ class ConfigurationFormFields {
   AccountStatus statusAccount;
   bool nurtureAfterSignup;
 
-  /// The phone GPU pages see over WebGL; shown read-only, only Đổi or a
-  /// backup changes it.
-  String gpuProfileId;
-  GpuProfile get gpuProfile => GpuProfile.byId(gpuProfileId);
-  void changeGpuProfile() => gpuProfileId = GpuProfile.other(gpuProfileId).id;
-
   /// Cấu hình nuôi of this configuration.
   final nurtureLikePercent = TextEditingController();
   final nurtureCommentPercent = TextEditingController();
@@ -412,8 +402,6 @@ class ConfigurationFormFields {
     statusAccount = data.statusAccount;
     final settings = data.nurtureSettings;
     if (settings != null) showNurtureSettings(settings);
-    final gpu = data.gpuProfileId;
-    if (gpu != null) gpuProfileId = gpu;
   }
 
   void showNurtureSettings(NurtureSettings settings) {
@@ -449,7 +437,6 @@ class ConfigurationFormFields {
     timeZoneId: normalizeProxyTimeZone(timeZoneId.text),
     nurtureAfterSignup: nurtureAfterSignup,
     nurtureSettings: nurtureSettings,
-    gpuProfileId: gpuProfileId,
   );
 
   void dispose() {

@@ -28,6 +28,28 @@ Trang đăng ký xoay ngang và hiển thị trong khung đúng tỉ lệ cửa 
 điểm ảnh (`layout.css.devPixelsPerPx`) được tính theo bề rộng khung để trang
 luôn rộng đúng 1920 CSS px.
 
+Luồng đăng ký Accessibility dùng profile desktop riêng và quy đổi qua khung
+GeckoView thực tế, bao gồm phần đệm và vị trí khung trên màn hình. Khi modal
+dịch chuyển, runner theo bounds của control có nhãn rõ ràng. Ô email, OTP và
+mật khẩu được nhận diện riêng để không chọn nhầm ô tìm kiếm hoặc ngày sinh.
+Bàn phím Android được giữ ẩn trong suốt luồng nhập dữ liệu/chờ OTP và khôi
+phục khi kết thúc hoặc hủy. OTP hỗ trợ sáu ô, một ô văn bản thiếu hint,
+tự chuyển bước và nút Next/Continue/Verify/Confirm. Nếu TikTok quay về hộp
+đăng nhập sau Skip, cấu hình được lưu Đã đăng ký và phiên vẫn được đánh dấu
+chưa đăng nhập; tùy chọn nuôi sau đăng ký sẽ đi qua luồng đăng nhập trước.
+
+Có thể kiểm tra luồng đến trước Send code trên thiết bị bằng entrypoint:
+
+```bash
+./tool/flutterw build apk --debug --target-platform=android-arm64 -t test/support/signup_desktop_device_main.dart
+```
+
+Cài APK, bật Trợ năng của ứng dụng và mở lại. Bài kiểm tra dùng ngày sinh/email
+mẫu, cùng GeckoView và runner của ứng dụng, không gọi API OTP. Báo cáo nằm ở
+`code_cache/signup-desktop-device-result.json` trong dữ liệu riêng của ứng dụng
+(đọc bằng `adb shell run-as com.brisklane.browser cat ...`). Build lại với
+entrypoint mặc định để quay về ứng dụng chính; cấu hình đã lưu vẫn được giữ.
+
 `FirefoxDesktopIdentity.kt` đặt các preference native trước khi tải trang.
 WebExtension đặt những thuộc tính chỉ có ở cửa sổ ngay tại `document_start`,
 trong mọi frame, không dùng inline script nên hoạt động cả khi trang có CSP.

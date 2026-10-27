@@ -73,6 +73,10 @@ object FirefoxDesktopIdentity {
             // interfaces from pages; this drops document.createTouch*.
             SetGeckoPreference.setIntPref("dom.w3c_touch_events.enabled", 1, branch),
             SetGeckoPreference.setBoolPref("dom.w3c_touch_events.legacy_apis.enabled", false, branch),
+            // The reference PC's mouse: pointer/hover media queries report
+            // fine + hover (2 | 4), not the Android touchscreen's coarse/none.
+            SetGeckoPreference.setIntPref("ui.primaryPointerCapabilities", 6, branch),
+            SetGeckoPreference.setIntPref("ui.allPointerCapabilities", 6, branch),
             // Firefox on Windows has no navigator.share.
             SetGeckoPreference.setBoolPref("dom.webshare.enabled", false, branch),
         )).map { applied ->

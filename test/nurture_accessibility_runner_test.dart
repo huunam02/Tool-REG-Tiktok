@@ -373,6 +373,12 @@ class _Service extends SignupAccessibility {
   }
 
   @override
+  Future<void> renewKeyboardSuppression() => setKeyboardSuppressed(true);
+
+  @override
+  Future<void> releaseKeyboardSuppression() => setKeyboardSuppressed(false);
+
+  @override
   Future<void> dismissKeyboard() async {
     keyboard = false;
   }
@@ -685,8 +691,16 @@ class _SearchService extends SignupAccessibility {
     this.liveBadgeSibling = false,
     this.feedTile = false,
     this.resultDelaySeconds = 0,
+    this.narrowDrawer = false,
+    this.resultsBelowLive = false,
+    this.scrollWorks = true,
   });
   final bool hiddenClock, keepsDrawer, hiddenEditor, hasVideosTab, liveResult;
+
+  /// The desktop drawer's box: about 15% of the page, right of the sidebar.
+  final bool narrowDrawer;
+  final bool resultsBelowLive, scrollWorks;
+  int resultScrolls = 0;
   final bool feedTile;
   final bool liveBadgeSibling;
   final int resultDelaySeconds;
@@ -766,7 +780,9 @@ class _SearchService extends SignupAccessibility {
       nodes.add(
         _node(
           '0.3',
-          const Rect.fromLTWH(45, 90, 150, 20),
+          narrowDrawer
+              ? const Rect.fromLTWH(45, 90, 58, 20)
+              : const Rect.fromLTWH(45, 90, 150, 20),
           editor: true,
           focused: true,
           clickable: true,
@@ -813,10 +829,21 @@ class _SearchService extends SignupAccessibility {
         nodes.add(
           _button(
             '0.7.$i',
-            Rect.fromLTWH(40.0 + i * 90, 40, 80, 120),
+            Rect.fromLTWH(
+              40.0 + i * 90,
+              resultsBelowLive && resultScrolls < 2 ? 840 : 40,
+              80,
+              120,
+            ),
             description: 'Watch in full screen',
           ),
         );
+      }
+      if (resultsBelowLive) {
+        nodes.add({
+          ..._node('0.7', const Rect.fromLTWH(40, 0, 360, 800)),
+          'scrollable': true,
+        });
       }
     }
     if (state == 'player') {
@@ -872,7 +899,10 @@ class _SearchService extends SignupAccessibility {
         .where(
           (n) =>
               (hiddenClock && n['id'] == '9.0.1') ||
-              (hiddenEditor && n['id'] == '9.3.0.1'),
+              (hiddenEditor && n['id'] == '9.3.0.1') ||
+              (resultsBelowLive &&
+                  resultScrolls < 2 &&
+                  RegExp(r'^0\.7\.\d+$').hasMatch(n['id'] as String)),
         )
         .toList();
     nodes.removeWhere((n) => hidden.contains(n));
@@ -885,6 +915,16 @@ class _SearchService extends SignupAccessibility {
   }
 
   Future<void> delay(Duration d) async => clock = clock.add(d);
+
+  @override
+  Future<void> swipe(SignupViewport viewport, Offset from, Offset to) async {
+    expect(resultsBelowLive, isTrue);
+    expect(viewport.bounds.contains(viewport.toScreen(from)), isTrue);
+    expect(viewport.bounds.contains(viewport.toScreen(to)), isTrue);
+    expect(from.dy, greaterThan(to.dy));
+    tapped.add('scroll-results');
+    if (scrollWorks) resultScrolls++;
+  }
 
   @override
   Future<void> tap(SignupViewport viewport, Offset p) async {
@@ -2786,7 +2826,10 @@ void main() {
     await expectLater(runner.start(), throwsStateError);
     expect(service.posts, 0);
     expect(service.length, greaterThan(0));
-    expect(service.keyboardPolicies, [true, false]);
+    // Held for the whole session, released once when it ends.
+    expect(service.keyboardPolicies.first, isTrue);
+    expect(service.keyboardPolicies.where((p) => !p), [false]);
+    expect(service.keyboardPolicies.last, isFalse);
   });
 
   test('ambiguous visible videos are not classified or tapped', () {
@@ -3021,6 +3064,35 @@ void main() {
     );
   }
 
+  test('search mode recognizes the narrow desktop search drawer', () async {
+    final service = _SearchService(narrowDrawer: true);
+    var active = true;
+    await NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: [],
+      searchKeyword: 'Cats',
+      isActive: () => active,
+      isTikTok: () async => true,
+      onProgress: (t, _) async {
+        if (t.videos > 0) active = false;
+      },
+      longWatchRate: 0,
+      commentRate: 0,
+      random: _Random(false),
+      now: () => service.clock,
+      delay: service.delay,
+    ).start();
+    expect(service.pasted, ['search:Cats']);
+    expect(service.tapped, [
+      'open',
+      'view-all',
+      'videos-tab',
+      'result',
+      'next',
+    ]);
+  });
+
   test(
     'search mode enters the keyword via Accessibility and watches results',
     () async {
@@ -3209,6 +3281,52 @@ void main() {
       expect(totals!.skippedVideos, 1);
     },
   );
+
+  for (final scrollWorks in [true, false]) {
+    test(
+      'combined desktop results scroll past LIVE at most twice ($scrollWorks)',
+      () async {
+        final service = _SearchService(
+          keepsDrawer: true,
+          hasVideosTab: false,
+          liveResult: true,
+          resultsBelowLive: true,
+          scrollWorks: scrollWorks,
+        );
+        var active = true;
+        final runner = NurtureAccessibilityRunner(
+          accessibility: service,
+          profile: NurtureCoordinateProfile({}),
+          comments: [],
+          searchKeyword: 'Cats',
+          isActive: () => active,
+          isTikTok: () async => true,
+          onProgress: (t, _) async {
+            if (t.videos > 0) active = false;
+          },
+          likeRate: 0,
+          commentRate: 0,
+          longWatchRate: 0,
+          random: _Random(false),
+          now: () => service.clock,
+          delay: service.delay,
+        );
+        if (scrollWorks) {
+          await runner.start();
+          expect(service.tapped, contains('result'));
+          expect(runner.totals.videos, 1);
+        } else {
+          await expectLater(runner.start(), throwsStateError);
+          expect(service.tapped, isNot(contains('result')));
+        }
+        expect(
+          service.tapped.where((t) => t == 'scroll-results'),
+          hasLength(2),
+        );
+        expect(service.tapped.where((t) => t.startsWith('stray')), isEmpty);
+      },
+    );
+  }
 
   test(
     'an unavailable search comment editor does not stop viewing before any paste',

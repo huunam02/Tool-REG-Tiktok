@@ -51,11 +51,9 @@ class StandardSignupViewport extends StatelessWidget {
     },
   );
 
-  /// Whole device pixels in size and offset. Hybrid composition sizes the
-  /// native view up to a pixel smaller than its Flutter box (measured: box
-  /// 1920 px, GeckoView 1919 px, page 1535 CSS px), so the box gets one
-  /// extra pixel each way: the page is then exactly [desktopCssWidth] wide,
-  /// and its height lands within a pixel or two of the design's.
+  /// Whole device pixels in size and offset. The frame must use its measured
+  /// dimensions: adding compensation pixels makes Gecko expose 1921 x 956
+  /// instead of the desktop design's 1920 x 955 on Android 9.
   Widget _desktopFrame(BuildContext context, BoxConstraints constraints) {
     final ratio = MediaQuery.devicePixelRatioOf(context);
     final design = signupLandscapeDesignSize;
@@ -75,8 +73,8 @@ class StandardSignupViewport extends StatelessWidget {
           Positioned(
             left: left / ratio,
             top: top / ratio,
-            width: (width + 1) / ratio,
-            height: (height + 1) / ratio,
+            width: width / ratio,
+            height: height / ratio,
             child: KeyedSubtree(
               key: const Key('standardSignupViewport'),
               child: child,

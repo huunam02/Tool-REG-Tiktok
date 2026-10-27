@@ -10,6 +10,7 @@ const {runInNewContext} = require('node:vm');
 const source = readFileSync(join(__dirname, '../lib/core/scripts/rotate_captcha_script.dart'), 'utf8');
 const read = source.match(/readRotateCaptchaScript = r'''([\s\S]*?)''';/)[1];
 const present = source.match(/rotateCaptchaPresentScript = r'''([\s\S]*?)''';/)[1];
+const refresh = source.match(/rotateCaptchaRefreshScript = r'''([\s\S]*?)''';/)[1];
 const chrome = [process.env.CHROME_BIN,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
@@ -24,6 +25,7 @@ before(() => {
     // images stay local; only replace the origin expression for this DOM test.
     const read = () => ${read.replace("location.origin !== 'https://www.tiktok.com'", 'false')};
     const present = () => ${present.replace("location.origin !== 'https://www.tiktok.com'", 'false')};
+    const refresh = () => ${refresh.replace("location.origin !== 'https://www.tiktok.com'", 'false')};
     const image = color => 'data:image/svg+xml;base64,' + btoa(
       '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240"><circle cx="120" cy="120" r="120" fill="' + color + '"/></svg>');
     const box = document.createElement('section');
@@ -47,7 +49,7 @@ before(() => {
       '<div class="cap-w-full" style="position:absolute;left:20px;top:300px;width:320px">' +
       '<div class="cap-rounded-full" style="width:320px;height:36px">' +
       '<div draggable="true" style="width:36px;height:36px;border-radius:50%"></div></div></div>' +
-      '<button onclick="document.body.dataset.clicked=1">Refresh</button></div></div></div>';
+      '<button title="Refresh" style="position:absolute;left:320px;top:340px;width:24px;height:24px" onclick="document.body.dataset.clicked=1">Refresh</button></div></div></div>';
     results.absent = sample();
     await load('<div class="captcha-disable-scroll" style="width:100px;height:100px">Video feed</div>');
     results.scrollLock = sample();
@@ -57,6 +59,17 @@ before(() => {
     await load(legacy(true)); results.v1 = sample();
     await load(v2.replace('transform:scale(.35);', '').replace('top:700px', 'top:820px'));
     results.desktop = sample();
+    // Current app: a whole 1920x955 desktop document in a centered phone frame.
+    await load(v2.replace('transform:scale(.35);', '').replace('left:300px', 'left:770px').replace('top:700px', 'top:291px'));
+    const viewport = window.visualViewport;
+    Object.defineProperty(window, 'visualViewport', {configurable:true,
+      value:{width:1920, height:955, offsetLeft:0, offsetTop:0}});
+    results.currentDesktop = {...sample(), refresh:JSON.parse(refresh())};
+    // A panned/zoomed visual viewport uses the same offset in all readers.
+    Object.defineProperty(window, 'visualViewport', {configurable:true,
+      value:{width:1600, height:800, offsetLeft:100, offsetTop:50}});
+    results.offsetDesktop = {...sample(), refresh:JSON.parse(refresh())};
+    Object.defineProperty(window, 'visualViewport', {configurable:true, value:viewport});
     await load(v2); results.v2 = sample();
     // A draggable video/player control is not a CAPTCHA handle.
     const unrelated = document.createElement('div'); unrelated.draggable = true;
@@ -138,4 +151,24 @@ test('reads a desktop CSS viewport before WebView scales it to phone size', opti
   assert.ok(Math.abs(c.x - 338) < .02);
   assert.ok(Math.abs(c.y - 1138) < .02);
   assert.ok(Math.abs(c.travel - 284) < .02);
+});
+
+test('reads rotation and refresh geometry in the current 1920x955 desktop frame', options, () => {
+  const {present, challenge, refresh} = results.currentDesktop;
+  assert.equal(present, true);
+  assert.equal(challenge.viewportWidth, 1920);
+  assert.equal(challenge.viewportHeight, 955);
+  assert.equal(challenge.x, 808);
+  assert.equal(challenge.y, 609);
+  assert.equal(challenge.travel, 284);
+  assert.deepEqual(refresh, {viewportWidth:1920, viewportHeight:955, x:1102, y:643});
+  assert.equal(results.clicked, null);
+});
+
+test('subtracts visual viewport offsets for both the slider and refresh', options, () => {
+  const {challenge, refresh} = results.offsetDesktop;
+  assert.equal(challenge.x, 708);
+  assert.equal(challenge.y, 559);
+  assert.equal(challenge.travel, 284);
+  assert.deepEqual(refresh, {viewportWidth:1600, viewportHeight:800, x:1002, y:593});
 });

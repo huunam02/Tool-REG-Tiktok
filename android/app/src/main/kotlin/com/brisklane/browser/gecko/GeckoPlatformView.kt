@@ -83,7 +83,7 @@ class GeckoPlatformView(
         session.open(GeckoRuntimeHolder.runtime(context))
         identityReady = FirefoxDesktopIdentity.apply()
         geckoView.setSession(session)
-        // The frame changes size when signup rotates the app to landscape;
+        // The frame can change size (window insets, split screen);
         // the page keeps the desktop's 1920 CSS px width either way.
         geckoView.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
             val width = view.width

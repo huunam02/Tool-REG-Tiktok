@@ -109,6 +109,7 @@ const rotateCaptchaRefreshScript = r'''
   const r = el.getBoundingClientRect(), v = window.visualViewport;
   return JSON.stringify({
     viewportWidth: v?.width || innerWidth,
+    viewportHeight: v?.height || innerHeight,
     x: r.left + r.width / 2 - (v?.offsetLeft || 0),
     y: r.top + r.height / 2 - (v?.offsetTop || 0)
   });

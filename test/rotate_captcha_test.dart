@@ -262,8 +262,12 @@ void main() {
   );
 
   test('rejects API failure without dispatching a drag', () async {
+    var requests = 0;
     final solver = RotateCaptchaSolver(
-      client: MockClient((_) async => http.Response('unauthorized', 401)),
+      client: MockClient((_) async {
+        requests++;
+        return http.Response('unauthorized', 401);
+      }),
     );
     await expectLater(
       solver.solve(
@@ -274,10 +278,67 @@ void main() {
         onStatus: (_) {},
         isPresent: () async => true,
       ),
-      throwsStateError,
+      throwsA(
+        isA<RotateCaptchaApiFailure>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          401,
+        ),
+      ),
     );
+    expect(requests, 1);
     expect(gestures, isEmpty);
   });
+
+  test(
+    'maps the centered 1920x955 desktop frame using both measured axes',
+    () async {
+      final c = RotateCaptchaChallenge(
+        outer: challenge.outer,
+        inner: challenge.inner,
+        viewportWidth: 1920,
+        viewportHeight: 955,
+        x: 820,
+        y: 605,
+        travel: 284,
+      );
+      const bounds = Rect.fromLTRB(0, 1186, 1440, 1902);
+      final y = 1186 + 605 * 716 / 955;
+      expect(c.screenPoint(bounds, 0).dx, 615);
+      expect(c.screenPoint(bounds, 180).dx, 721.5);
+      expect(c.screenPoint(bounds, 360).dx, 828);
+      expect(c.screenPoint(bounds, 180).dy, closeTo(y, .0001));
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'signupSnapshot') {
+              return {
+                'ready': true,
+                'webBounds': [0, 1186, 1440, 1902],
+              };
+            }
+            if (call.method == 'dispatchContinuousGesture') gestures.add(call);
+            return true;
+          });
+      expect(
+        await RotateCaptchaSolver(
+          client: MockClient((_) async => http.Response('{"angle":180}', 200)),
+        ).solve(
+          licenseKey: 'fixture',
+          read: () async => c,
+          accessibility: SignupAccessibility(),
+          isPresent: () async => false,
+          guard: () async {},
+          onStatus: (_) {},
+        ),
+        isTrue,
+      );
+      final segments = (gestures.single.arguments as Map)['segments'] as List;
+      final end = (segments.last['path'] as List).single;
+      expect(end['x'], 721.5);
+      expect(end['y'], closeTo(y, .0001));
+    },
+  );
 
   test('does not drag a replaced challenge', () async {
     var reads = 0;
@@ -490,11 +551,41 @@ void main() {
       snapshot([]);
       await refreshRotateCaptcha(
         accessibility: SignupAccessibility(),
-        readGeometry: () async => '{"viewportWidth":1000,"x":600,"y":1200}',
+        readGeometry: () async =>
+            '{"viewportWidth":1000,"viewportHeight":2000,"x":600,"y":1200}',
         guard: () async {},
       );
       expect(tapped(), {'x': 300.0, 'y': 600.0});
     });
+
+    test(
+      'uses desktop height and WebView offset for the CSS refresh point',
+      () async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) async {
+              if (call.method == 'signupSnapshot') {
+                return {
+                  'ready': true,
+                  'webBounds': [0, 1186, 1440, 1902],
+                };
+              }
+              if (call.method == 'dispatchGesture') gestures.add(call);
+              return true;
+            });
+        await refreshRotateCaptcha(
+          accessibility: SignupAccessibility(),
+          readGeometry: () async => {
+            'viewportWidth': 1920,
+            'viewportHeight': 955,
+            'x': 1090,
+            'y': 641,
+          },
+          guard: () async {},
+        );
+        expect(tapped()['x'], 817.5);
+        expect(tapped()['y'], closeTo(1186 + 641 * 716 / 955, .0001));
+      },
+    );
 
     test('never taps without a located control', () async {
       snapshot([]);

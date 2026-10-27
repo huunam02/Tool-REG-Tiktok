@@ -7,7 +7,6 @@ import 'package:test_tiktok/firebase_options.dart';
 
 import 'core/controller/startup_controller.dart';
 import 'core/app_action_theme.dart';
-import 'core/device_memory.dart';
 import 'core/otp_settings_store.dart';
 import 'core/proxy_store.dart';
 import 'screen/home_page.dart';
@@ -17,13 +16,10 @@ import 'screen/widgets/accessibility_permission_prompt.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Portrait only: the 1:2 GeckoView frame and its Accessibility gestures
-  // assume an upright phone.
+  // Portrait only: the desktop frame is fitted below the app bar.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await RemoteConfig.init();
-  // Before any configuration is created, so its phone GPU fits this RAM.
-  await loadDeviceMemory();
 
   runApp(const MyApp());
 }

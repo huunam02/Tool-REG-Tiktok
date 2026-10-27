@@ -86,7 +86,6 @@ class ProxyManagementController extends AppController {
         statusAccount: draft.statusAccount,
         nurtureAfterSignup: draft.nurtureAfterSignup,
         nurtureSettings: draft.nurtureSettings,
-        gpuProfileId: draft.gpuProfileId,
       );
       filter = ProxyUsageFilter.all;
       search.clear();

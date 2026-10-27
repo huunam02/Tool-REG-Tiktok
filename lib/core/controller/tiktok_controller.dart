@@ -77,6 +77,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   final ValueChanged<TikTokFlowResult>? onFlowFinished;
   final Random _workflowRandom;
   bool _signupHandoffStarted = false;
+  bool _signupNeedsLogin = false;
   bool _flowFinished = false;
   bool _watchCompletionPending = false;
   bool _finishingWatch = false;
@@ -118,7 +119,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> _finishSignupWithSession() async {
-    await _persistCurrentAccountLoginState(true);
+    await _persistCurrentAccountLoginState(!_signupNeedsLogin);
     if (!active || _flowFinished) return;
     _flowFinished = true;
     _autoFlowWatchdog?.cancel();
@@ -128,6 +129,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   /// Warm up the new account for the configured time in the session that
   /// created it.
   Future<void> _nurtureAfterSignup() async {
+    if (_signupNeedsLogin) {
+      await _startNurtureWithRetainedSession();
+      if (active && !loginConfirmed && !_flowFinished) _failAutoFlow();
+      return;
+    }
     mutate(() => loginConfirmed = true);
     await _persistCurrentAccountLoginState(true);
     if (!active || pageFailure != null || accountFailure != null) return;
@@ -347,8 +353,8 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   bool get usesAccessibilityAccountFlow =>
       usesCoordinateSignup || usesAccessibilityLogin;
 
-  /// Width of the 1:2 frame in dp; fixes the page scale to the frame, which
-  /// is narrower than the screen on 16:9 phones, tablets and foldables.
+  /// Width of the desktop frame in dp; fixes the page scale to the frame,
+  /// which is narrower than the screen on most phones and tablets.
   double? signupViewportWidth;
   late final signupAccessibility = SignupAccessibility(
     beforeSnapshot: _checkRotateCaptcha,
@@ -792,29 +798,10 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       });
     }
     WidgetsBinding.instance.addObserver(this);
-    // A desktop-shaped signup frame is easier to watch in landscape; the
-    // page width stays 1920 CSS px (native page scale follows the frame).
-    if (_landscapeSignup) {
-      unawaited(
-        SystemChrome.setPreferredOrientations(const [
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ]),
-      );
-    }
   }
-
-  late final bool _landscapeSignup = usesCoordinateSignup;
 
   @override
   void onClose() {
-    if (_landscapeSignup) {
-      unawaited(
-        SystemChrome.setPreferredOrientations(const [
-          DeviceOrientation.portraitUp,
-        ]),
-      );
-    }
     _autoFlowWatchdog?.cancel();
     _autoFailTimer?.cancel();
     _captchaSettingsSubscribed = false;
@@ -1364,6 +1351,34 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     Map<String, dynamic> result = {'ok': true, 'action': action};
     if (action == 'snapshot') {
       result = await FlutterAccessibilityService.signupSnapshot();
+    } else if (action == 'captcha-layout') {
+      // Read-only ADB diagnosis: no API request, refresh or gesture. Image
+      // URLs and account data are deliberately omitted from the report.
+      final challenge = RotateCaptchaChallenge.fromResult(
+        await webViewController!.evaluateJavascript(
+          source: readRotateCaptchaScript,
+        ),
+      );
+      final snapshot = await SignupAccessibility().snapshot();
+      final bounds = snapshot.viewport.bounds;
+      if (challenge == null || !snapshot.ready || bounds.isEmpty) {
+        return {'ok': false, 'reason': 'captcha-geometry-unavailable'};
+      }
+      List<double> point(double angle) {
+        final p = challenge.screenPoint(bounds, angle);
+        return [p.dx, p.dy];
+      }
+
+      result = {
+        'ok': true,
+        'viewport': [challenge.viewportWidth, challenge.viewportHeight],
+        'webBounds': [bounds.left, bounds.top, bounds.right, bounds.bottom],
+        'handle': [challenge.x, challenge.y],
+        'travel': challenge.travel,
+        'from': point(0),
+        'mid': point(180),
+        'end': point(360),
+      };
     } else if (action == 'login-profile') {
       result = {
         'ok': true,
@@ -1670,10 +1685,13 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       coordinateRunner = runner;
       await runner.run();
       if (isActive()) {
+        _signupNeedsLogin = runner.requiresLogin;
         await _markConfigurationRegistered();
         notify(
           runner.alreadyLoggedIn
               ? 'Tài khoản TikTok đã đăng nhập.'
+              : runner.requiresLogin
+              ? 'Đã tạo tài khoản TikTok. TikTok yêu cầu đăng nhập lại.'
               : 'Đăng ký TikTok thành công.',
         );
         succeeded = isActive();

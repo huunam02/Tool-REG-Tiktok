@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_tiktok/core/controller/home_controller.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
@@ -15,6 +16,7 @@ import 'support/memory_proxy_store.dart';
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     RemoteConfig.configs = {
       ...RemoteConfig.defaults,
       'search_keywords': '["Cà phê", "Technology"]',

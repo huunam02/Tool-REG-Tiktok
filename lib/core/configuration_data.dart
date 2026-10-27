@@ -74,7 +74,6 @@ class ImportedConfiguration {
     required this.account,
     this.statusAccount = AccountStatus.unregistered,
     this.nurtureSettings,
-    this.gpuProfileId,
   });
 
   /// Null for "Mặc định của máy": exports leave the Proxy column empty.
@@ -85,18 +84,12 @@ class ImportedConfiguration {
   /// Cấu hình nuôi from an exported workbook; null keeps the form's values.
   final NurtureSettings? nurtureSettings;
 
-  /// Thiết bị GPU from an exported workbook; null keeps the form's choice.
-  final String? gpuProfileId;
-
-  ImportedConfiguration copyWith({
-    NurtureSettings? nurtureSettings,
-    String? gpuProfileId,
-  }) => ImportedConfiguration(
+  ImportedConfiguration copyWith({NurtureSettings? nurtureSettings}) =>
+      ImportedConfiguration(
     proxy: proxy,
     account: account,
     statusAccount: statusAccount,
     nurtureSettings: nurtureSettings ?? this.nurtureSettings,
-    gpuProfileId: gpuProfileId ?? this.gpuProfileId,
   );
 
   /// An empty proxy field keeps the device's own connection.

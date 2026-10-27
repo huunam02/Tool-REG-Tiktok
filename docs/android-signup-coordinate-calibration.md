@@ -76,6 +76,24 @@ nhận kết quả `ok: true`, ngày **28/10/1967**. Screenshot và snapshot
 ô email còn trống, Send code chưa được bấm. Kiểm chứng này chưa bao gồm phần
 gửi mã, API OTP hoặc đăng ký trọn luồng.
 
+### Khung desktop (GeckoView), từ 27/10/2026: không còn JavaScript
+
+GeckoView đưa các mục của danh sách mở vào Accessibility dưới dạng `MenuItem`
+(bounds không bị cắt). App không còn đọc listbox bằng JavaScript. Geometry đo
+trên Galaxy S8 AVD lưu ở `desktop.birthdayMenu` trong
+`assets/signup-coordinate-profile.json`: vùng nhìn thấy y 404,9–695,1, mỗi
+mục 34,075, scroller cao 320,7 (Month dừng sau 88,2), cột Month/Day/Year, danh
+sách mở ở 2025 (năm hiện tại − 1)/January/1, và mỗi lần vuốt 80% → 20% cuộn
+đúng 128,28 (16/16 lần đo).
+
+Mặc định app **tính sẵn** số lần vuốt và điểm chạm rồi bấm thẳng vào hàng, không
+đọc danh sách; chỉ đọc giá trị ô Year/Month/Day sau khi chọn. **Chỉ khi lỗi**
+(ô chưa hiện đúng giá trị) mới mở lại (`reopen-*`) và đọc các `MenuItem` qua
+Accessibility để cuộn và chọn lại. Ngày cuối tháng có thể nằm ở chỗ độ dài danh
+sách 28–31 làm vị trí khác nhau thì đọc danh sách ngay. Kiểm chứng 27/10: 9 lần
+đăng ký dừng trước email chọn đúng 27/27 trường (26 theo vị trí tính sẵn, 1 ngày
+28 đọc danh sách); một bản cố ý sai số đo đã tự sửa Year 1971 và Day 24.
+
 ## Nhập dữ liệu
 
 Luồng đăng ký Android mới dùng `flutter_accessibility_service` cho toàn bộ

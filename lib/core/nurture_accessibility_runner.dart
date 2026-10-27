@@ -671,7 +671,6 @@ class NurtureAccessibilityRunner {
     this.likeRate = defaultLikeRate,
     this.commentRate = defaultCommentRate,
     this.longWatchRate = defaultLongWatchRate,
-    this.continueOnCommentError = false,
     this.searchKeyword,
     Random? random,
     DateTime Function()? now,
@@ -690,12 +689,15 @@ class NurtureAccessibilityRunner {
   final void Function(String)? onCommentSkipped;
   final void Function()? onLike;
   final void Function(String)? onLikeSkipped;
-  final bool continueOnCommentError;
   bool _commentsBlocked = false, _draftReported = false;
   bool _pendingCommentDraft = false;
 
-  /// Sticky across missing editor snapshots and runner restarts. A failed
-  /// publication must not be followed by Next or a page reload.
+  /// The comment this runner pasted and has not seen published; a failed
+  /// attempt clears exactly this text before moving on.
+  String? _typedComment;
+
+  /// Sticky across missing editor snapshots and runner restarts. A draft is
+  /// never posted or used to reload the page; nurturing still moves on.
   bool get hasPendingCommentDraft => _pendingCommentDraft;
 
   /// Share of posts that are liked (0–1). A liked post is watched in full.
@@ -761,8 +763,22 @@ class NurtureAccessibilityRunner {
   /// Latest playback second at which a comment starts.
   static const _latestCommentSeconds = 20;
 
-  /// Publish before the midpoint, leaving time to open and fill the editor.
-  static const _commentDeadlineRatio = .5;
+  /// Seconds before the end by which a comment is published: the search
+  /// player moves to the next post when one ends, so short posts get comments
+  /// too as long as the whole comment fits before that.
+  static const _commentEndMarginSeconds = 5;
+
+  /// Playback second by which the comment must be published.
+  static int _commentDeadline(NurtureVideo video) =>
+      video.duration - _commentEndMarginSeconds;
+
+  /// Seconds still needed once the editor is open: focus, paste, Post.
+  static const _commentFillSeconds = 4;
+
+  /// Seconds a comment needs before the deadline: opening the editor (about
+  /// 2 s in the search player, measured 2026-10-27) plus filling it. With
+  /// less, the attempt is always abandoned once the editor is open.
+  static const _commentReserveSeconds = 3 + _commentFillSeconds;
 
   /// How long a CAPTCHA may stay open while the monitor solves it.
   static const _captchaWait = Duration(seconds: 60);
@@ -880,10 +896,10 @@ class NurtureAccessibilityRunner {
         (video.like != null || !video.targetsVerified) &&
         watch >= 4 &&
         _random.nextDouble() < likeRate;
-    // Reserve at least five seconds before the midpoint for opening/pasting.
+    // Reserve time before the deadline for opening and filling the editor.
     final latest = min(
       min((watch * .5).floor(), _latestCommentSeconds),
-      (video.duration * _commentDeadlineRatio).floor() - 5,
+      _commentDeadline(video) - _commentReserveSeconds,
     );
     final comment =
         latest >= 3 &&
@@ -1277,24 +1293,16 @@ class NurtureAccessibilityRunner {
           await _sleep(1500);
           continue;
         }
-        if (continueOnCommentError &&
-            (_pendingCommentDraft ||
-                [...s.nodes, ...s.hiddenNodes].any(
-                  (n) =>
-                      n.editable &&
-                      n.length > 0 &&
-                      n.bounds.center.dy > s.viewport.bounds.center.dy,
-                ))) {
-          _pendingCommentDraft = true;
+        if (_pendingCommentDraft || _hasCommentDraft(s)) {
+          // A draft is never posted; keep watching and moving on without
+          // further comments rather than stopping the session.
           _commentsBlocked = true;
           if (!_draftReported) {
             _draftReported = true;
             onCommentSkipped?.call(
-              'Giữ bản nháp bình luận; tiếp tục xem đến hết thời gian nuôi.',
+              'Có bản nháp bình luận; tiếp tục nuôi, không bình luận thêm.',
             );
           }
-          await _sleep();
-          continue;
         }
         if (NurtureVideo.isLiveRoom(s)) {
           missingSince = null;
@@ -1350,14 +1358,23 @@ class NurtureAccessibilityRunner {
         unplayable = 0;
         final plan = _plan(video);
         // An empty panel left by a cancelled attempt is safe to close. A real
-        // draft must be retained; opening comments alone must not stop nurture.
-        if (_close(s) != null) {
-          if (!await _closeEmptyComments()) {
-            throw StateError(
-              'Có bình luận đang soạn; đã dừng và giữ bản nháp.',
+        // draft stays untouched in its open panel; comments stop for this
+        // session, but nurturing keeps moving on.
+        if (_close(s) != null && !_commentsBlocked) {
+          var closed = false;
+          try {
+            closed = await _closeEmptyComments();
+          } on StateError catch (error) {
+            debugPrint('Nurture comment panel left open: ${error.message}');
+          }
+          if (closed) continue;
+          _commentsBlocked = true;
+          if (!_draftReported) {
+            _draftReported = true;
+            onCommentSkipped?.call(
+              'Có bản nháp bình luận; tiếp tục nuôi, không bình luận thêm.',
             );
           }
-          continue;
         }
         if (video.key != frozenKey || video.position != frozenAt) {
           if (video.key == frozenKey) stalls = 0;
@@ -1400,16 +1417,28 @@ class NurtureAccessibilityRunner {
             video.position >= plan.commentAt) {
           plan.commentAttempted =
               true; // Retained across pause/resume and errors.
-          if (video.position + 3 < video.duration * _commentDeadlineRatio) {
+          // A late start (pause, slow snapshot) skips quietly instead of
+          // opening an editor that will be abandoned.
+          if (video.position + _commentReserveSeconds <=
+              _commentDeadline(video)) {
             try {
               await _comment(s, video);
             } on StateError catch (error) {
-              if (!continueOnCommentError) rethrow;
+              // A failed comment never stops nurturing (user, 2026-10-27).
               _check();
-              _commentsBlocked = true;
+              debugPrint('Nurture comment failed: ${error.message}');
+              final typed = _typedComment != null;
+              final cleared = await _dropFailedComment();
               onCommentSkipped?.call(
-                '${error.message} Tiếp tục xem, không gửi lại bình luận.',
+                !cleared
+                    ? 'Bình luận không thành công; tiếp tục nuôi, '
+                          'không bình luận thêm.'
+                    : typed
+                    ? 'Bình luận không thành công; đã xóa nội dung đã nhập '
+                          'và tiếp tục nuôi.'
+                    : 'Bình luận không thành công; bỏ qua và tiếp tục nuôi.',
               );
+              if (!cleared) _draftReported = true;
             }
           }
         }
@@ -1735,7 +1764,6 @@ class NurtureAccessibilityRunner {
             }
             final next = current?.next;
             if (current == null ||
-                _pendingCommentDraft ||
                 fresh.keyboardVisible ||
                 next == null ||
                 fresh.viewport.bounds != s.viewport.bounds ||
@@ -1983,7 +2011,7 @@ class NurtureAccessibilityRunner {
       // Wait without entering text; a confirmed different post still stops.
       if (current == null) continue;
       if (current.key != key) {
-        throw StateError('Video đã thay đổi khi bình luận; đã dừng.');
+        throw StateError('Video đã thay đổi khi bình luận.');
       }
       if (ready(s)) return s;
       // Last observed state, so a timeout says what was missing.
@@ -2008,6 +2036,55 @@ class NurtureAccessibilityRunner {
             n.editable &&
             !RegExp(r'^search$', caseSensitive: false).hasMatch(n.hint.trim()),
       );
+
+  /// After a failed comment, empties the editor holding the text this runner
+  /// pasted, so it is never posted on, or carried to, another post, then
+  /// closes an empty feed panel. A late Gecko paste can land after the first
+  /// clear, hence the retries. False leaves comments off for the session.
+  Future<bool> _dropFailedComment() async {
+    final text = _typedComment;
+    var cleared = text == null && !_pendingCommentDraft;
+    for (var attempt = 0; text != null && !cleared && attempt < 3; attempt++) {
+      if (attempt > 0) await _sleep(1000);
+      cleared = await accessibility.clearComment(text) && await _draftGone();
+      _check();
+    }
+    if (!cleared) {
+      _commentsBlocked = true;
+      return false;
+    }
+    _typedComment = null;
+    _pendingCommentDraft = false;
+    try {
+      if (_close(await _snapshot()) != null) await _closeEmptyComments();
+    } on StateError catch (error) {
+      // An open panel does not stop Next; the next read retries anyway.
+      debugPrint('Nurture comment panel left open: ${error.message}');
+    }
+    _check();
+    return true;
+  }
+
+  /// A non-empty editor in the lower half: a comment draft, never the
+  /// header search box.
+  static bool _hasCommentDraft(SignupSnapshot s) =>
+      [...s.nodes, ...s.hiddenNodes].any(
+        (n) =>
+            n.editable &&
+            n.length > 0 &&
+            n.bounds.center.dy > s.viewport.bounds.center.dy,
+      );
+
+  /// The page itself, not only the native node, must show the editor empty;
+  /// Gecko may report the cleared node before TikTok's editor follows.
+  Future<bool> _draftGone() async {
+    final until = _now().add(const Duration(seconds: 2));
+    do {
+      if (!_hasCommentDraft(await _snapshot())) return true;
+      await _sleep(300);
+    } while (_now().isBefore(until));
+    return false;
+  }
 
   Future<bool> _closeEmptyComments() async {
     var s = await _snapshot();
@@ -2087,7 +2164,7 @@ class NurtureAccessibilityRunner {
   /// One accepted ACTION_CLICK on the clipped Post beside the filled editor.
   /// A refused attempt (Post not yet enabled) clicked nothing and is retried;
   /// an accepted one is never repeated. The text is already in the editor,
-  /// so a short post crossing its midpoint meanwhile still gets it published
+  /// so a short post crossing its deadline meanwhile still gets it published
   /// rather than leaving a draft that blocks Next for the rest of the session.
   Future<void> _clickClippedPost(NurtureVideo video) async {
     for (var attempt = 0; attempt < 5; attempt++) {
@@ -2163,8 +2240,8 @@ class NurtureAccessibilityRunner {
           stage: 'mở khung bình luận',
         );
       }
-      if (NurtureVideo.read(s)!.position + 4 >=
-          video.duration * _commentDeadlineRatio) {
+      if (NurtureVideo.read(s)!.position + _commentFillSeconds >=
+          _commentDeadline(video)) {
         throw const _CommentNotReady(
           'Không còn đủ thời gian để nhập bình luận.',
         );
@@ -2204,6 +2281,7 @@ class NurtureAccessibilityRunner {
         _check();
         pasteAttempted = true;
         _pendingCommentDraft = true;
+        _typedComment = text;
         final result = await accessibility.paste(text, 'comment');
         _check();
         if (result['ok'] != true) {
@@ -2214,6 +2292,7 @@ class NurtureAccessibilityRunner {
             // Nothing reached the editor (verified empty): no draft to keep.
             pasteAttempted = false;
             _pendingCommentDraft = false;
+            _typedComment = null;
             throw _CommentNotReady('Ô bình luận chưa sẵn sàng ($reason).');
           }
           throw StateError(
@@ -2249,8 +2328,7 @@ class NurtureAccessibilityRunner {
                 ),
             stage: 'xác nhận nội dung đã nhập',
           );
-          if (NurtureVideo.read(s)!.position + 1 >=
-              video.duration * _commentDeadlineRatio) {
+          if (NurtureVideo.read(s)!.position + 1 >= _commentDeadline(video)) {
             throw StateError(
               'Đã quá thời điểm bình luận; đã dừng và giữ bản nháp.',
             );
@@ -2281,8 +2359,7 @@ class NurtureAccessibilityRunner {
                     fresh.viewport.bounds != s.viewport.bounds ||
                     button == null ||
                     !button.bounds.contains(fresh.viewport.toScreen(point)) ||
-                    current.position + 1 >=
-                        current.duration * _commentDeadlineRatio) {
+                    current.position + 1 >= _commentDeadline(current)) {
                   throw StateError(
                     'Nút Post hoặc thời điểm gửi đã đổi; đã giữ bản nháp.',
                   );
@@ -2298,6 +2375,7 @@ class NurtureAccessibilityRunner {
           );
           _comments++;
           _pendingCommentDraft = false;
+          _typedComment = null;
           await _emit();
           onComment?.call();
           // Blur the editor by tapping the already-selected Comments tab.
@@ -2335,8 +2413,7 @@ class NurtureAccessibilityRunner {
               s.find(RegExp(r'^Post$', caseSensitive: false)) != null,
           stage: 'tìm nút gửi bình luận',
         );
-        if (NurtureVideo.read(s)!.position + 1 >=
-            video.duration * _commentDeadlineRatio) {
+        if (NurtureVideo.read(s)!.position + 1 >= _commentDeadline(video)) {
           throw StateError(
             'Đã quá thời điểm bình luận; đã dừng và giữ bản nháp.',
           );
@@ -2360,8 +2437,7 @@ class NurtureAccessibilityRunner {
                 button == null ||
                 !button.bounds.contains(fresh.viewport.toScreen(point)) ||
                 current.position < NurtureVideo.read(s)!.position ||
-                current.position + 1 >=
-                    current.duration * _commentDeadlineRatio) {
+                current.position + 1 >= _commentDeadline(current)) {
               throw StateError(
                 'Video hoặc thời điểm gửi đã đổi; đã dừng và giữ bản nháp.',
               );
@@ -2376,6 +2452,7 @@ class NurtureAccessibilityRunner {
       );
       _comments++;
       _pendingCommentDraft = false;
+      _typedComment = null;
       await _emit();
       onComment?.call();
       final close = _close(s);

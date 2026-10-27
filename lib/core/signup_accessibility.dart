@@ -418,6 +418,9 @@ class SignupAccessibility {
   Future<bool> clearOtp(String expected) =>
       _perform(() => FlutterAccessibilityService.signupClearOtp(expected));
 
+  Future<bool> clearComment(String expected) =>
+      _perform(() => FlutterAccessibilityService.signupClearComment(expected));
+
   Future<void> dismissKeyboard() => _perform(() async {
     if (!await FlutterAccessibilityService.signupDismissKeyboard()) {
       throw StateError('Không đóng được bàn phím.');

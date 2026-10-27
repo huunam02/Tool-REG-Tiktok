@@ -71,6 +71,34 @@ void main() {
     },
   );
 
+  test('screen time replaces playback time and never decreases', () async {
+    session = ManualViewingSession(
+      repository: repository,
+      email: 'person@example.com',
+      plan: const NurturePlan(NurtureMode.feed),
+      countsScreenTime: true,
+    );
+    await session.start();
+    final segment = session.addSegment();
+    await session.accept(snapshot(segment, 1, 5000, videos: 1, comments: 1));
+    expect(repository.totals[session.id]!.watchMilliseconds, 0);
+    await session.recordScreenTime(const Duration(seconds: 40));
+    await session.recordScreenTime(const Duration(seconds: 30));
+    await session.accept(snapshot(segment, 2, 9000, videos: 2, comments: 1));
+    expect(repository.totals[session.id]!.watchMilliseconds, 40000);
+    expect(repository.totals[session.id]!.videos, 2);
+    expect(repository.totals[session.id]!.comments, 1);
+    await session.finish(completed: true);
+    await session.recordScreenTime(const Duration(minutes: 5));
+    expect(repository.totals[session.id]!.watchMilliseconds, 40000);
+  });
+
+  test('manual viewing ignores screen time', () async {
+    await session.start();
+    await session.recordScreenTime(const Duration(seconds: 40));
+    expect(repository.totals, isEmpty);
+  });
+
   test(
     'pause and finish preserve mode and queued progress; late updates are ignored',
     () async {

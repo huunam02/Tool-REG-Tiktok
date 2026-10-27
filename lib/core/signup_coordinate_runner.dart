@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart';
 
 import 'app_configuration.dart';
@@ -27,6 +28,12 @@ class SignupCoordinateProfile {
     if (values == null) return null;
     return Offset((values[0] as num).toDouble(), (values[1] as num).toDouble());
   }
+
+  /// Calibrated desktop birthday lists; null when not measured.
+  SignupBirthdayGeometry? get birthdayGeometry =>
+      SignupBirthdayGeometry.fromJson(
+        (data['desktop'] as Map?)?['birthdayMenu'],
+      );
 
   static Future<SignupCoordinateProfile> load() async =>
       SignupCoordinateProfile(
@@ -90,6 +97,9 @@ class SignupCoordinateRunner {
 
   /// WebView load completion is separate from visible Accessibility nodes.
   final bool Function()? isPageReady;
+
+  /// Reads an open list for frames whose rows Accessibility omits (the
+  /// legacy phone WebView). The app reads no page script for this.
   final Future<SignupBirthdayMenu?> Function(String field)? readBirthdayMenu;
 
   /// False while a notification shade or system dialog covers the app.
@@ -201,7 +211,9 @@ class SignupCoordinateRunner {
     while (now().isBefore(deadline)) {
       final value = await _snapshot();
       if (matches(value)) return value;
-      if (await _dismissPrivacyNoticeIfShown(value)) continue;
+      if (await _dismissPrivacyNoticeIfShown(value, resume: status)) {
+        continue;
+      }
       await _pause(300);
     }
     throw StateError('Chưa xác nhận được bước: $status');
@@ -250,7 +262,8 @@ class SignupCoordinateRunner {
   });
 
   Future<SignupSnapshot> _waitForEntryReady() async {
-    onStatus('Đang chờ trang và nút đăng ký sẵn sàng…');
+    const status = 'Đang chờ trang và nút đăng ký sẵn sàng…';
+    onStatus(status);
     final started = now();
     final deadline = started.add(const Duration(seconds: 60));
     DateTime? pageReadySince;
@@ -285,8 +298,8 @@ class SignupCoordinateRunner {
       // accepted after 20s with a longer stability check.
       final loaded = isPageReady?.call() ?? true;
       if (_authenticated(snapshot) && loaded) return snapshot;
-      if (await _acceptCookiesIfShown(snapshot) ||
-          await _dismissFeedHintIfShown(snapshot)) {
+      if (await _acceptCookiesIfShown(snapshot, resume: status) ||
+          await _dismissFeedHintIfShown(snapshot, resume: status)) {
         // The overlay closing can shift layout; re-check target stability.
         targetStableSince = null;
         previousTarget = null;
@@ -490,7 +503,10 @@ class SignupCoordinateRunner {
   /// TikTok's cookie banner (EU IPs) can appear at any step and covers the
   /// bottom of the page. Accept it once like a regular visitor; its absence
   /// never blocks signup. Returns whether a tap was made.
-  Future<bool> _acceptCookiesIfShown(SignupSnapshot snapshot) async {
+  Future<bool> _acceptCookiesIfShown(
+    SignupSnapshot snapshot, {
+    String? resume,
+  }) async {
     if (_actions.contains('accept-cookies')) return false;
     final node = CookieConsentAccessibility.button(snapshot);
     if (node == null) return false;
@@ -500,6 +516,9 @@ class SignupCoordinateRunner {
       snapshot.viewport.bounds,
       node.bounds.intersect(snapshot.viewport.bounds).center,
     );
+    // The banner closes with the tap; announce the step again right away,
+    // not during the pause that follows.
+    if (resume != null) onStatus(resume);
     await _pauseAfterAction();
     return true;
   }
@@ -509,7 +528,10 @@ class SignupCoordinateRunner {
   /// The desktop feed opens with a "Scroll, use the ↑ ↓ keys…" hint whose
   /// mask covers the header's Log in. Close it once with Got it, as a
   /// visitor would; its absence never blocks signup.
-  Future<bool> _dismissFeedHintIfShown(SignupSnapshot snapshot) async {
+  Future<bool> _dismissFeedHintIfShown(
+    SignupSnapshot snapshot, {
+    String? resume,
+  }) async {
     if (_actions.contains('feed-hint') || !snapshot.contains(_feedHint)) {
       return false;
     }
@@ -518,9 +540,11 @@ class SignupCoordinateRunner {
         .where(
           (n) =>
               PrivacyNoticeAccessibility.label.hasMatch(n.label) &&
-              n.bounds.intersect(web).width >= 1,
+              n.bounds.intersect(web).width >= 1 &&
+              n.bounds.intersect(web).height >= 1,
         )
         .toList();
+    // Announced only while Got it is on screen.
     if (buttons.isEmpty) return false;
     onStatus('Đang bấm Got it cho gợi ý cuộn của TikTok…');
     _actions.add('feed-hint');
@@ -528,6 +552,7 @@ class SignupCoordinateRunner {
       web,
       buttons.last.bounds.intersect(web).center,
     );
+    if (resume != null) onStatus(resume);
     await _pauseAfterAction();
     return true;
   }
@@ -537,7 +562,10 @@ class SignupCoordinateRunner {
 
   /// TikTok's one-time privacy notice appears once the new account exists
   /// and hides the page until Got it is tapped. Returns whether it tapped.
-  Future<bool> _dismissPrivacyNoticeIfShown(SignupSnapshot snapshot) async {
+  Future<bool> _dismissPrivacyNoticeIfShown(
+    SignupSnapshot snapshot, {
+    String? resume,
+  }) async {
     if (_privacyNoticeTaps >= _maxPrivacyNoticeTaps) return false;
     final node = PrivacyNoticeAccessibility.button(snapshot);
     if (node == null) return false;
@@ -547,6 +575,7 @@ class SignupCoordinateRunner {
       snapshot.viewport.bounds,
       node.bounds.intersect(snapshot.viewport.bounds).center,
     );
+    if (resume != null) onStatus(resume);
     await _pauseAfterAction();
     return true;
   }
@@ -744,6 +773,36 @@ class SignupCoordinateRunner {
         ],
       );
     }
+    // GeckoView exposes the open desktop list's rows as MenuItems; their
+    // bounds are not clipped, so only rows inside the calibrated list count.
+    final list = s.viewport.landscape
+        ? profile.birthdayGeometry?.list(field)
+        : null;
+    if (list != null) {
+      final options = [
+        for (final n in s.nodes)
+          if (n.className.endsWith('MenuItem') &&
+              _birthdayOption(field, n.text.trim()))
+            SignupBirthdayOption(
+              n.text.trim(),
+              Rect.fromPoints(
+                s.viewport.fromScreen(n.bounds.topLeft),
+                s.viewport.fromScreen(n.bounds.bottomRight),
+              ),
+            ),
+      ];
+      return SignupBirthdayMenu(
+        field: field,
+        expanded: options.isNotEmpty,
+        bounds: list,
+        scrollable: true,
+        options: [
+          for (final option in options)
+            if (option.bounds.intersect(list).height >= 3)
+              SignupBirthdayOption(option.text, option.bounds.intersect(list)),
+        ],
+      );
+    }
     await _guard();
     final menu = await readBirthdayMenu?.call(field);
     await _guard();
@@ -753,12 +812,85 @@ class SignupCoordinateRunner {
     return menu;
   }
 
+  static bool _birthdayOption(String field, String text) => switch (field) {
+    'Month' => _months.contains(text),
+    'Day' => RegExp(r'^([1-9]|[12]\d|3[01])$').hasMatch(text),
+    _ => RegExp(r'^(19|20)\d\d$').hasMatch(text),
+  };
+
   Future<void> _selectBirthday(String field, String value, int target) async {
+    // Calibrated positions first; the list is read only after an error.
+    if (await _selectBirthdayAt(field, value, target)) return;
+    await _selectBirthdayByReading(field, value, target);
+  }
+
+  /// Opens the list and taps the row computed from the calibrated geometry,
+  /// without reading the list. True once the field shows [value].
+  Future<bool> _selectBirthdayAt(String field, String value, int target) async {
+    final geometry = profile.birthdayGeometry;
+    final snapshot = await _snapshot();
+    final list = geometry?.list(field);
+    if (geometry == null || list == null || !snapshot.viewport.landscape) {
+      return false;
+    }
+    final plan = geometry.plan(field, geometry.index(field, target, now()));
+    // An open list (a stopped attempt) has an unknown scroll position.
+    if (plan == null ||
+        snapshot.nodes.any((n) => n.className.endsWith('MenuItem'))) {
+      return false;
+    }
+    await _tap(
+      'open-${field.toLowerCase()}',
+      expected: RegExp(field, caseSensitive: false),
+      birthdayAction: true,
+    );
+    onStatus('Đang chọn $field $value theo vị trí đã đo…');
+    for (var i = 0; i < plan.swipes; i++) {
+      await _guard();
+      // The calibrated gesture: 80% to 20% of the list height.
+      await accessibility.swipe(
+        snapshot.viewport,
+        Offset(list.center.dx, list.top + list.height * .8),
+        Offset(list.center.dx, list.top + list.height * .2),
+      );
+      await _pauseAfterAction(birthdayAction: true);
+    }
+    await _guard();
+    await accessibility.tap(
+      snapshot.viewport,
+      Offset(list.center.dx, plan.tapY),
+    );
+    await _pauseAfterAction(birthdayAction: true);
+    try {
+      await _wait(
+        (s) =>
+            _birthdayValue(s, field, value) &&
+            !s.nodes.any((n) => n.picker || n.className.endsWith('MenuItem')),
+        'Kiểm tra $field sinh…',
+        seconds: 3,
+      );
+      debugPrint('Signup birthday: $field $value at the calibrated row');
+      return true;
+    } on StateError {
+      debugPrint('Signup birthday: $field $value missed; reading the list');
+      onStatus('Chọn $field theo vị trí chưa khớp; đọc lại danh sách…');
+      return false;
+    }
+  }
+
+  /// Reads the open list through Accessibility and scrolls until [value] is
+  /// visible: the recovery when a calibrated selection did not match.
+  Future<void> _selectBirthdayByReading(
+    String field,
+    String value,
+    int target,
+  ) async {
     var menu = await _birthdayMenu(await _snapshot(), field);
     // A stopped attempt may have left this combobox open. Do not toggle it shut.
     if (menu?.expanded != true) {
+      final open = 'open-${field.toLowerCase()}';
       await _tap(
-        'open-${field.toLowerCase()}',
+        _actions.contains(open) ? 're$open' : open,
         expected: RegExp(field, caseSensitive: false),
         birthdayAction: true,
       );
@@ -794,6 +926,7 @@ class SignupCoordinateRunner {
           'Kiểm tra $field sinh…',
           seconds: 5,
         );
+        debugPrint('Signup birthday: $field $value after reading the list');
         return;
       }
       int? ordinal(SignupBirthdayOption node) => field == 'Month'

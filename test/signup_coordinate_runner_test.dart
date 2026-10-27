@@ -519,14 +519,11 @@ void main() {
           'login-required-after-skip',
           'signed-out-after-skip',
         ].contains(scenario);
-        expect(
-          accessibility.state,
-          switch (scenario) {
-            'login-required-after-skip' => 'login-modal',
-            'signed-out-after-skip' => 'home-ready',
-            _ => 'authenticated-home',
-          },
-        );
+        expect(accessibility.state, switch (scenario) {
+          'login-required-after-skip' => 'login-modal',
+          'signed-out-after-skip' => 'home-ready',
+          _ => 'authenticated-home',
+        });
         expect(runner.requiresLogin, requiresLogin);
         expect(otpRequests, 1);
         expect(accessibility.pastes, ['email', 'otp', 'password']);
@@ -863,7 +860,7 @@ void main() {
         }
         return result as String;
       },
-      onStatus: (_) {},
+      onStatus: accessibility.statuses.add,
       readBirthdayMenu: accessibility.readBirthdayMenu,
       now: tester.binding.clock.now,
     );
@@ -1037,6 +1034,14 @@ void main() {
         accessibility.actions[accessibility.actions.indexOf('dismiss-privacy') -
             1],
         after,
+      ); // Got it is announced while shown, then the step's status returns.
+      final announced = accessibility.statuses.indexWhere(
+        (s) => s.contains('Got it'),
+      );
+      expect(announced, greaterThanOrEqualTo(0));
+      expect(
+        accessibility.statuses[announced + 1],
+        accessibility.statuses[announced - 1],
       );
     });
   }
@@ -1137,6 +1142,7 @@ class _RecordedAccessibility extends SignupAccessibility {
   /// TikTok's one-time privacy notice for a new account. It is modal, so
   /// only the notice is in the tree while it is open.
   bool privacyNotice = false;
+  final statuses = <String>[];
   static const _privacyButton = [380, 2300, 700, 2350];
 
   List<dynamic> _shifted(List<dynamic> nodes, List<dynamic> web) => [

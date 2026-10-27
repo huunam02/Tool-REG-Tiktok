@@ -363,7 +363,27 @@ class _Service extends SignupAccessibility {
     expect(field, 'comment');
     if (pasteReason != null) return {'ok': false, 'reason': pasteReason};
     length = text.length;
+    typed = text;
+    // The search player moved on while the text was going in.
+    if (moveOnPaste) moved = true;
     return {'ok': true};
+  }
+
+  bool moveOnPaste = false;
+
+  /// Text this fake's editor holds from the runner's own paste.
+  String? typed;
+  bool clearWorks = true;
+  int clears = 0;
+
+  @override
+  Future<bool> clearComment(String expected) async {
+    clears++;
+    if (typed != expected) return typed == null;
+    if (!clearWorks) return false;
+    typed = null;
+    length = 0;
+    return true;
   }
 
   @override
@@ -978,6 +998,12 @@ class _SearchService extends SignupAccessibility {
   }
 
   @override
+  Future<bool> clearComment(String expected) async {
+    if (commentText == expected) commentText = '';
+    return commentText != expected;
+  }
+
+  @override
   Future<bool> submitComment() async {
     submits++;
     if (!submitAccepted || commentText.isEmpty) return false;
@@ -1093,7 +1119,6 @@ void main() {
         likeRate: 0,
         commentRate: 0,
         longWatchRate: 1,
-        continueOnCommentError: true,
         isActive: () => service.clock.isBefore(deadline),
         isTikTok: () async => true,
         onProgress: (_, _) async {},
@@ -2458,37 +2483,64 @@ void main() {
     expect(runner.totals.watchMilliseconds, lessThanOrEqualTo(70000));
   });
 
-  for (final duration in [16, 30, 60]) {
-    test('latest comment on a ${duration}s video sends before 50%', () async {
-      final service = _Service()..duration = duration;
-      var active = true;
-      final runner = NurtureAccessibilityRunner(
-        accessibility: service,
-        profile: NurtureCoordinateProfile({}),
-        comments: ['Configured comment'],
-        isActive: () => active,
-        isTikTok: () async => true,
-        onProgress: (t, _) async {
-          if (t.fullVideos > 0) active = false;
-        },
-        commentRate: 1,
-        random: _LatestRandom(),
-        now: () => service.clock,
-        delay: service.delay,
-      );
-      final start = service.clock;
-      await runner.start();
-      expect(service.posts, 1);
-      expect(runner.totals.comments, 1);
-      expect(
-        service.postedAt!.difference(start).inMilliseconds,
-        lessThan(duration * 500),
-      );
-    });
+  test('a 14s video plans no comment instead of abandoning one', () async {
+    final service = _Service()..duration = 14;
+    var active = true;
+    final skipped = <String>[];
+    final runner = NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: ['Configured comment'],
+      isActive: () => active,
+      isTikTok: () async => true,
+      onProgress: (t, _) async {
+        if (t.videos > 0) active = false;
+      },
+      onCommentSkipped: skipped.add,
+      commentRate: 1,
+      random: _LatestRandom(),
+      now: () => service.clock,
+      delay: service.delay,
+    );
+    await runner.start();
+    expect([service.pastes, service.posts], [0, 0]);
+    expect(skipped, isEmpty);
+  });
+
+  for (final duration in [15, 17, 30, 60]) {
+    test(
+      'latest comment on a ${duration}s video sends 5s before the end',
+      () async {
+        final service = _Service()..duration = duration;
+        var active = true;
+        final runner = NurtureAccessibilityRunner(
+          accessibility: service,
+          profile: NurtureCoordinateProfile({}),
+          comments: ['Configured comment'],
+          isActive: () => active,
+          isTikTok: () async => true,
+          onProgress: (t, _) async {
+            if (t.fullVideos > 0) active = false;
+          },
+          commentRate: 1,
+          random: _LatestRandom(),
+          now: () => service.clock,
+          delay: service.delay,
+        );
+        final start = service.clock;
+        await runner.start();
+        expect(service.posts, 1);
+        expect(runner.totals.comments, 1);
+        expect(
+          service.postedAt!.difference(start).inMilliseconds,
+          lessThan((duration - 5) * 1000),
+        );
+      },
+    );
   }
 
-  test('a delayed panel before 70% but past 50% never receives text', () async {
-    final service = _Service()..panelDelaySeconds = 12;
+  test('a panel opening too close to the end never receives text', () async {
+    final service = _Service()..panelDelaySeconds = 22;
     var active = true;
     final skipped = <String>[];
     final runner = NurtureAccessibilityRunner(
@@ -2542,7 +2594,6 @@ void main() {
         accessibility: service,
         profile: NurtureCoordinateProfile({}),
         comments: ['Configured comment'],
-        continueOnCommentError: true,
         isActive: () => service.clock.isBefore(deadline),
         isTikTok: () async => true,
         onProgress: (_, _) async {},
@@ -2562,7 +2613,7 @@ void main() {
   );
 
   test(
-    'queued nurture continues after an unconfirmed comment without reposting',
+    'nurture continues after an unconfirmed comment without reposting it',
     () async {
       final service = _Service()..confirmPost = false;
       final deadline = service.clock.add(const Duration(minutes: 1));
@@ -2570,7 +2621,6 @@ void main() {
         accessibility: service,
         profile: NurtureCoordinateProfile({}),
         comments: ['Configured comment'],
-        continueOnCommentError: true,
         isActive: () => service.clock.isBefore(deadline),
         isTikTok: () async => true,
         onProgress: (_, _) async {},
@@ -2580,16 +2630,46 @@ void main() {
       );
       await runner.start();
       expect(service.clock, deadline);
-      expect(service.posts, 1);
-      expect(service.pastes, 1);
+      // Each typed comment gets exactly one Post; the next post may get its
+      // own comment, but an unconfirmed one is never sent again.
+      expect(service.posts, service.pastes);
+      expect(service.clears, service.posts);
       expect(runner.totals.comments, 0);
       expect(runner.totals.watchMilliseconds, greaterThan(30000));
     },
   );
 
+  test(
+    'a post that ends mid-comment clears the text and keeps nurturing',
+    () async {
+      final service = _Service()..moveOnPaste = true;
+      final deadline = service.clock.add(const Duration(minutes: 1));
+      final skipped = <String>[];
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: ['Configured comment'],
+        isActive: () => service.clock.isBefore(deadline),
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        onCommentSkipped: skipped.add,
+        random: _Random(true),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await runner.start();
+      expect(service.clock, deadline);
+      // Never published on the post it was not typed for.
+      expect(service.posts, lessThan(service.pastes));
+      expect(service.clears, greaterThan(0));
+      expect(skipped.first, contains('đã xóa nội dung đã nhập'));
+      expect(runner.hasPendingCommentDraft, isFalse);
+    },
+  );
+
   test('an unconfirmed comment is dispatched once and never counted', () async {
     final service = _Service()..confirmPost = false;
-    var until = service.clock.add(const Duration(minutes: 1));
+    var until = service.clock.add(const Duration(seconds: 25));
     final runner = NurtureAccessibilityRunner(
       accessibility: service,
       profile: NurtureCoordinateProfile({}),
@@ -2601,16 +2681,17 @@ void main() {
       now: () => service.clock,
       delay: service.delay,
     );
-    await expectLater(runner.start(), throwsStateError);
+    await runner.start();
     expect(service.posts, 1);
     expect(runner.totals.comments, 0);
+    // A restarted runner on the same post never sends it again.
     until = service.clock.add(const Duration(seconds: 3));
     await runner.start();
     expect(service.posts, 1);
   });
 
   test(
-    'an uncertain draft blocks Next even while the editor is missing',
+    'an uncertain draft is cleared and nurture moves on while the editor is missing',
     () async {
       final service = _MissingDraftService()..confirmPost = false;
       final deadline = service.clock.add(const Duration(minutes: 1));
@@ -2618,7 +2699,6 @@ void main() {
         accessibility: service,
         profile: NurtureCoordinateProfile({}),
         comments: ['Configured comment'],
-        continueOnCommentError: true,
         isActive: () => service.clock.isBefore(deadline),
         isTikTok: () async => true,
         onProgress: (_, _) async {},
@@ -2627,38 +2707,41 @@ void main() {
         delay: service.delay,
       );
       await runner.start();
-      expect(runner.hasPendingCommentDraft, isTrue);
-      expect(service.pastes, 1);
-      expect(service.posts, 1);
-      expect(service.swipes, 0);
+      expect(runner.hasPendingCommentDraft, isFalse);
+      expect(service.posts, service.pastes);
+      expect(service.clears, greaterThan(0));
+      expect(service.swipes, greaterThan(0));
       expect(runner.totals.comments, 0);
       expect(runner.totals.watchMilliseconds, greaterThan(30000));
     },
   );
 
-  test('a hidden feed comment draft is preserved before any gesture', () async {
-    final service = _Service()
-      ..hiddenEditor = true
-      ..panel = true
-      ..length = 5;
-    final runner = NurtureAccessibilityRunner(
-      accessibility: service,
-      profile: NurtureCoordinateProfile({}),
-      comments: ['Configured comment'],
-      isActive: () => true,
-      isTikTok: () async => true,
-      onProgress: (_, _) async {},
-      random: _Random(true),
-      now: () => service.clock,
-      delay: service.delay,
-    );
-    await expectLater(runner.start(), throwsStateError);
-    expect(
-      [service.taps, service.pastes, service.posts, service.swipes],
-      [0, 0, 0, 0],
-    );
-    expect(service.length, 5);
-  });
+  test(
+    'a hidden feed comment draft is kept while nurturing moves on',
+    () async {
+      final service = _Service()
+        ..hiddenEditor = true
+        ..panel = true
+        ..length = 5;
+      final deadline = service.clock.add(const Duration(minutes: 1));
+      final runner = NurtureAccessibilityRunner(
+        accessibility: service,
+        profile: NurtureCoordinateProfile({}),
+        comments: ['Configured comment'],
+        isActive: () => service.clock.isBefore(deadline),
+        isTikTok: () async => true,
+        onProgress: (_, _) async {},
+        random: _Random(true),
+        now: () => service.clock,
+        delay: service.delay,
+      );
+      await runner.start();
+      expect([service.taps, service.pastes, service.posts], [0, 0, 0]);
+      expect(service.swipes, greaterThan(0));
+      expect(service.clears, 0);
+      expect(service.length, 5);
+    },
+  );
 
   for (final scenario in [
     'panel-did-not-open',
@@ -2684,7 +2767,7 @@ void main() {
         case 'focus-not-ready':
           service.focusWorks = false;
         case 'late-panel':
-          service.panelDelaySeconds = 15;
+          service.panelDelaySeconds = 22;
         case 'empty-panel-on-start':
           service.panel = true;
         case 'public-comment-captcha':
@@ -2765,22 +2848,16 @@ void main() {
           now: () => service.clock,
           delay: service.delay,
         );
-        await expectLater(
-          runner.start(),
-          throwsA(
-            isA<StateError>().having(
-              (error) => error.message,
-              'message',
-              contains('giữ bản nháp'),
-            ),
-          ),
-        );
-        expect(skipped, isEmpty);
+        await runner.start();
+        expect(skipped.first, contains('bỏ qua và tiếp tục nuôi'));
+        expect(skipped.last, contains('không bình luận thêm'));
+        // The unknown draft is neither closed, cleared, typed into nor sent.
         expect(service.taps, 1);
         expect(service.closes, 0);
+        expect(service.clears, 0);
         expect(service.pastes, 0);
         expect(service.posts, 0);
-        expect(service.swipes, 0);
+        expect(service.swipes, greaterThan(0));
       },
     );
   }
@@ -2807,25 +2884,33 @@ void main() {
       {},
       save: (points) async {
         if (points.keys.any((key) => key.contains('/post-comment/'))) {
-          // Pass 50% of a 30s video while remaining before the old 70% limit.
-          service.clock = service.clock.add(const Duration(seconds: 12));
+          // Reach the deadline 5s before the end, without wrapping around.
+          final position =
+              service.clock.difference(DateTime(2026)).inSeconds %
+              service.duration;
+          service.clock = service.clock.add(
+            Duration(seconds: service.duration - 5 - position),
+          );
         }
       },
     );
+    final deadline = service.clock.add(const Duration(minutes: 1));
     final runner = NurtureAccessibilityRunner(
       accessibility: service,
       profile: profile,
       comments: ['Configured comment'],
-      isActive: () => true,
+      isActive: () => service.clock.isBefore(deadline),
       isTikTok: () async => true,
       onProgress: (_, _) async {},
       random: _Random(true),
       now: () => service.clock,
       delay: service.delay,
     );
-    await expectLater(runner.start(), throwsStateError);
+    await runner.start();
     expect(service.posts, 0);
-    expect(service.length, greaterThan(0));
+    // The late text is removed instead of being kept or carried on.
+    expect(service.clears, greaterThan(0));
+    expect(service.length, 0);
     // Held for the whole session, released once when it ends.
     expect(service.keyboardPolicies.first, isTrue);
     expect(service.keyboardPolicies.where((p) => !p), [false]);
@@ -2952,7 +3037,7 @@ void main() {
     );
   }
 
-  test('a refused clipped Post keeps the draft and is never resent', () async {
+  test('a refused clipped Post is cleared and never resent', () async {
     final service = _SearchService()
       ..state = 'player'
       ..revealWorks = false
@@ -2968,7 +3053,6 @@ void main() {
       isTikTok: () async => true,
       onProgress: (_, _) async {},
       onCommentSkipped: skipped.add,
-      continueOnCommentError: true,
       likeRate: 0,
       commentRate: 1,
       longWatchRate: 1,
@@ -2979,10 +3063,10 @@ void main() {
     await runner.start();
     expect(service.pasted, ['comment:Configured comment']);
     expect(service.submits, 5);
-    expect(service.commentText, 'Configured comment');
+    expect(service.commentText, isEmpty);
     expect(runner.totals.comments, 0);
-    expect(runner.hasPendingCommentDraft, isTrue);
-    expect(skipped.first, contains('Post bị khuất'));
+    expect(runner.hasPendingCommentDraft, isFalse);
+    expect(skipped.first, contains('đã xóa nội dung đã nhập'));
   });
 
   test(

@@ -14,7 +14,6 @@ import '../send_code_accessibility.dart';
 import '../cookie_consent_accessibility.dart';
 import '../privacy_notice_accessibility.dart';
 import '../signup_accessibility.dart';
-import '../signup_birthday_menu.dart';
 import '../signup_coordinate_runner.dart';
 import '../login_accessibility_runner.dart';
 import '../login_coordinate_profile.dart';
@@ -183,6 +182,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     });
     unawaited(() async {
       await stopAutoWatch(finishViewing: true);
+      await _saveNurtureScreenTime();
       await _autoViewingSession?.finish(error: true);
       _autoViewingSession = null;
     }());
@@ -759,6 +759,12 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   Duration get maxNurtureDuration => configuration.nurtureSettings.maxDuration;
   Timer? _autoWatchStopTimer;
   DateTime? _autoWatchStopsAt;
+
+  /// Nurture time is time on this screen during a timed nurture, whether or
+  /// not a video loads or plays; only time in the background is left out.
+  Duration _nurtureScreenTime = Duration.zero;
+  DateTime? _nurtureScreenSince;
+  Timer? _nurtureScreenTicker;
   bool appActive = true;
 
   /// Hidden or paused; a shade or system dialog only makes the app inactive.
@@ -835,6 +841,11 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       _stopRotateCaptchaMonitor();
     } else {
       _startRotateCaptchaMonitor();
+    }
+    if (appInBackground) {
+      _pauseNurtureClock();
+    } else if (autoWatchEnabled) {
+      _resumeNurtureClock();
     }
     if (manualViewingPlan != null) {
       unawaited(_updateManualForeground());
@@ -914,7 +925,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           likeRate: configuration.nurtureSettings.likeRate,
           commentRate: configuration.nurtureSettings.commentRate,
           longWatchRate: configuration.nurtureSettings.longWatchRate,
-          continueOnCommentError: autoAdvance,
           isActive: () =>
               active &&
               appActive &&
@@ -1022,7 +1032,34 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     });
   }
 
+  void _resumeNurtureClock() {
+    if (_nurtureScreenSince != null || _autoWatchStopsAt == null) return;
+    _nurtureScreenSince = _now();
+    _nurtureScreenTicker = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => unawaited(_saveNurtureScreenTime()),
+    );
+  }
+
+  void _pauseNurtureClock() {
+    final since = _nurtureScreenSince;
+    if (since == null) return;
+    _nurtureScreenTime += _now().difference(since);
+    _nurtureScreenSince = null;
+    _nurtureScreenTicker?.cancel();
+    _nurtureScreenTicker = null;
+  }
+
+  Future<void> _saveNurtureScreenTime() async {
+    final since = _nurtureScreenSince;
+    await _autoViewingSession?.recordScreenTime(
+      _nurtureScreenTime +
+          (since == null ? Duration.zero : _now().difference(since)),
+    );
+  }
+
   void _cancelAutoWatchTimers() {
+    _pauseNurtureClock();
     _nurtureRecoveryTimer?.cancel();
     _nurtureRecoveryTimer = null;
     _stopRotateCaptchaMonitor();
@@ -1046,6 +1083,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     try {
       // Stop page automation, retaining TikTok cookies and the login session.
       await stopAutoWatch(finishViewing: true);
+      await _saveNurtureScreenTime();
       await _autoViewingSession?.finish(completed: true);
       _autoViewingSession = null;
       if (!active || !appActive) return;
@@ -1074,6 +1112,7 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         );
     _autoWatchStopsAt = _now().add(duration);
     _autoWatchStopTimer = Timer(duration, _finishTimedAutoWatch);
+    if (!appInBackground) _resumeNurtureClock();
     mutate(() => autoWatchEnabled = true);
     await startAutoWatch();
   }
@@ -1106,7 +1145,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       configurationId: configuration.configurationId,
       plan: _nurturePlan,
       onError: () => notify('Không thể lưu thống kê nuôi vào tài khoản.'),
+      countsScreenTime: true,
     );
+    await _saveNurtureScreenTime();
     await session.start();
     if (!active ||
         !autoWatchEnabled ||
@@ -1122,7 +1163,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> _closeAutoViewing() async {
+    _pauseNurtureClock();
     await stopAutoWatch(finishViewing: true);
+    await _saveNurtureScreenTime();
     await _autoViewingSession?.finish(error: pageFailure != null);
   }
 
@@ -1575,7 +1618,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       onStatus: (status) {
         if (active) mutate(() => signupStatus = status);
       },
-      readBirthdayMenu: _readSignupBirthdayMenu,
     );
     try {
       await runner.selectBirthday();
@@ -1588,14 +1630,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
     } on SignupCancelled {
       return {'ok': false, 'reason': 'cancelled'};
     }
-  }
-
-  Future<SignupBirthdayMenu?> _readSignupBirthdayMenu(String field) async {
-    // Read geometry only. Selecting and scrolling still use real gestures.
-    final result = await webViewController?.evaluateJavascript(
-      source: buildReadSignupBirthdayMenuScript(field),
-    );
-    return SignupBirthdayMenu.fromResult(result);
   }
 
   Future<void> autoSignup() async {
@@ -1654,7 +1688,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
         onUsernameSkipped: _markConfigurationRegistered,
         isPageReady: () => initialPageLoaded && pageFailure == null,
         isForeground: () => appActive,
-        readBirthdayMenu: _readSignupBirthdayMenu,
         isTikTok: () async {
           final url = await webViewController?.getUrl();
           return url?.scheme == 'https' && url?.host == 'www.tiktok.com';
@@ -1971,27 +2004,9 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       await startAutoWatch();
       return;
     }
-    unawaited(logBrowserIdentity());
     unawaited(checkProxyIp());
     await runInitialAction();
     await startAutoWatch();
-  }
-
-  Future<void> logBrowserIdentity() async {
-    if (!kDebugMode || !initialPageLoaded) return;
-    try {
-      final agent = await webViewController?.evaluateJavascript(
-        source:
-            "location.origin === 'https://www.tiktok.com' ? navigator.userAgent : null",
-      );
-      if (!active || agent is! String) return;
-      debugPrint('[WebView identity] User-Agent thực tế: $agent');
-      debugPrint(
-        '[WebView identity] Khớp nhận diện đang dùng: ${agent == effectiveUserAgent}',
-      );
-    } catch (_) {
-      // A navigation may replace the document before this debug-only read.
-    }
   }
 
   void showProxyWarning(WebViewFailure failure, {bool ipCheck = false}) {
@@ -2161,15 +2176,6 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> onLoadStop(GeckoController controller, Uri? url) async {
-    // TEMP: measure the page window for the desktop-frame experiment.
-    unawaited(
-      controller
-          .evaluateJavascript(
-            source:
-                'innerWidth+"x"+innerHeight+" screen "+screen.width+"x"+screen.height+" dpr "+devicePixelRatio',
-          )
-          .then((v) => debugPrint('[Diag viewport] $v'), onError: (_) {}),
-    );
     await handlePageLoadComplete(url);
     final host = url?.host ?? '';
     final session = _manualSession;

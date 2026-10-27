@@ -42,12 +42,29 @@
       "open-month": [841, 375],
       "open-day": [960, 375],
       "open-year": [1078, 375],
+      "reopen-month": [841, 375],
+      "reopen-day": [960, 375],
+      "reopen-year": [1078, 375],
       "focus-email": [910, 490],
       "send-code": [960, 638],
       "focus-otp": [825, 463],
       "focus-password": [940, 446],
       "submit-password": [960, 592],
       "skip-username": [960, 655]
+    },
+    "birthdayMenu": {
+      "top": 404.9,
+      "bottom": 695.1,
+      "rowHeight": 34.075,
+      "scrollHeight": 320.7,
+      "swipeScroll": 128.28,
+      "columns": {
+        "Month": [785.7, 896.5],
+        "Day": [909.7, 1017.8],
+        "Year": [1023.2, 1133.9]
+      },
+      "firstYearBeforeCurrent": 1,
+      "evidence": "Galaxy_S8_API_28 on 2026-10-27: the lists open at 2025, January and 1; every 0.8 -> 0.2 swipe scrolled 128.28 px (16 of 16 swipes); rows below 695.1 are clipped although the scroller is 320.7 px tall (Month stopped after 88.2 px)."
     }
   }
 }

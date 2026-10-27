@@ -13,7 +13,6 @@ import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/firefox_user_agent.dart';
 import 'package:test_tiktok/core/gecko_browser.dart';
 import 'package:test_tiktok/core/signup_accessibility.dart';
-import 'package:test_tiktok/core/signup_birthday_menu.dart';
 import 'package:test_tiktok/core/signup_coordinate_runner.dart';
 import 'package:test_tiktok/screen/widgets/signup_viewport.dart';
 
@@ -83,11 +82,6 @@ class _DevicePreflightState extends State<_DevicePreflight> {
           return url?.scheme == 'https' && url?.host == 'www.tiktok.com';
         },
         getOtp: () async => throw StateError('Preflight must not request OTP'),
-        readBirthdayMenu: (field) async => SignupBirthdayMenu.fromResult(
-          await browser.evaluateJavascript(
-            source: buildReadSignupBirthdayMenuScript(field),
-          ),
-        ),
         onStatus: (value) {
           steps.add(value);
           if (mounted) setState(() => status = value);

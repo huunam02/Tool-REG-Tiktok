@@ -176,6 +176,8 @@ public class FlutterAccessibilityServicePlugin implements FlutterPlugin, Activit
                 call.argument("editorId"), call.argument("editorBounds")));
         } else if (call.method.equals("signupClearOtp")) {
             SignupAccessibilityBridge.clearOtp(call.argument("expected"), result);
+        } else if (call.method.equals("signupClearComment")) {
+            SignupAccessibilityBridge.clearComment(call.argument("expected"), result);
         } else if (call.method.equals("signupDismissKeyboard")) {
             SignupAccessibilityBridge.dismissKeyboard(result);
         } else if (call.method.equals("signupSnapshot")) {

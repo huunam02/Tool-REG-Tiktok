@@ -490,6 +490,39 @@ final class SignupAccessibilityBridge {
         verifyClearedOtp(service, result, 0);
     }
 
+    /**
+     * Empty only comment editors holding exactly the comment this app typed,
+     * so a failed attempt never carries it to another post. True once none does.
+     */
+    static void clearComment(String expected, MethodChannel.Result result) {
+        String wanted = comparableComment(expected);
+        if (pasting || wanted.isEmpty()) { result.success(false); return; }
+        AccessibilityListener service = AccessibilityListener.currentInstance();
+        List<AccessibilityNodeInfo> drafts = new ArrayList<>();
+        collectCommentDrafts(webRoot(service), wanted, drafts, 0);
+        Bundle empty = new Bundle();
+        empty.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
+        for (AccessibilityNodeInfo draft : drafts) draft.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, empty);
+        verifyClearedComment(service, wanted, result, 0);
+    }
+
+    private static void verifyClearedComment(AccessibilityListener service, String wanted, MethodChannel.Result result, int retry) {
+        keyboardHandler.postDelayed(() -> {
+            List<AccessibilityNodeInfo> drafts = new ArrayList<>();
+            collectCommentDrafts(webRoot(service), wanted, drafts, 0);
+            if (drafts.isEmpty() || retry >= 19) result.success(drafts.isEmpty());
+            else verifyClearedComment(service, wanted, result, retry + 1);
+        }, 100);
+    }
+
+    private static void collectCommentDrafts(AccessibilityNodeInfo node, String wanted, List<AccessibilityNodeInfo> drafts, int depth) {
+        if (node == null || depth > 40) return;
+        // The search player's editor may sit past the WebView edge; visibility is not required.
+        if (node.isEditable() && node.refresh() && isCommentEditor(node) &&
+                wanted.equals(comparableComment(editorValue(node)))) drafts.add(node);
+        for (int i = 0; i < node.getChildCount(); i++) collectCommentDrafts(node.getChild(i), wanted, drafts, depth + 1);
+    }
+
     private static void verifyClearedOtp(AccessibilityListener service, MethodChannel.Result result, int retry) {
         keyboardHandler.postDelayed(() -> {
             List<AccessibilityNodeInfo> fields = new ArrayList<>();

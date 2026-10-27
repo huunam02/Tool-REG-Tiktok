@@ -51,6 +51,15 @@ class NurtureTotals {
 
   double get minutes => watchMilliseconds / 60000;
 
+  NurtureTotals withWatchMilliseconds(int value) => NurtureTotals(
+    watchMilliseconds: value,
+    videos: videos,
+    fullVideos: fullVideos,
+    skippedVideos: skippedVideos,
+    comments: comments,
+    likes: likes,
+  );
+
   NurtureTotals operator +(NurtureTotals other) => NurtureTotals(
     watchMilliseconds: watchMilliseconds + other.watchMilliseconds,
     videos: videos + other.videos,

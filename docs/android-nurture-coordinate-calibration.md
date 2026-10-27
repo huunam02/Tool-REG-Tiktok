@@ -43,8 +43,11 @@ Không cộng thời gian đứng tải, ra nền hoặc nhảy seek. Mỗi bài
 độ phân giải một giây có thể không quan sát đủ để chuyển trước cuối clip.
 Chỉ bài có kế hoạch xem hết mới bình luận; bài quá ngắn bỏ bình luận.
 Chọn mốc từ giây 3 đến nửa thời gian xem, muộn nhất giây 20 và chừa ít nhất
-5 giây trước mốc 50% thời lượng video để mở khung và nhập nội dung. Bài không
-đủ khoảng thời gian này bỏ bình luận. Kiểm tra lại mốc 50% trước Post.
+7 giây (3 giây mở khung, 4 giây nhập và Post) trước hạn chót: 5 giây trước khi
+video hết, vì trình phát search tự sang bài kế khi video kết thúc. Nhờ vậy video
+ngắn từ 15 giây vẫn bình luận được. Bài không đủ khoảng thời gian này, hoặc đến
+mốc muộn hơn dự kiến, bỏ bình luận mà không mở khung. Kiểm tra lại hạn chót
+trước Post.
 Video dài hơn 1 phút chỉ xem 1 phút rồi chuyển.
 
 Nút chuyển video được ưu tiên khi nhận diện được đúng cặp điều hướng lên/xuống.
@@ -68,18 +71,19 @@ Bình luận chỉ lấy từ cấu hình, tránh lặp liên tiếp cùng mẫu
 khi hủy hoặc khi lease 10 giây hết hạn. Bản nháp có sẵn
 được giữ nguyên. Chỉ tính đã gửi khi ô nhập trống và thấy thêm đúng nội dung
 bình luận trong cây Accessibility. Post chỉ gửi một lần; kết quả không rõ,
-đổi video, mất tiến độ hoặc đến mốc 50% đều không gửi lại. Khi chạy lần lượt,
-lỗi bình luận không kết thúc sớm phiên nuôi; nếu còn nháp thì giữ video hiện tại
-để xem đến hết thời gian.
-Sau khi đã thử nhập, trạng thái có thể còn nháp được giữ cả khi snapshot tạm
-không thấy editor. Chỉ xóa trạng thái này khi xác nhận gửi thành công hoặc native
-xác nhận không có nội dung được nhập; không Next hoặc reload khi còn trạng thái đó.
+đổi video, mất tiến độ hoặc quá hạn chót đều không gửi lại. Lỗi bình luận không
+bao giờ dừng phiên nuôi (người dùng, 27/10/2026): tool xóa qua Trợ năng đúng nội
+dung chính nó đã nhập (ACTION_SET_TEXT rỗng, thử lại tối đa 3 lần vì Gecko có thể
+dán trễ), đóng khung trống rồi nuôi tiếp và vẫn sang video kế. Nháp không phải của
+tool, hoặc nháp không xóa được, được giữ nguyên và không bao giờ gửi; khi đó tắt
+bình luận cho phần còn lại của phiên nhưng vẫn Next bình thường. Không reload khi
+còn nháp.
 Trong Search, trước khi nhập, yêu cầu Trợ năng đưa nút Post vào màn hình rồi
 đọc lại bounds trong WebView. Không thấy Post thì bỏ qua trước paste. Khi gửi,
-chạm Post đang hiển thị và kiểm tra lại thời điểm dưới 50%, không dựa vào click
+chạm Post đang hiển thị và kiểm tra lại hạn chót, không dựa vào click
 trên nút bị cắt ngoài màn hình của API 28.
 Nội dung chứa email/mã sáu số có thể bị bộ che dữ liệu làm mất khả năng xác nhận;
-trường hợp này cũng dừng và không gửi lại.
+trường hợp này cũng bỏ qua và không gửi lại.
 
 Mỗi phiên kéo dài ngẫu nhiên 2–3 phút, giữ hạn qua nền/tải lại, kết thúc về Home và giữ
 cookie. Không nhận diện được một video duy nhất hoặc không có đồng hồ phát

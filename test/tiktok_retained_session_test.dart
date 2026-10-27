@@ -16,6 +16,7 @@ import 'package:test_tiktok/core/signup_accessibility.dart';
 import 'package:test_tiktok/core/tiktok_flow_result.dart';
 import 'package:test_tiktok/core/tiktok_launch_action.dart';
 
+import 'support/memory_nurture_store.dart';
 import 'support/memory_proxy_store.dart';
 
 /// The live TikTok page: its sidebar shows Messages/Profile once signed in.
@@ -271,6 +272,13 @@ void main() {
         await tester.pump(const Duration(minutes: 2));
         expect(results, [TikTokFlowResult.nurtureCompleted]);
         expect(logic.autoWatchEnabled, isFalse);
+        // The recorded feed never plays; screen time still counts in full.
+        final nurture = store.nurture as MemoryNurtureRepository;
+        expect(nurture.phases.values, ['completed']);
+        expect(
+          nurture.totals.values.single.watchMilliseconds,
+          const Duration(minutes: 2).inMilliseconds,
+        );
         await tester.pump(const Duration(hours: 1));
         expect(results, [TikTokFlowResult.nurtureCompleted]);
         expect(logic.loginConfirmed, isTrue);

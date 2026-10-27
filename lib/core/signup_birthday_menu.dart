@@ -1,10 +1,8 @@
-import 'dart:convert';
+import 'dart:math';
 import 'dart:ui';
 
-import 'signup_accessibility.dart';
-
-/// Read-only geometry for HTML comboboxes whose options Chromium omits from
-/// Accessibility. All coordinates use the signup design space of the frame.
+/// An open birthday list as Accessibility exposes it, in the signup design
+/// space of the frame.
 class SignupBirthdayMenu {
   const SignupBirthdayMenu({
     required this.field,
@@ -18,43 +16,6 @@ class SignupBirthdayMenu {
   final bool expanded, scrollable;
   final Rect bounds;
   final List<SignupBirthdayOption> options;
-
-  static SignupBirthdayMenu? fromResult(dynamic result) {
-    if (result is String) result = jsonDecode(result);
-    if (result is! Map || result['field'] == null) return null;
-    if (!const ['Year', 'Month', 'Day'].contains(result['field'])) {
-      throw StateError('Dropdown không phải trường ngày sinh.');
-    }
-    final width = (result['width'] as num).toDouble();
-    final height = (result['height'] as num).toDouble();
-    final design = signupDesignFor(width, height);
-    if (design == null) {
-      throw StateError('Kích thước dropdown ngày sinh không khớp WebView.');
-    }
-    Rect rect(dynamic raw) {
-      final values = (raw as List).cast<num>();
-      return Rect.fromLTRB(
-        values[0] * design.width / width,
-        values[1] * design.height / height,
-        values[2] * design.width / width,
-        values[3] * design.height / height,
-      );
-    }
-
-    return SignupBirthdayMenu(
-      field: result['field'] as String,
-      expanded: result['expanded'] == true,
-      bounds: rect(result['bounds']),
-      scrollable: result['scrollable'] == true,
-      options: [
-        for (final option in result['options'] as List)
-          SignupBirthdayOption(
-            option['text'] as String,
-            rect(option['bounds']),
-          ),
-      ],
-    );
-  }
 }
 
 class SignupBirthdayOption {
@@ -63,55 +24,87 @@ class SignupBirthdayOption {
   final Rect bounds;
 }
 
-String buildReadSignupBirthdayMenuScript(String field) {
-  if (!const ['Year', 'Month', 'Day'].contains(field)) {
-    throw ArgumentError.value(field, 'field');
-  }
-  return '''
-(() => {
-  const name = ${jsonEncode(field)};
-  const field = Array.from(document.querySelectorAll('[role="combobox"]')).find(
-    e => (e.getAttribute('aria-label') || '').startsWith(name + '.') &&
-      e.getBoundingClientRect().width > 0);
-  if (!field) return null;
-  const list = field.querySelector('[role="listbox"]');
-  const box = e => {
-    const r = e.getBoundingClientRect();
-    return [r.left, r.top, r.right, r.bottom];
-  };
-  const expanded = field.getAttribute('aria-expanded') === 'true' &&
-    list && list.getBoundingClientRect().height > 0;
-  const result = {field: name, width: innerWidth, height: innerHeight,
-    expanded: !!expanded, bounds: [0,0,0,0], scrollable: false, options: []};
-  if (!expanded) return result;
-  // Clip against scroll containers, the modal and the viewport; offscreen
-  // option rectangles still have a nonzero size in this TikTok dropdown.
-  const clip = box(list);
-  clip[0] = Math.max(0, clip[0]); clip[1] = Math.max(0, clip[1]);
-  clip[2] = Math.min(innerWidth, clip[2]); clip[3] = Math.min(innerHeight, clip[3]);
-  for (let p = list.parentElement; p; p = p.parentElement) {
-    const style = getComputedStyle(p), r = box(p);
-    if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
-      clip[0] = Math.max(clip[0], r[0]); clip[2] = Math.min(clip[2], r[2]);
-    }
-    if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
-      clip[1] = Math.max(clip[1], r[1]); clip[3] = Math.min(clip[3], r[3]);
-    }
-  }
-  result.bounds = clip;
-  result.scrollable = list.scrollHeight > list.clientHeight + 1;
-  result.options = Array.from(list.querySelectorAll('[role="option"]')).flatMap(e => {
-    const r = box(e);
-    const visible = [Math.max(r[0],clip[0]), Math.max(r[1],clip[1]),
-      Math.min(r[2],clip[2]), Math.min(r[3],clip[3])];
-    if (visible[2]-visible[0] < 4 || visible[3]-visible[1] < 8 ||
-        (r[1]+r[3])/2 <= clip[1]+2 || (r[1]+r[3])/2 >= clip[3]-2) return [];
-    const hit = document.elementFromPoint((visible[0]+visible[2])/2,
-      (visible[1]+visible[3])/2);
-    if (!hit || !(e === hit || e.contains(hit))) return [];
-    return [{text: e.textContent.trim(), bounds: visible}];
+/// Calibrated geometry of the desktop birthday lists (design px). A list
+/// opens at its first entry (last year, January, 1) and every swipe from
+/// 80% to 20% of its height scrolls the same distance, so the row to tap is
+/// computed without reading the page.
+class SignupBirthdayGeometry {
+  const SignupBirthdayGeometry({
+    required this.top,
+    required this.bottom,
+    required this.rowHeight,
+    required this.scrollHeight,
+    required this.swipeScroll,
+    required this.columns,
+    this.firstYearBeforeCurrent = 1,
   });
-  return result;
-})()
-''';
+
+  /// [top]..[bottom] is the visible, tappable part of a list. Its scroller
+  /// is [scrollHeight] tall, which is where a short list stops scrolling.
+  final double top, bottom, rowHeight, scrollHeight, swipeScroll;
+  final Map<String, (double, double)> columns;
+  final int firstYearBeforeCurrent;
+
+  static SignupBirthdayGeometry? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    double value(String key) => (raw[key] as num).toDouble();
+    final columns = raw['columns'] as Map;
+    return SignupBirthdayGeometry(
+      top: value('top'),
+      bottom: value('bottom'),
+      rowHeight: value('rowHeight'),
+      scrollHeight: value('scrollHeight'),
+      swipeScroll: value('swipeScroll'),
+      columns: {
+        for (final MapEntry(:key, :value) in columns.entries)
+          key as String: (
+            ((value as List)[0] as num).toDouble(),
+            (value[1] as num).toDouble(),
+          ),
+      },
+      firstYearBeforeCurrent:
+          (raw['firstYearBeforeCurrent'] as num?)?.toInt() ?? 1,
+    );
+  }
+
+  Rect? list(String field) => switch (columns[field]) {
+    (final left, final right) => Rect.fromLTRB(left, top, right, bottom),
+    null => null,
+  };
+
+  /// Row of [target] counted from the top of the freshly opened list.
+  int index(String field, int target, DateTime now) =>
+      field == 'Year' ? now.year - firstYearBeforeCurrent - target : target - 1;
+
+  /// Lengths the list can have; null when it never ends before the target.
+  static List<int?> _lengths(String field) => switch (field) {
+    'Month' => const [12],
+    'Day' => const [28, 29, 30, 31],
+    _ => const [null],
+  };
+
+  /// Swipes that bring row [index] into view and the y to tap it at. The
+  /// tap lies inside the row for every possible list length (a day's list
+  /// may end at 28 to 31); null when no such point exists.
+  ({int swipes, double tapY})? plan(String field, int index) {
+    if (index < 0 || list(field) == null) return null;
+    final needed = (index + 1) * rowHeight - (bottom - top);
+    final swipes = needed <= 0 ? 0 : (needed / swipeScroll).ceil();
+    double low = top, high = bottom;
+    var placed = false;
+    for (final length in _lengths(field)) {
+      if (length != null && index >= length) continue;
+      final end = length == null
+          ? double.infinity
+          : max(0.0, length * rowHeight - scrollHeight);
+      final rowTop = top + index * rowHeight - min(swipes * swipeScroll, end);
+      low = max(low, rowTop);
+      high = min(high, rowTop + rowHeight);
+      placed = true;
+    }
+    // A row clipped to a sliver (December at the end of its list) is still
+    // tappable; the selection is confirmed afterwards.
+    if (!placed || high - low < 3) return null;
+    return (swipes: swipes, tapY: (low + high) / 2);
+  }
 }

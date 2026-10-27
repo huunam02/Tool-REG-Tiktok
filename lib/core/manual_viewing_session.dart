@@ -12,6 +12,7 @@ class ManualViewingSession {
     required this.plan,
     this.configurationId,
     this.onError,
+    this.countsScreenTime = false,
   }) : id =
            '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
 
@@ -20,8 +21,13 @@ class ManualViewingSession {
   final NurturePlan plan;
   final int? configurationId;
   final void Function()? onError;
+
+  /// Watch time is the time spent on the nurture screen (see
+  /// [recordScreenTime]), loading and waiting included, not playback time.
+  final bool countsScreenTime;
   final String id;
   final _segments = <String, NurtureSnapshot?>{};
+  Duration _screenTime = Duration.zero;
   Future<void> _writes = Future.value();
   int _revision = 0;
   bool _started = false;
@@ -81,10 +87,25 @@ class ManualViewingSession {
       return _writes;
     }
     _segments[snapshot.segmentId] = snapshot;
-    final totals = _segments.values.fold(
+    return _save();
+  }
+
+  Future<void> recordScreenTime(Duration elapsed) {
+    if (!countsScreenTime || _finished || !_started || elapsed <= _screenTime) {
+      return _writes;
+    }
+    _screenTime = elapsed;
+    return _save();
+  }
+
+  Future<void> _save() {
+    var totals = _segments.values.fold(
       const NurtureTotals(),
       (sum, value) => sum + (value?.totals ?? const NurtureTotals()),
     );
+    if (countsScreenTime) {
+      totals = totals.withWatchMilliseconds(_screenTime.inMilliseconds);
+    }
     final revision = ++_revision;
     return _enqueue(() => repository.saveProgress(id, revision, totals));
   }

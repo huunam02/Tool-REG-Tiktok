@@ -1,0 +1,10 @@
+10-27 19:01:33.686  6946  6946 I flutter : [Diag viewport] 1920x955 screen 2560x1440 dpr 0.75
+10-27 19:01:35.355  6946  6946 I flutter : [Diag viewport] 1920x955 screen 2560x1440 dpr 0.75
+10-27 19:01:40.005  6946  6946 I flutter : [Diag notice] Đã thả tim.
+10-27 19:02:19.996  6946  6946 I flutter : [Diag viewport] 1920x955 screen 2560x1440 dpr 0.75
+10-27 19:02:21.371  6946  6946 I flutter : [Diag viewport] 1920x955 screen 2560x1440 dpr 0.75
+10-27 19:02:25.387  6946  6946 I flutter : Nurture search step: open
+10-27 19:02:27.259  6946  6946 I flutter : Nurture search step: paste
+10-27 19:02:29.080  6946  6946 I flutter : Nurture search step: view-all
+10-27 19:02:31.615  6946  6946 I flutter : Nurture search step: result
+10-27 19:02:36.172  6946  6946 I flutter : [Diag captcha] angle=317.0 travel=284.0 viewport=1920.0x954.6666870117188 handle=(818.0, 600.3333129882812) webView=Rect.fromLTRB(0.0, 1186.0, 1440.0, 1902.0) from=Offset(613.5, 1636.2) to=Offset(801.1, 1636.2)

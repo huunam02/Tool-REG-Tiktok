@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
-import 'package:test_tiktok/core/gpu_profile.dart';
+import 'package:test_tiktok/core/firefox_user_agent.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
@@ -132,7 +132,7 @@ void main() {
     expect(draft!.nurtureSettings, NurtureSettings.defaults);
   });
 
-  testWidgets('a configuration shows its random phone GPU; Đổi picks another', (
+  testWidgets('configurations show the fixed Windows desktop GPU after import', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
@@ -148,13 +148,8 @@ void main() {
     await tester.pumpAndSettle();
     String gpu() =>
         tester.widget<Text>(find.byKey(const Key('savedGpuProfile'))).data!;
-    final first = gpu();
-    expect(GpuProfile.all.map((profile) => profile.label), contains(first));
-    await tester.ensureVisible(find.byKey(const Key('changeGpuProfile')));
-    await tester.tap(find.byKey(const Key('changeGpuProfile')));
-    await tester.pumpAndSettle();
-    final changed = gpu();
-    expect(changed, isNot(first));
+    expect(gpu(), firefoxDesktopGpuLabel);
+    expect(find.byKey(const Key('changeGpuProfile')), findsNothing);
     await tester.enterText(
       find.byKey(const Key('proxyImportData')),
       '192.0.2.7:9323:proxy-user:proxy-password|person@example.com|'
@@ -163,11 +158,10 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('applyProxyImportData')));
     await tester.tap(find.byKey(const Key('applyProxyImportData')));
     await tester.pumpAndSettle();
-    // A text import keeps the chosen phone.
-    expect(gpu(), changed);
+    expect(gpu(), firefoxDesktopGpuLabel);
     await tester.tap(find.byKey(const Key('saveProxyEntry')));
     await tester.pumpAndSettle();
-    expect(store.entries.single.gpuProfile.label, changed);
+    expect(find.text(firefoxDesktopGpuLabel), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

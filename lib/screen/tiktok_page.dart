@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/controller/tiktok_controller.dart';
 import '../core/app_configuration.dart';
+import '../core/firefox_user_agent.dart';
 import '../core/app_action_theme.dart';
 import '../core/otp_api.dart';
 import '../core/proxy_store.dart';
@@ -10,7 +11,6 @@ import '../core/nurture_store.dart';
 import '../core/tiktok_launch_action.dart';
 import '../core/tiktok_flow_result.dart';
 import '../core/webview_failure.dart';
-import '../core/webview_locale.dart';
 import '../core/webview_privacy.dart';
 import '../core/webview_user_agent.dart';
 import '../core/webview_timezone.dart';
@@ -348,18 +348,9 @@ class _TikTokView extends StatelessWidget {
                           logic.configuration.configurationId!,
                         ),
                   userAgent: logic.configuration.userAgent,
-                  // Every mode reports the configuration's phone GPU.
-                  gpu: logic.configuration.gpuProfile,
                   initialScripts: [
-                    if (!logic.useNativeWebView &&
-                        needsAndroidDesktopIdentity &&
-                        logic.configuration.webViewTimeZone != null)
-                      webViewTimeZoneScript(
-                        logic.configuration.webViewTimeZone!,
-                      ),
+                    webViewTimeZoneScript(firefoxDesktopTimeZone),
                     disableWebRtcScript,
-                    if (forceEnglishWebViewLocale && !logic.useNativeWebView)
-                      englishWebViewLocaleScript,
                   ],
                   onCreated: logic.onWebViewCreated,
                   onLoadStart: logic.onLoadStart,

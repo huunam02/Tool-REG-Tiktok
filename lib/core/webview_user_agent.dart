@@ -6,6 +6,6 @@ bool get needsAndroidDesktopIdentity =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
 /// The identity the app's own requests (proxy IP, time zone) announce: the
-/// same Firefox desktop-mode User-Agent that GeckoView sends.
+/// same Firefox Windows User-Agent that GeckoView sends.
 Future<String> resolveWebViewUserAgent(String configuredAgent) async =>
     firefoxDesktopUserAgent;

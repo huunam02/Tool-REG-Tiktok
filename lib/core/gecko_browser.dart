@@ -6,8 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
-import 'gpu_profile.dart';
-
 typedef GeckoJavaScriptHandler = FutureOr<dynamic> Function(List<dynamic> args);
 
 class GeckoController {
@@ -119,7 +117,6 @@ class GeckoBrowserView extends StatefulWidget {
     required this.initialUrl,
     required this.contextId,
     required this.userAgent,
-    required this.gpu,
     this.initialScripts = const [],
     required this.onCreated,
     required this.onLoadStart,
@@ -132,9 +129,6 @@ class GeckoBrowserView extends StatefulWidget {
   final String contextId;
   final String userAgent;
 
-  /// Set as Gecko's WebGL overrides, so documents, frames and workers all
-  /// report it from the first script on.
-  final GpuProfile gpu;
   final List<String> initialScripts;
   final FutureOr<void> Function(GeckoController controller) onCreated;
   final void Function(GeckoController controller, Uri? url) onLoadStart;
@@ -179,8 +173,6 @@ class _GeckoBrowserViewState extends State<GeckoBrowserView> {
             'initialUrl': widget.initialUrl,
             'contextId': widget.contextId,
             'userAgent': widget.userAgent,
-            'webGlVendor': widget.gpu.webGlVendor,
-            'webGlRenderer': widget.gpu.webGlRenderer,
             'initialScripts': widget.initialScripts,
           },
           creationParamsCodec: const StandardMessageCodec(),

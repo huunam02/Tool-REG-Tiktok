@@ -1,0 +1,193 @@
+{
+  "url": "https://www.whatismybrowser.com/",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+  "platform": "Win32",
+  "oscpu": "Windows NT 10.0; Win64; x64",
+  "languages": [
+    "vi-VN",
+    "vi",
+    "en-US",
+    "en"
+  ],
+  "screen": {
+    "width": 1536,
+    "height": 864,
+    "colorDepth": 24
+  },
+  "window": {
+    "width": 1550,
+    "height": 830,
+    "dpr": 1
+  },
+  "hardwareConcurrency": 16,
+  "maxTouchPoints": 0,
+  "timeZone": "Asia/Ho_Chi_Minh",
+  "timeZoneOffset": -420,
+  "cookieEnabled": true,
+  "doNotTrack": "unspecified",
+  "referrer": "",
+  "webGl": {
+    "vendor": "Google Inc. (AMD)",
+    "renderer": "ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar"
+  },
+  "technicalText": "\n\nHere is a more detailed read out of some technical information about your system.\n\nSoftware Type\nWeb Browser\nHardware Type\nComputer\nBrowser version (full)\n158.0\nOperating System version (full)\nNT 10.0\nHardware Architecture\n64-bit processor (AMD)\nLayout Engine\nGecko\nGecko version\n20100101\nConfigured Languages\nTiếng Việt (Vietnamese), English\nDevice Pixel Ratio\n1\nBrowser GMT Offset\n+07:00\nNavigator Platform\nWindows (32-Bit)\nOS / CPU\nWindows NT 10.0; Win64; x64\nNo. of logical CPU cores\n16\nMaximum Touch Points\n0\nWebGL Vendor\nGoogle Inc. (AMD)\nWebGL Renderer\nANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar\nECMA Version\n11 (ES2020)\n",
+  "verification": {
+    "date": "2026-10-26",
+    "device": "emulator-5554 / Galaxy_S8_API_28",
+    "method": "Actual app GeckoView, live website DOM plus screenshots",
+    "checks": [
+      {
+        "field": "Software Type",
+        "expected": "Web Browser",
+        "actual": "Web Browser",
+        "match": true
+      },
+      {
+        "field": "Hardware Type",
+        "expected": "Computer",
+        "actual": "Computer",
+        "match": true
+      },
+      {
+        "field": "Browser version (full)",
+        "expected": "158.0",
+        "actual": "158.0",
+        "match": true
+      },
+      {
+        "field": "Operating System version (full)",
+        "expected": "NT 10.0",
+        "actual": "NT 10.0",
+        "match": true
+      },
+      {
+        "field": "Hardware Architecture",
+        "expected": "64-bit processor (AMD)",
+        "actual": "64-bit processor (AMD)",
+        "match": true
+      },
+      {
+        "field": "Layout Engine",
+        "expected": "Gecko",
+        "actual": "Gecko",
+        "match": true
+      },
+      {
+        "field": "Gecko version",
+        "expected": "20100101",
+        "actual": "20100101",
+        "match": true
+      },
+      {
+        "field": "Configured Languages",
+        "expected": "Tiếng Việt (Vietnamese), English",
+        "actual": "Tiếng Việt (Vietnamese), English",
+        "match": true
+      },
+      {
+        "field": "Device Pixel Ratio",
+        "expected": "1",
+        "actual": "1",
+        "match": true
+      },
+      {
+        "field": "Browser GMT Offset",
+        "expected": "+07:00",
+        "actual": "+07:00",
+        "match": true
+      },
+      {
+        "field": "Navigator Platform",
+        "expected": "Windows (32-Bit)",
+        "actual": "Windows (32-Bit)",
+        "match": true
+      },
+      {
+        "field": "OS / CPU",
+        "expected": "Windows NT 10.0; Win64; x64",
+        "actual": "Windows NT 10.0; Win64; x64",
+        "match": true
+      },
+      {
+        "field": "No. of logical CPU cores",
+        "expected": "16",
+        "actual": "16",
+        "match": true
+      },
+      {
+        "field": "Maximum Touch Points",
+        "expected": "0",
+        "actual": "0",
+        "match": true
+      },
+      {
+        "field": "WebGL Vendor",
+        "expected": "Google Inc. (AMD)",
+        "actual": "Google Inc. (AMD)",
+        "match": true
+      },
+      {
+        "field": "WebGL Renderer",
+        "expected": "ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar",
+        "actual": "ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar",
+        "match": true
+      },
+      {
+        "field": "ECMA Version",
+        "expected": "11 (ES2020)",
+        "actual": "11 (ES2020)",
+        "match": true
+      },
+      {
+        "field": "User-Agent",
+        "expected": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "actual": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "match": true
+      },
+      {
+        "field": "Screen",
+        "expected": "1536 x 864 / 24 bit",
+        "actual": "1536 x 864 / 24 bit",
+        "match": true
+      },
+      {
+        "field": "Window",
+        "expected": "1550 x 830",
+        "actual": "1550 x 830",
+        "match": true
+      },
+      {
+        "field": "JavaScript enabled",
+        "expected": true,
+        "actual": true,
+        "match": true
+      },
+      {
+        "field": "Cookies enabled",
+        "expected": true,
+        "actual": true,
+        "match": true
+      },
+      {
+        "field": "Third-party cookies enabled",
+        "expected": true,
+        "actual": true,
+        "match": true
+      },
+      {
+        "field": "Local IP blocked",
+        "expected": true,
+        "actual": true,
+        "match": true
+      },
+      {
+        "field": "Browser name",
+        "expected": "Firefox 158 on Windows 10",
+        "actual": "Firefox 158 on Windows 10",
+        "match": true
+      }
+    ],
+    "passed": 25,
+    "referrerDifference": "Opened directly; supplied reference arrived from Google. Referrer was not overridden."
+  }
+}

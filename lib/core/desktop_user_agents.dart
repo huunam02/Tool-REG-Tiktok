@@ -1,6 +1,6 @@
 import 'firefox_user_agent.dart';
 
-/// Android: one identity, Firefox for Android with "Desktop site" on.
+/// Android: one configured identity, Firefox 158 on Windows 10.
 const List<String> desktopUserAgents = [firefoxDesktopUserAgent];
 
 /// The direct connection uses the same identity as every configuration.

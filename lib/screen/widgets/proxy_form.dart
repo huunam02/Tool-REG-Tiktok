@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/proxy_store.dart';
+import '../../core/firefox_user_agent.dart';
 import '../../core/webview_user_agent.dart';
 import '../../core/app_configuration.dart';
 import '../../core/account_password.dart';
@@ -438,7 +439,7 @@ class _ProxyFormView extends StatelessWidget {
         TextFormField(
           key: _configurationKey('savedProxyUserAgent', index),
           controller: fields.userAgent,
-          // GeckoView sends only Firefox with "Desktop site" on.
+          // All configurations use the Firefox Windows identity.
           readOnly: true,
           enabled: !fields.generating,
           autocorrect: false,
@@ -469,7 +470,7 @@ class _ProxyFormView extends StatelessWidget {
           ),
         const SizedBox(height: 20),
         _fieldLabel(
-          'Múi giờ GeckoView',
+          'Múi giờ proxy',
           action: TextButton.icon(
             key: _configurationKey('detectProxyTimeZone', index),
             onPressed: !logic.canDetectTimeZone || fields.detectingTimeZone
@@ -496,7 +497,7 @@ class _ProxyFormView extends StatelessWidget {
           onChanged: (_) => logic.mutate(() => fields.timeZoneError = null),
           decoration: const InputDecoration(
             hintText: 'America/New_York',
-            helperText: 'Mã múi giờ IANA. Để trống để tự tra khi mở GeckoView.',
+            helperText: 'Múi giờ của IP proxy. Firefox desktop dùng UTC+07:00 theo mẫu.',
             helperMaxLines: 2,
             prefixIcon: Icon(Icons.schedule, size: 20),
           ),
@@ -518,23 +519,14 @@ class _ProxyFormView extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 16),
-        _fieldLabel(
-          'Thiết bị (GPU)',
-          action: TextButton.icon(
-            key: _configurationKey('changeGpuProfile', index),
-            onPressed: () => logic.mutate(fields.changeGpuProfile),
-            icon: const Icon(Icons.refresh, size: 16),
-            label: const Text('Đổi'),
-          ),
-        ),
-        // Read-only: chosen at random, only Đổi or a backup changes it.
+        _fieldLabel('Thiết bị (GPU)'),
         InputDecorator(
           decoration: const InputDecoration(
-            helperText: 'GPU điện thoại mà trang web thấy qua WebGL.',
-            prefixIcon: Icon(Icons.smartphone, size: 20),
+            helperText: 'Firefox desktop · 1536 × 864 · 16 CPU · không cảm ứng.',
+            prefixIcon: Icon(Icons.desktop_windows, size: 20),
           ),
           child: Text(
-            fields.gpuProfile.label,
+            firefoxDesktopGpuLabel,
             key: _configurationKey('savedGpuProfile', index),
           ),
         ),

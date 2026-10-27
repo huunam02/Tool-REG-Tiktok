@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/proxy_store.dart';
+import '../../core/firefox_user_agent.dart';
 import '../../core/app_action_theme.dart';
 
 abstract final class ProxyColors {
@@ -268,7 +269,7 @@ class ProxyDetails extends StatelessWidget {
         _field(
           context,
           'Múi giờ GeckoView',
-          profile.timeZoneId.isEmpty ? 'Chưa xác định' : profile.timeZoneId,
+          firefoxDesktopTimeZone,
           Icons.schedule,
           valueKey: Key('${keyPrefix}TimeZone'),
         ),
@@ -276,8 +277,8 @@ class ProxyDetails extends StatelessWidget {
         _field(
           context,
           'Thiết bị (GPU)',
-          profile.gpuProfile.label,
-          Icons.smartphone,
+          firefoxDesktopGpuLabel,
+          Icons.desktop_windows,
           valueKey: Key('${keyPrefix}GpuProfile'),
         ),
         if (profile.account != null) ...[

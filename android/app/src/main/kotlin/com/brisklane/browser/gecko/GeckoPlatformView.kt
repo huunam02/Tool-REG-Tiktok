@@ -12,8 +12,6 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
 import org.json.JSONArray
 import org.json.JSONObject
-import org.mozilla.geckoview.GeckoPreferenceController
-import org.mozilla.geckoview.GeckoPreferenceController.SetGeckoPreference
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
@@ -50,7 +48,8 @@ class GeckoPlatformView(
     )
     private val initialScripts = (args["initialScripts"] as? List<*>)?.mapNotNull { it as? String }.orEmpty()
     private val initialUrl = (args["initialUrl"] as? String)?.takeIf { it.isNotBlank() }
-    private lateinit var gpuReady: GeckoResult<*>
+    private lateinit var identityReady: GeckoResult<*>
+    private val extensionReady = GeckoResult<Void>()
     private var currentUrl: String? = null
     private var disposed = false
 
@@ -63,34 +62,22 @@ class GeckoPlatformView(
         geckoView.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
         val settingsBuilder = GeckoSessionSettings.Builder()
             .contextId((args["contextId"] as? String)?.takeIf { it.isNotBlank() } ?: "default")
-            // Firefox for Android's "Desktop site": Gecko's own desktop UA and
-            // viewport, so the announced browser matches the engine.
+            // Desktop layout with the explicit Firefox Windows identity.
             .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_DESKTOP)
+            .userAgentOverride(FirefoxDesktopIdentity.USER_AGENT)
             .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_DESKTOP)
             .allowJavascript(true)
         val settings = settingsBuilder.build()
         session = GeckoSession(settings)
         bindDelegates()
         session.open(GeckoRuntimeHolder.runtime(context))
-        gpuReady = applyGpu()
+        identityReady = FirefoxDesktopIdentity.apply()
         geckoView.setSession(session)
         GeckoRuntimeHolder.whenExtensionReady(context) { extension ->
-            if (!disposed) bindExtension(extension)
-        }
-    }
-
-    // The configuration's phone GPU, as Firefox's own WebGL overrides: every
-    // document, frame and worker reports it natively from the first script.
-    private fun applyGpu(): GeckoResult<*> {
-        val vendor = (args["webGlVendor"] as? String).orEmpty()
-        val renderer = (args["webGlRenderer"] as? String).orEmpty()
-        val branch = GeckoPreferenceController.PREF_BRANCH_USER
-        return GeckoPreferenceController.setGeckoPrefs(listOf(
-            SetGeckoPreference.setStringPref("webgl.override-unmasked-vendor", vendor, branch),
-            SetGeckoPreference.setStringPref("webgl.override-unmasked-renderer", renderer, branch),
-        )).map { applied ->
-            if (applied?.values?.all { it } != true) Log.e(TAG, "WebGL GPU not applied: $applied")
-            applied
+            if (!disposed) {
+                bindExtension(extension)
+                extensionReady.complete(null)
+            }
         }
     }
 
@@ -229,10 +216,14 @@ class GeckoPlatformView(
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "start" -> {
-                // Never load a page before the GPU overrides are in place.
-                gpuReady.accept(
-                    { initialUrl?.takeUnless { disposed }?.let(session::loadUri) },
-                    { error -> Log.e(TAG, "WebGL GPU not applied", error) },
+                // Never load a page before the identity overrides are in place.
+                identityReady.accept(
+                    {
+                        extensionReady.accept {
+                            initialUrl?.takeUnless { disposed }?.let(session::loadUri)
+                        }
+                    },
+                    { error -> Log.e(TAG, "Firefox desktop identity not applied", error) },
                 )
                 result.success(null)
             }

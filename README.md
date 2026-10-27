@@ -10,6 +10,40 @@
 - WebExtension tích hợp trong `android/app/src/main/assets/gecko_bridge/` thực thi script, chuyển sự kiện JavaScript và gọi handler Flutter.
 - Flutter điều khiển native qua `MethodChannel` riêng của từng platform view. API Dart nằm tại `lib/core/gecko_browser.dart`.
 
+### Nhận diện Firefox desktop
+
+Nhánh này dùng các giá trị của bản đọc WhatIsMyBrowser đã cung cấp: Firefox
+158.0 trên Windows 10 x64, `Win32`, ngôn ngữ `en-US, en` (runner cần nhãn TikTok tiếng Anh), màn hình
+1536 × 864 / 24 bit, cửa sổ báo cáo 1550 × 830, DPR 1, 16 CPU và 0 điểm cảm ứng.
+WebGL báo `Google Inc. (AMD)` và
+`ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar`.
+JavaScript và cookie (kể cả bên thứ ba) được bật; DNT tắt và WebRTC bị chặn.
+Múi giờ trang được đặt thành `Asia/Ho_Chi_Minh` (UTC+07:00); múi giờ IP proxy
+trong form chỉ là thông tin tra cứu.
+
+`FirefoxDesktopIdentity.kt` đặt các preference native trước khi tải trang.
+WebExtension đặt những thuộc tính chỉ có ở cửa sổ ngay tại `document_start`,
+trong mọi frame, không dùng inline script nên hoạt động cả khi trang có CSP.
+Các profile GPU điện thoại cũ vẫn được giữ trong dữ liệu backup, nhưng không
+còn quyết định WebGL đang dùng; giao diện hiển thị GPU desktop cố định.
+
+Đây là nhận diện được cấu hình trên GeckoView Android, không phải bản Firefox
+Windows chạy trên máy tính. Kích thước vùng vẽ thực tế vẫn theo view Android;
+font, canvas, codec, GPU thực và khả năng engine không trở thành Windows.
+CPU báo 16 chỉ được thay trong document/frame, worker vẫn có thể đọc CPU thật.
+Script múi giờ hiện dùng cầu nối bất đồng bộ, nên có thể chạy sau script đầu
+tiên của trang hoặc bị CSP của trang chặn. IP, ISP, vị trí, TOR và referrer
+phụ thuộc mạng/lần điều hướng, không được giả thành giá trị trong bản đọc.
+
+Kiểm tra native trên thiết bị:
+
+```bash
+adb shell am instrument -w -r -e class com.brisklane.browser.gecko.FirefoxDesktopIdentityTest com.brisklane.browser.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Bài kiểm tra đọc giá trị từ script đầu tiên của trang và iframe có CSP,
+đối chiếu User-Agent/platform của worker cùng HTTP User-Agent/Accept-Language.
+
 ## Proxy HTTP, HTTPS và SOCKS5
 
 Proxy được áp dụng bằng Android `VpnService` trước khi mở GeckoSession. VPN chỉ route traffic của ứng dụng, bao gồm GeckoView và yêu cầu tra IP/múi giờ. Địa chỉ máy chủ proxy bị loại khỏi route VPN để tránh vòng lặp. Khi đổi cấu hình, tunnel và các kết nối của cấu hình cũ được đóng.

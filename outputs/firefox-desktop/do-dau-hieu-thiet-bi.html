@@ -1,0 +1,155 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dò dấu hiệu thiết bị</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow reading column; a comparison table is the page's single job. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --fg: #1b2230; --muted: #5d6676;
+  --line: #dde1e8; --accent: #2457c5; --diff-bg: #fff1e6; --diff-fg: #a3410a;
+  --same: #2e7d4f;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12161d; --surface: #1a2029; --fg: #e5e9f0; --muted: #98a2b3;
+  --line: #2c3442; --accent: #7aa2ff; --diff-bg: #3a2414; --diff-fg: #ffb47a;
+  --same: #6fcf97; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12161d; --surface: #1a2029; --fg: #e5e9f0; --muted: #98a2b3;
+  --line: #2c3442; --accent: #7aa2ff; --diff-bg: #3a2414; --diff-fg: #ffb47a;
+  --same: #6fcf97; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.55; }
+main { max-width: 860px; margin: 0 auto; padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 20px; }
+h1 { font-size: 1.6rem; margin: 0; text-wrap: balance; font-weight: 600; }
+p { margin: 0; color: var(--muted); max-width: 65ch; }
+.bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+button { font: 600 15px var(--body); background: var(--accent); color: var(--surface); border: 0; border-radius: 8px; padding: 10px 18px; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+button:disabled { opacity: .55; cursor: wait; }
+#status { color: var(--muted); font-size: 14px; }
+.wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+td.v { font-family: var(--mono); word-break: break-word; }
+tr.diff td { background: var(--diff-bg); }
+tr.diff td.v.pc { color: var(--diff-fg); font-weight: 500; }
+td.k { white-space: nowrap; }
+.count { font-variant-numeric: tabular-nums; }
+.same { color: var(--same); }
+textarea { width: 100%; box-sizing: border-box; min-height: 120px; font: 12px var(--mono); background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+</style>
+
+<main>
+  <h1>Dò dấu hiệu thiết bị</h1>
+  <p>Mở trang này bằng Firefox trên máy Windows đăng ký TikTok được. Trang đo các dấu hiệu mà TikTok có thể dùng để nhận ra điện thoại, rồi so với giá trị đo trong app trên Galaxy S8. Dòng tô màu là chỗ khác nhau.</p>
+  <div class="bar">
+    <button id="copy" type="button" disabled>Copy kết quả</button>
+    <span id="status">Đang đo…</span>
+  </div>
+  <div class="wrap">
+    <table>
+      <thead><tr><th>Mục</th><th>Máy tính này</th><th>App (S8)</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <textarea id="raw" readonly aria-label="Kết quả dạng JSON"></textarea>
+</main>
+
+<script>
+// Measured in the app (GeckoView, Firefox 158 Windows identity) on 2026-10-27 (touch off, orientation removed, native CPU).
+const APP = {"plugins":5,"mimeTypes":2,"pdfViewer":true,"webdriver":false,"connection":"undefined","share":"function","vibrate":"undefined","TouchEvent":"undefined","ontouchstart":false,"orientationProp":"undefined","screenOrientation":"landscape-primary","availTop":0,"mq.coarse":false,"mq.fine":true,"mq.hoverNone":false,"buildID":"20181001000000","productSub":"20100101","vendor":"","mediaDevices":"object","gamepad":"function","speechVoices":0,"audioRate":48000,"audioLatency":0,"audioChannels":2,"mse.h264":true,"mse.hevc":true,"mse.vp9":false,"mse.av1":true,"font.Segoe UI":false,"font.Arial":false,"font.Calibri":false,"font.Times New Roman":false,"font.Tahoma":false,"font.Consolas":false,"font.Roboto":true,"font.Noto Sans":false,"font.Droid Sans":false,"font.Cutive Mono":true,"gl.maxTex":16384,"gl.maxView":"16384,16384","gl.ext":19,"gl.renderer":"Generic Renderer","gl.vendor":"Mozilla","gl.highFloat":23,"gl.lineWidth":"1,1","gl2":true,"DeviceMotionEvent":"function","DeviceOrientationEvent":"function","tz":"Asia/Ho_Chi_Minh","locale":"en-US","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0","platform":"Win32","languages":"en-US,en","cpu":4,"workerCpu":4,"maxTouchPoints":0,"screen":"1536x864","dpr":1};
+
+const LABELS = {plugins:"navigator.plugins", mimeTypes:"navigator.mimeTypes", pdfViewer:"pdfViewerEnabled", webdriver:"webdriver", connection:"navigator.connection", share:"navigator.share", vibrate:"navigator.vibrate", TouchEvent:"TouchEvent", ontouchstart:"ontouchstart trong window", orientationProp:"window.orientation", screenOrientation:"screen.orientation", availTop:"screen.availTop", cpu:"CPU (cửa sổ)", workerCpu:"CPU (worker)", speechVoices:"Giọng đọc (speech)", audioRate:"Audio sample rate", audioLatency:"Audio baseLatency"};
+
+function measure() {
+  const n = navigator, r = {};
+  r.userAgent = n.userAgent; r.platform = n.platform; r.languages = (n.languages || []).join(",");
+  r.cpu = n.hardwareConcurrency; r.maxTouchPoints = n.maxTouchPoints;
+  r.screen = screen.width + "x" + screen.height; r.dpr = devicePixelRatio;
+  r.plugins = n.plugins.length; r.mimeTypes = n.mimeTypes.length; r.pdfViewer = n.pdfViewerEnabled; r.webdriver = n.webdriver;
+  r.connection = typeof n.connection; r.share = typeof n.share; r.vibrate = typeof n.vibrate;
+  r.TouchEvent = typeof TouchEvent; r.ontouchstart = ("ontouchstart" in window); r.orientationProp = typeof window.orientation;
+  r.screenOrientation = screen.orientation ? screen.orientation.type : "none"; r.availTop = screen.availTop;
+  r["mq.coarse"] = matchMedia("(any-pointer:coarse)").matches; r["mq.fine"] = matchMedia("(any-pointer:fine)").matches; r["mq.hoverNone"] = matchMedia("(any-hover:none)").matches;
+  r.buildID = n.buildID; r.productSub = n.productSub; r.vendor = n.vendor;
+  r.mediaDevices = typeof n.mediaDevices; r.gamepad = typeof n.getGamepads;
+  try { const a = new AudioContext(); r.audioRate = a.sampleRate; r.audioLatency = a.baseLatency; r.audioChannels = a.destination.maxChannelCount; a.close(); } catch (e) { r.audioRate = "lỗi"; }
+  const ms = t => !!(window.MediaSource && MediaSource.isTypeSupported(t));
+  r["mse.h264"] = ms('video/mp4; codecs="avc1.42E01E"'); r["mse.hevc"] = ms('video/mp4; codecs="hvc1.1.6.L93.B0"');
+  r["mse.vp9"] = ms('video/webm; codecs="vp9"'); r["mse.av1"] = ms('video/mp4; codecs="av01.0.05M.08"');
+  const c = document.createElement("canvas").getContext("2d");
+  const w = f => { c.font = "72px " + f + ",monospace"; return c.measureText("mmmmmmmmmmlli").width; };
+  const base = w("monospace");
+  for (const f of ["Segoe UI","Arial","Calibri","Times New Roman","Tahoma","Consolas","Roboto","Noto Sans","Droid Sans","Cutive Mono"]) r["font." + f] = w("'" + f + "'") !== base;
+  const g = document.createElement("canvas").getContext("webgl");
+  if (g) {
+    r["gl.maxTex"] = g.getParameter(g.MAX_TEXTURE_SIZE); r["gl.maxView"] = Array.from(g.getParameter(g.MAX_VIEWPORT_DIMS)).join(",");
+    r["gl.ext"] = g.getSupportedExtensions().length; r["gl.renderer"] = g.getParameter(g.RENDERER); r["gl.vendor"] = g.getParameter(g.VENDOR);
+    r["gl.highFloat"] = g.getShaderPrecisionFormat(g.FRAGMENT_SHADER, g.HIGH_FLOAT).precision;
+    r["gl.lineWidth"] = Array.from(g.getParameter(g.ALIASED_LINE_WIDTH_RANGE)).join(",");
+    const d = g.getExtension("WEBGL_debug_renderer_info");
+    if (d) { r["gl.unmaskedVendor"] = g.getParameter(d.UNMASKED_VENDOR_WEBGL); r["gl.unmaskedRenderer"] = g.getParameter(d.UNMASKED_RENDERER_WEBGL); }
+  }
+  r.gl2 = !!document.createElement("canvas").getContext("webgl2");
+  r.DeviceMotionEvent = typeof DeviceMotionEvent; r.DeviceOrientationEvent = typeof DeviceOrientationEvent;
+  const o = Intl.DateTimeFormat().resolvedOptions(); r.tz = o.timeZone; r.locale = o.locale;
+  return r;
+}
+
+function workerCpu() {
+  return new Promise(resolve => {
+    try {
+      const url = URL.createObjectURL(new Blob(["postMessage(navigator.hardwareConcurrency)"], {type: "text/javascript"}));
+      const wk = new Worker(url);
+      const t = setTimeout(() => resolve("không đo được"), 3000);
+      wk.onmessage = e => { clearTimeout(t); resolve(e.data); wk.terminate(); };
+      wk.onerror = () => { clearTimeout(t); resolve("không đo được"); };
+    } catch (e) { resolve("không đo được"); }
+  });
+}
+
+function voices() {
+  return new Promise(resolve => {
+    if (!window.speechSynthesis) return resolve("không có");
+    const now = speechSynthesis.getVoices().length;
+    if (now) return resolve(now);
+    speechSynthesis.onvoiceschanged = () => resolve(speechSynthesis.getVoices().length);
+    setTimeout(() => resolve(speechSynthesis.getVoices().length), 2000);
+  });
+}
+
+const fmt = v => v === undefined ? "—" : String(v);
+
+async function run() {
+  const r = measure();
+  r.workerCpu = await workerCpu();
+  r.speechVoices = await voices();
+  const keys = [...new Set([...Object.keys(r), ...Object.keys(APP)])];
+  let diffs = 0;
+  document.getElementById("rows").innerHTML = keys.map(k => {
+    const pc = fmt(r[k]), app = fmt(APP[k]);
+    const diff = k in APP && pc !== app;
+    if (diff) diffs++;
+    const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    return `<tr class="${diff ? "diff" : ""}"><td class="k">${esc(LABELS[k] || k)}</td><td class="v pc">${esc(pc)}</td><td class="v">${esc(app)}</td></tr>`;
+  }).join("");
+  const json = JSON.stringify(r);
+  document.getElementById("raw").value = json;
+  document.getElementById("status").innerHTML = `Xong. <span class="count">${diffs}</span> mục khác với app. Bấm Copy rồi dán kết quả cho Claude.`;
+  const btn = document.getElementById("copy");
+  btn.disabled = false;
+  btn.onclick = () => {
+    const done = () => { btn.textContent = "Đã copy"; setTimeout(() => btn.textContent = "Copy kết quả", 2000); };
+    navigator.clipboard.writeText(json).then(done, () => {
+      const ta = document.getElementById("raw"); ta.focus(); ta.select();
+      document.getElementById("status").textContent = "Trình duyệt chặn copy tự động. Đã chọn sẵn ô bên dưới, nhấn Ctrl+C.";
+    });
+  };
+}
+run();
+</script>
+</html>

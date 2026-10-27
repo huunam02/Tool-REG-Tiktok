@@ -2,6 +2,7 @@ package com.brisklane.browser.gecko
 
 import android.content.Context
 import android.util.Log
+import org.mozilla.geckoview.ContentBlocking
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.WebExtension
@@ -21,6 +22,14 @@ object GeckoRuntimeHolder {
             context.applicationContext,
             // Automation taps recorded screen points; any zoom shifts them.
             GeckoRuntimeSettings.Builder()
+                .javaScriptEnabled(true)
+                .locales(arrayOf("en-US", "en"))
+                .displayDensityOverride(1.0f)
+                .screenSizeOverride(1536, 864)
+                .contentBlocking(ContentBlocking.Settings.Builder()
+                    .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_ALL)
+                    .cookieBehaviorPrivateMode(ContentBlocking.CookieBehavior.ACCEPT_ALL)
+                    .build())
                 .inputAutoZoomEnabled(false)
                 .doubleTapZoomingEnabled(false)
                 .forceUserScalableEnabled(false)

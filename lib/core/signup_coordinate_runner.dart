@@ -14,9 +14,17 @@ class SignupCoordinateProfile {
   SignupCoordinateProfile(this.data);
   final Map<String, dynamic> data;
   bool get complete => data['complete'] == true;
-  Offset point(String name) {
-    final values = (data['points'] as Map)[name] as List?;
-    if (values == null) throw StateError('Chưa ghi tọa độ bước $name.');
+
+  /// Points recorded in the frame's design space: the 1:2 phone frame, or
+  /// the landscape desktop frame (1 unit = 1 CSS px).
+  Map<String, dynamic> points({bool desktop = false}) {
+    final section = desktop ? data['desktop'] as Map? : data;
+    return Map.from(section?['points'] as Map? ?? const {});
+  }
+
+  Offset? point(String name, {bool desktop = false}) {
+    final values = points(desktop: desktop)[name] as List?;
+    if (values == null) return null;
     return Offset((values[0] as num).toDouble(), (values[1] as num).toDouble());
   }
 
@@ -127,7 +135,7 @@ class SignupCoordinateRunner {
     final value = await accessibility.snapshot();
     await _guard();
     if (!allowNotReady && (!value.ready || !value.viewport.valid)) {
-      throw StateError('Không đọc được WebView chuẩn 1:2 qua Accessibility.');
+      throw StateError('Không đọc được khung WebView chuẩn qua Accessibility.');
     }
     if (value.contains(
       RegExp(
@@ -241,7 +249,7 @@ class SignupCoordinateRunner {
             : !snapshot.ready
             ? 'không đọc được WebView qua Trợ năng'
             : 'khung WebView ${b.width.round()}×${b.height.round()} '
-                  'không đúng tỉ lệ 1:2';
+                  'không đúng tỉ lệ chuẩn';
         pageReadySince = null;
         targetStableSince = null;
         previousViewport = null;
@@ -255,8 +263,9 @@ class SignupCoordinateRunner {
       // accepted after 20s with a longer stability check.
       final loaded = isPageReady?.call() ?? true;
       if (_authenticated(snapshot) && loaded) return snapshot;
-      if (await _acceptCookiesIfShown(snapshot)) {
-        // The banner closing can shift layout; re-check target stability.
+      if (await _acceptCookiesIfShown(snapshot) ||
+          await _dismissFeedHintIfShown(snapshot)) {
+        // The overlay closing can shift layout; re-check target stability.
         targetStableSince = null;
         previousTarget = null;
         continue;
@@ -340,7 +349,7 @@ class SignupCoordinateRunner {
           (expected == null || expected.hasMatch(n.label)) &&
           (where?.call(n) ?? true),
     );
-    final recorded = _recorded(name);
+    final recorded = _recorded(name, snapshot.viewport);
     if (recorded != null) {
       return snapshot.viewport.nearest(candidates, recorded);
     }
@@ -371,6 +380,34 @@ class SignupCoordinateRunner {
     return true;
   }
 
+  static final _feedHint = RegExp(r'browse your feed', caseSensitive: false);
+
+  /// The desktop feed opens with a "Scroll, use the ↑ ↓ keys…" hint whose
+  /// mask covers the header's Log in. Close it once with Got it, as a
+  /// visitor would; its absence never blocks signup.
+  Future<bool> _dismissFeedHintIfShown(SignupSnapshot snapshot) async {
+    if (_actions.contains('feed-hint') || !snapshot.contains(_feedHint)) {
+      return false;
+    }
+    final web = snapshot.viewport.bounds;
+    final buttons = snapshot.nodes
+        .where(
+          (n) =>
+              PrivacyNoticeAccessibility.label.hasMatch(n.label) &&
+              n.bounds.intersect(web).width >= 1,
+        )
+        .toList();
+    if (buttons.isEmpty) return false;
+    onStatus('Đang bấm Got it cho gợi ý cuộn của TikTok…');
+    _actions.add('feed-hint');
+    await accessibility.tapScreen(
+      web,
+      buttons.last.bounds.intersect(web).center,
+    );
+    await _pauseAfterAction();
+    return true;
+  }
+
   static const _maxPrivacyNoticeTaps = 3;
   int _privacyNoticeTaps = 0;
 
@@ -390,10 +427,8 @@ class SignupCoordinateRunner {
     return true;
   }
 
-  Offset? _recorded(String name) =>
-      (profile.data['points'] as Map)[name] == null
-      ? null
-      : profile.point(name);
+  Offset? _recorded(String name, SignupViewport viewport) =>
+      profile.point(name, desktop: viewport.landscape);
 
   Future<void> _tap(
     String name, {
@@ -418,7 +453,10 @@ class SignupCoordinateRunner {
     if (node == null) {
       throw StateError('Không thấy control của bước $name trên màn hình.');
     }
-    final point = snapshot.viewport.tapPoint(node.bounds, _recorded(name));
+    final point = snapshot.viewport.tapPoint(
+      node.bounds,
+      _recorded(name, snapshot.viewport),
+    );
     _actions.add(name); // A gesture is never repeated on timeout/navigation.
     await accessibility.tap(snapshot.viewport, point);
     await onTapped?.call();
@@ -734,7 +772,7 @@ class SignupCoordinateRunner {
     await _paste('otp', otp);
     final afterOtp = await _snapshot();
     if (!afterOtp.editors.any((n) => n.password) &&
-        profile.data['points']['submit-otp'] != null) {
+        _recorded('submit-otp', afterOtp.viewport) != null) {
       await _hideKeyboard();
       await _tap(
         'submit-otp',

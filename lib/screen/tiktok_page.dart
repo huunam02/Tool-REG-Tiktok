@@ -11,7 +11,6 @@ import '../core/nurture_store.dart';
 import '../core/tiktok_launch_action.dart';
 import '../core/tiktok_flow_result.dart';
 import '../core/webview_failure.dart';
-import '../core/webview_privacy.dart';
 import '../core/webview_user_agent.dart';
 import '../core/webview_timezone.dart';
 import '../core/gecko_browser.dart';
@@ -91,6 +90,7 @@ class _TikTokView extends StatelessWidget {
 
   Widget _signupViewport(Widget child) => logic.usesAccessibilityAccountFlow
       ? StandardSignupViewport(
+          landscape: logic.usesCoordinateSignup,
           onWidth: (width) => logic.signupViewportWidth = width,
           child: child,
         )
@@ -349,8 +349,11 @@ class _TikTokView extends StatelessWidget {
                         ),
                   userAgent: logic.configuration.userAgent,
                   initialScripts: [
-                    webViewTimeZoneScript(firefoxDesktopTimeZone),
-                    disableWebRtcScript,
+                    // The proxy's own zone, so the clock matches the IP.
+                    webViewTimeZoneScript(
+                      logic.configuration.webViewTimeZone ??
+                          firefoxDesktopTimeZone,
+                    ),
                   ],
                   onCreated: logic.onWebViewCreated,
                   onLoadStart: logic.onLoadStart,

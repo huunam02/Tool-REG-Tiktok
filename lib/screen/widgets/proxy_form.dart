@@ -497,7 +497,8 @@ class _ProxyFormView extends StatelessWidget {
           onChanged: (_) => logic.mutate(() => fields.timeZoneError = null),
           decoration: const InputDecoration(
             hintText: 'America/New_York',
-            helperText: 'Múi giờ của IP proxy. Firefox desktop dùng UTC+07:00 theo mẫu.',
+            helperText:
+                'Múi giờ của IP proxy, trang dùng múi này. Không có proxy: Asia/Bangkok.',
             helperMaxLines: 2,
             prefixIcon: Icon(Icons.schedule, size: 20),
           ),
@@ -522,7 +523,7 @@ class _ProxyFormView extends StatelessWidget {
         _fieldLabel('Thiết bị (GPU)'),
         InputDecorator(
           decoration: const InputDecoration(
-            helperText: 'Firefox desktop · 1536 × 864 · 16 CPU · không cảm ứng.',
+            helperText: 'Firefox desktop · 1920 × 1080 · không cảm ứng.',
             prefixIcon: Icon(Icons.desktop_windows, size: 20),
           ),
           child: Text(

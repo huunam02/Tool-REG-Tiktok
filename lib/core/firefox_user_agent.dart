@@ -7,7 +7,10 @@ const firefoxDesktopUserAgent =
     'Gecko/20100101 Firefox/$geckoViewMajor.0';
 
 const firefoxDesktopGpuLabel = 'Windows 10 · AMD Radeon R9 200 Series';
-const firefoxDesktopTimeZone = 'Asia/Ho_Chi_Minh';
+
+/// Without a proxy: Windows maps Vietnam's "SE Asia Standard Time" to
+/// Asia/Bangkok. A proxy's own zone is used otherwise.
+const firefoxDesktopTimeZone = 'Asia/Bangkok';
 
 /// GeckoView never sends a stored Chrome, Edge, Miui or hand-typed identity,
 /// so every saved User-Agent reads as the Firefox one.

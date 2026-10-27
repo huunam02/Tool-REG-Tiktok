@@ -29,5 +29,25 @@
   "yearScroll": {"from": [247, 480], "to": [247, 390], "durationMs": 450, "count": 3},
   "otpPaste": "accessibility-long-press-menu-paste",
   "evidence": "outputs/signup-calibration/actions.jsonl",
-  "validation": "One live calibration completed through Sign up, Skip, authenticated home; full unattended replay pending."
+  "validation": "One live calibration completed through Sign up, Skip, authenticated home; full unattended replay pending.",
+  "desktop": {
+    "designSize": [1920, 955],
+    "calibrationDevice": "Galaxy_S8_API_28 / landscape desktop frame, 1920x955 CSS px at 1 dppx",
+    "validation": "Manual human-like signups on 2026-10-27 (home IP and a VN proxy) through Sign up, Skip, authenticated home.",
+    "points": {
+      "open-login": [1848, 48],
+      "open-signup": [1044, 726],
+      "signup-phone-email": [958, 350],
+      "use-email": [826, 532],
+      "open-month": [841, 375],
+      "open-day": [960, 375],
+      "open-year": [1078, 375],
+      "focus-email": [910, 490],
+      "send-code": [960, 638],
+      "focus-otp": [825, 463],
+      "focus-password": [940, 446],
+      "submit-password": [960, 592],
+      "skip-username": [960, 655]
+    }
+  }
 }

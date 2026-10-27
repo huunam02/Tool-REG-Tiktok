@@ -139,7 +139,7 @@ void main() {
       } else if (scenario == 'invalid-frame') {
         expect(
           '$failure',
-          contains('khung WebView 1080×1690 không đúng tỉ lệ 1:2'),
+          contains('khung WebView 1080×1690 không đúng tỉ lệ chuẩn'),
         );
         expect(tappedAt, isNull);
         expect(accessibility.actions, isEmpty);
@@ -1238,7 +1238,7 @@ class _RecordedAccessibility extends SignupAccessibility {
       if (node.label == 'Resend code') return 'resend-code';
       // Dropdown options are handled above, not by recorded points.
       for (final name in names.where((n) => !n.startsWith('select-'))) {
-        if (node.bounds.contains(viewport.toScreen(profile.point(name)))) {
+        if (node.bounds.contains(viewport.toScreen(profile.point(name)!))) {
           return name;
         }
       }

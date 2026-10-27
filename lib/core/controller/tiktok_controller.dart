@@ -792,10 +792,29 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       });
     }
     WidgetsBinding.instance.addObserver(this);
+    // A desktop-shaped signup frame is easier to watch in landscape; the
+    // page width stays 1920 CSS px (native page scale follows the frame).
+    if (_landscapeSignup) {
+      unawaited(
+        SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]),
+      );
+    }
   }
+
+  late final bool _landscapeSignup = usesCoordinateSignup;
 
   @override
   void onClose() {
+    if (_landscapeSignup) {
+      unawaited(
+        SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.portraitUp,
+        ]),
+      );
+    }
     _autoFlowWatchdog?.cancel();
     _autoFailTimer?.cancel();
     _captchaSettingsSubscribed = false;
@@ -2124,6 +2143,15 @@ class TikTokController extends AppController with WidgetsBindingObserver {
   }
 
   Future<void> onLoadStop(GeckoController controller, Uri? url) async {
+    // TEMP: measure the page window for the desktop-frame experiment.
+    unawaited(
+      controller
+          .evaluateJavascript(
+            source:
+                'innerWidth+"x"+innerHeight+" screen "+screen.width+"x"+screen.height+" dpr "+devicePixelRatio',
+          )
+          .then((v) => debugPrint('[Diag viewport] $v'), onError: (_) {}),
+    );
     await handlePageLoadComplete(url);
     final host = url?.host ?? '';
     final session = _manualSession;

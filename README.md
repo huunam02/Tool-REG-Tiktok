@@ -12,14 +12,21 @@
 
 ### Nhận diện Firefox desktop
 
-Nhánh này dùng các giá trị của bản đọc WhatIsMyBrowser đã cung cấp: Firefox
-158.0 trên Windows 10 x64, `Win32`, ngôn ngữ `en-US, en` (runner cần nhãn TikTok tiếng Anh), màn hình
-1536 × 864 / 24 bit, cửa sổ báo cáo 1550 × 830, DPR 1, 16 CPU và 0 điểm cảm ứng.
-WebGL báo `Google Inc. (AMD)` và
-`ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar`.
-JavaScript và cookie (kể cả bên thứ ba) được bật; DNT tắt và WebRTC bị chặn.
-Múi giờ trang được đặt thành `Asia/Ho_Chi_Minh` (UTC+07:00); múi giờ IP proxy
-trong form chỉ là thông tin tra cứu.
+Nhánh này nhận diện là Firefox 158.0 trên Windows 10 x64 (`Win32`), phóng to
+trên màn hình phổ biến nhất: 1920 × 1080 / 24 bit, scale 100% (DPR 1), vùng
+dùng được 1920 × 1040, cửa sổ 1936 × 1056 ở −8, −8, trang 1920 × 955. Ngôn
+ngữ `en-US, en` (runner cần nhãn TikTok tiếng Anh), 0 điểm cảm ứng, sự kiện bấm
+báo là chuột. WebGL báo `Google Inc. (AMD)` và
+`ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar`, cùng
+thông số và extension của Firefox Windows. JavaScript và cookie (kể cả bên thứ
+ba) được bật; DNT tắt. WebRTC có API nhưng ICE bị chặn hoàn toàn (không lộ IP
+local hay IP thật), kiểm tra bằng `GeckoWebRtcPrivacyTest`. Múi giờ trang theo IP
+proxy của cấu hình; không có proxy thì là `Asia/Bangkok` (Windows dùng múi này
+cho Việt Nam).
+
+Trang đăng ký xoay ngang và hiển thị trong khung đúng tỉ lệ cửa sổ trên; mật độ
+điểm ảnh (`layout.css.devPixelsPerPx`) được tính theo bề rộng khung để trang
+luôn rộng đúng 1920 CSS px.
 
 `FirefoxDesktopIdentity.kt` đặt các preference native trước khi tải trang.
 WebExtension đặt những thuộc tính chỉ có ở cửa sổ ngay tại `document_start`,

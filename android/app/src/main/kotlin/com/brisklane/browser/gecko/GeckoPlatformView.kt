@@ -50,6 +50,16 @@ class GeckoPlatformView(
     private val initialUrl = (args["initialUrl"] as? String)?.takeIf { it.isNotBlank() }
     private lateinit var identityReady: GeckoResult<*>
     private val extensionReady = GeckoResult<Void>()
+    // Completes once the page scale fits the first laid-out frame width.
+    private val scaleReady = GeckoResult<Void>()
+    private var scaledWidth = 0
+    private var scaleCompleted = false
+
+    private fun completeScale() {
+        if (scaleCompleted) return
+        scaleCompleted = true
+        scaleReady.complete(null)
+    }
     private var currentUrl: String? = null
     private var disposed = false
 
@@ -73,6 +83,17 @@ class GeckoPlatformView(
         session.open(GeckoRuntimeHolder.runtime(context))
         identityReady = FirefoxDesktopIdentity.apply()
         geckoView.setSession(session)
+        // The frame changes size when signup rotates the app to landscape;
+        // the page keeps the desktop's 1920 CSS px width either way.
+        geckoView.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val width = view.width
+            if (width <= 0 || width == scaledWidth || disposed) return@addOnLayoutChangeListener
+            scaledWidth = width
+            FirefoxDesktopIdentity.applyPageScale(width).accept(
+                { if (scaledWidth == width) completeScale() },
+                { error -> Log.e(TAG, "Page scale not applied", error) },
+            )
+        }
         GeckoRuntimeHolder.whenExtensionReady(context) { extension ->
             if (!disposed) {
                 bindExtension(extension)
@@ -220,7 +241,13 @@ class GeckoPlatformView(
                 identityReady.accept(
                     {
                         extensionReady.accept {
-                            initialUrl?.takeUnless { disposed }?.let(session::loadUri)
+                            // A detached view (no window, e.g. a headless
+                            // test) is never laid out; don't wait for it.
+                            if (!geckoView.isAttachedToWindow) completeScale()
+                            else geckoView.postDelayed(::completeScale, 3000)
+                            scaleReady.accept {
+                                initialUrl?.takeUnless { disposed }?.let(session::loadUri)
+                            }
                         }
                     },
                     { error -> Log.e(TAG, "Firefox desktop identity not applied", error) },

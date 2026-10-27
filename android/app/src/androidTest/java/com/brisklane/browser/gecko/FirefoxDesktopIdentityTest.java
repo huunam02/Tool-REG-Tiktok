@@ -30,6 +30,9 @@ public class FirefoxDesktopIdentityTest {
         + "cpu:navigator.hardwareConcurrency,touch:navigator.maxTouchPoints,"
         + "touchEvent:typeof TouchEvent,onTouch:'ontouchstart' in window,"
         + "orientation:'orientation' in window,screenOrientation:screen.orientation.type,"
+        + "pointerType:new PointerEvent('pointerdown',{pointerType:'touch'}).pointerType,"
+        + "share:typeof navigator.share,"
+        + "renderer:document.createElement('canvas').getContext('webgl').getParameter(0x1F01),"
         + "screen:[screen.width,screen.height,screen.colorDepth],"
         + "outer:[outerWidth,outerHeight],dpr:devicePixelRatio,"
         + "gpu:(()=>{const g=document.createElement('canvas').getContext('webgl');"
@@ -135,9 +138,12 @@ public class FirefoxDesktopIdentityTest {
                 assertFalse(readout.getBoolean("orientation"));
                 assertEquals("landscape-primary", readout.getString("screenOrientation"));
                 assertEquals(0, readout.getInt("touch"));
-                assertEquals("[1536,864,24]", readout.getJSONArray("screen").toString());
-                assertEquals("[1550,830]", readout.getJSONArray("outer").toString());
+                assertEquals("[1920,1080,24]", readout.getJSONArray("screen").toString());
+                assertEquals("[1936,1056]", readout.getJSONArray("outer").toString());
                 assertEquals(1.0, readout.getDouble("dpr"), 0.0);
+                assertEquals("mouse", readout.getString("pointerType"));
+                assertEquals("undefined", readout.getString("share"));
+                assertEquals(FirefoxDesktopIdentity.WEBGL_RENDERER, readout.getString("renderer"));
                 assertEquals(FirefoxDesktopIdentity.WEBGL_VENDOR, readout.getJSONArray("gpu").getString(0));
                 assertEquals(FirefoxDesktopIdentity.WEBGL_RENDERER, readout.getJSONArray("gpu").getString(1));
             }

@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:ui';
 
+import 'signup_accessibility.dart';
+
 /// Read-only geometry for HTML comboboxes whose options Chromium omits from
-/// Accessibility. All coordinates use the signup design space (400 x 800).
+/// Accessibility. All coordinates use the signup design space of the frame.
 class SignupBirthdayMenu {
   const SignupBirthdayMenu({
     required this.field,
@@ -25,20 +27,17 @@ class SignupBirthdayMenu {
     }
     final width = (result['width'] as num).toDouble();
     final height = (result['height'] as num).toDouble();
-    if (!width.isFinite ||
-        !height.isFinite ||
-        width <= 0 ||
-        height <= 0 ||
-        (width / height - 0.5).abs() > 0.003) {
+    final design = signupDesignFor(width, height);
+    if (design == null) {
       throw StateError('Kích thước dropdown ngày sinh không khớp WebView.');
     }
     Rect rect(dynamic raw) {
       final values = (raw as List).cast<num>();
       return Rect.fromLTRB(
-        values[0] * 400 / width,
-        values[1] * 800 / height,
-        values[2] * 400 / width,
-        values[3] * 800 / height,
+        values[0] * design.width / width,
+        values[1] * design.height / height,
+        values[2] * design.width / width,
+        values[3] * design.height / height,
       );
     }
 

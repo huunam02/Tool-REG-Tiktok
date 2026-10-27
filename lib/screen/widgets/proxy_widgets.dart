@@ -269,7 +269,9 @@ class ProxyDetails extends StatelessWidget {
         _field(
           context,
           'Múi giờ GeckoView',
-          firefoxDesktopTimeZone,
+          profile.timeZoneId.isEmpty
+              ? firefoxDesktopTimeZone
+              : profile.timeZoneId,
           Icons.schedule,
           valueKey: Key('${keyPrefix}TimeZone'),
         ),

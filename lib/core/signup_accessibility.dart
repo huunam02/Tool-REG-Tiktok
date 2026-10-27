@@ -6,31 +6,56 @@ import 'package:flutter_accessibility_service/gesture_description.dart';
 
 const signupDesignSize = Size(400, 800);
 
+/// Signup runs in a desktop-shaped window: maximized Firefox on a 1920 x 1080
+/// screen shows pages at 1920 x 955 CSS px, so one design unit is one CSS
+/// px. Recorded profile points belong to the 1:2 frame, so in this frame
+/// controls are found by their labels alone.
+const signupLandscapeDesignSize = Size(1920, 955);
+
+/// The design space a frame or page of this size uses, or null.
+Size? signupDesignFor(double width, double height) {
+  if (!width.isFinite || !height.isFinite || width <= 0 || height <= 0) {
+    return null;
+  }
+  final aspect = width / height;
+  if ((aspect - 0.5).abs() < 0.003) return signupDesignSize;
+  final landscape =
+      signupLandscapeDesignSize.width / signupLandscapeDesignSize.height;
+  // The native frame height may differ from the box by a few pixels.
+  return (aspect - landscape).abs() < 0.02 ? signupLandscapeDesignSize : null;
+}
+
 class SignupViewport {
   const SignupViewport(this.bounds);
   final Rect bounds;
-  bool get valid =>
-      bounds.width > 0 &&
-      bounds.height > 0 &&
-      (bounds.width / bounds.height - 0.5).abs() < 0.003;
+  Size? get design => signupDesignFor(bounds.width, bounds.height);
+  bool get valid => design != null;
+  bool get landscape => design == signupLandscapeDesignSize;
   Offset toScreen(Offset point) {
-    if (!valid ||
+    final size = design;
+    if (size == null ||
         !point.dx.isFinite ||
         !point.dy.isFinite ||
         point.dx < 0 ||
         point.dy < 0 ||
-        point.dx >= 400 ||
-        point.dy >= 800) {
+        point.dx >= size.width ||
+        point.dy >= size.height) {
       throw StateError('Khung WebView hoặc tọa độ không đúng chuẩn.');
     }
     return bounds.topLeft +
-        Offset(point.dx * bounds.width / 400, point.dy * bounds.height / 800);
+        Offset(
+          point.dx * bounds.width / size.width,
+          point.dy * bounds.height / size.height,
+        );
   }
 
-  Offset fromScreen(Offset point) => Offset(
-    (point.dx - bounds.left) * 400 / bounds.width,
-    (point.dy - bounds.top) * 800 / bounds.height,
-  );
+  Offset fromScreen(Offset point) {
+    final size = design ?? signupDesignSize;
+    return Offset(
+      (point.dx - bounds.left) * size.width / bounds.width,
+      (point.dy - bounds.top) * size.height / bounds.height,
+    );
+  }
 
   /// Design point that lands on [control] (physical pixels) on this device.
   /// The recorded point is kept while it is still on the visible control;
@@ -82,9 +107,12 @@ class SignupViewport {
     return best;
   }
 
-  static Rect fit(Size available) {
-    final scale = math.min(available.width / 400, available.height / 800);
-    final size = signupDesignSize * scale;
+  static Rect fit(Size available, [Size design = signupDesignSize]) {
+    final scale = math.min(
+      available.width / design.width,
+      available.height / design.height,
+    );
+    final size = design * scale;
     return Rect.fromLTWH(
       (available.width - size.width) / 2,
       (available.height - size.height) / 2,

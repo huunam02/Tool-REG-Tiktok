@@ -24,8 +24,15 @@ object GeckoRuntimeHolder {
             GeckoRuntimeSettings.Builder()
                 .javaScriptEnabled(true)
                 .locales(arrayOf("en-US", "en"))
-                .displayDensityOverride(1.0f)
-                .screenSizeOverride(1536, 864)
+                // The full-width frame shows FirefoxDesktopIdentity.VIEWPORT_WIDTH
+                // CSS px, the reference PC's Firefox page width, on any phone.
+                .displayDensityOverride(FirefoxDesktopIdentity.density(context))
+                // Device pixels; the landscape signup frame runs at 1 dppx, so
+                // media queries there read the desktop screen exactly.
+                .screenSizeOverride(
+                    FirefoxDesktopIdentity.SCREEN_WIDTH,
+                    FirefoxDesktopIdentity.SCREEN_HEIGHT,
+                )
                 .contentBlocking(ContentBlocking.Settings.Builder()
                     .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_ALL)
                     .cookieBehaviorPrivateMode(ContentBlocking.CookieBehavior.ACCEPT_ALL)

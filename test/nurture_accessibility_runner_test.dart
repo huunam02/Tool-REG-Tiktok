@@ -214,6 +214,9 @@ class _Service extends SignupAccessibility {
 
   String? pasteReason;
   bool live = false;
+
+  /// Next lands on a LIVE post, which exposes no clock.
+  bool liveAfterMove = false;
   String liveBadge = 'LIVE now';
   int liveSkips = 0;
 
@@ -355,6 +358,10 @@ class _Service extends SignupAccessibility {
   Future<void> swipe(SignupViewport viewport, Offset a, Offset b) async {
     swipes++;
     if (allowMove) moved = true;
+    if (liveAfterMove) {
+      liveAfterMove = false;
+      live = true;
+    }
     _loadedAt = clock.add(Duration(seconds: loadSecondsAfterMove));
   }
 
@@ -1377,6 +1384,55 @@ void main() {
     expect([waiting.comments, waiting.like], [null, null]);
   });
 
+  test('the overlay For You layout reads the playing post', () {
+    // Recorded 2026-10-28: the scroller holds only media cards; one overlay
+    // over the playing card carries actions, author and clock, and labelled
+    // previous/next buttons sit beside it.
+    Map<String, dynamic> recorded(String clock) {
+      final data = Map<String, dynamic>.from(
+        jsonDecode(
+              File(
+                'test/fixtures/nurture_feed_overlay.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+      );
+      for (final n in (data['hidden'] as List).cast<Map>()) {
+        if (n['id'] == '0.0.1.2.1.0.2.0.0.0') n['text'] = clock;
+      }
+      return data;
+    }
+
+    final video = NurtureVideo.read(SignupSnapshot(recorded('00:04 / 00:27')))!;
+    expect(video.key, '0.0.1.2.0.0|npt.015_|27');
+    expect([video.position, video.duration], [4, 27]);
+    expect(video.bounds, const Rect.fromLTRB(192, 1190, 1427, 1881));
+    expect(video.targetsVerified, isTrue);
+    expect(video.comments!.bounds, const Rect.fromLTRB(1386, 1718, 1401, 1749));
+    expect(video.like!.bounds, const Rect.fromLTRB(1382, 1679, 1406, 1710));
+    expect(video.next!.name, 'Go to next video');
+    // A post without a usable clock is still skipped through the same Next.
+    final blank = SignupSnapshot(recorded('00:00 / 00:00'));
+    expect(NurtureVideo.read(blank), isNull);
+    final feed = NurtureVideo.feedNavigation(blank)!;
+    expect(feed.key, '0.0.1.2.0.0|npt.015_');
+    expect(feed.next.name, 'Go to next video');
+    // The sidebar's LIVE link is not a LIVE post.
+    expect(NurtureVideo.liveNext(blank), isNull);
+    final live = recorded('');
+    (live['nodes'] as List).add({
+      'id': '0.0.1.2.0.0.0.5',
+      'text': 'LIVE now',
+      'description': '',
+      'className': 'android.view.View',
+      'clickable': false,
+      'enabled': true,
+      'bounds': [700, 1500, 760, 1520],
+    });
+    final skip = NurtureVideo.liveNext(SignupSnapshot(live))!;
+    expect(skip.id, '0.0.1.2.2.1.0');
+  });
+
   for (final mediaShown in [true, false]) {
     test('stale feed geometry is watched without any card-relative tap '
         '(media shown: $mediaShown)', () async {
@@ -2119,6 +2175,81 @@ void main() {
       expect(totals!.skippedVideos, 1);
     });
   }
+
+  test('the per-card overlay layout reads posts and skips photo posts', () {
+    // Recorded 2026-10-28 (config 14): each card's media holds its own
+    // actions, author row and clock; the playing post is a photo carousel
+    // without any clock, behind an optional CapCut row.
+    Map<String, dynamic> recorded() => Map<String, dynamic>.from(
+      jsonDecode(
+            File(
+              'test/fixtures/nurture_feed_card_overlay_photo.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+    );
+
+    final photo = SignupSnapshot(recorded());
+    expect(NurtureVideo.read(photo), isNull);
+    final feed = NurtureVideo.feedNavigation(photo)!;
+    expect(feed.key, '0.0.1.2.0.0|motlongyeunuoc2026');
+    expect(feed.next.id, '0.0.1.2.1.1.0');
+    expect(NurtureVideo.liveNext(photo), isNull);
+
+    final playing = recorded();
+    (playing['hidden'] as List).add({
+      'id': '0.0.1.2.0.0.0.2.2.2',
+      'text': '00:03 / 00:15',
+      'description': '',
+      'className': 'android.view.View',
+      'bounds': [731, 1784, 888, 1812],
+    });
+    final video = NurtureVideo.read(SignupSnapshot(playing))!;
+    expect(video.key, '0.0.1.2.0.0|motlongyeunuoc2026|15');
+    expect([video.position, video.duration], [3, 15]);
+    expect(video.targetsVerified, isTrue);
+    expect(video.like!.bounds, const Rect.fromLTRB(1381, 1679, 1407, 1710));
+    expect(video.next!.id, '0.0.1.2.1.1.0');
+
+    final live = recorded();
+    (live['nodes'] as List).add({
+      'id': '0.0.1.2.0.0.0.5',
+      'text': 'LIVE now',
+      'description': '',
+      'className': 'android.view.View',
+      'clickable': false,
+      'enabled': true,
+      'bounds': [700, 1500, 760, 1520],
+    });
+    expect(NurtureVideo.liveNext(SignupSnapshot(live))!.id, '0.0.1.2.1.1.0');
+  });
+
+  test('Next landing on a LIVE post skips it without the 30s wait', () async {
+    final service = _Service()..liveAfterMove = true;
+    NurtureTotals? totals;
+    DateTime? movedAt;
+    await NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: [],
+      isActive: () => service.liveSkips == 0,
+      isTikTok: () async => true,
+      onProgress: (t, _) async {
+        totals = t;
+        movedAt ??= service.clock;
+      },
+      longWatchRate: 0,
+      commentRate: 0,
+      random: _Random(false),
+      now: () => service.clock,
+      delay: service.delay,
+    ).start();
+    expect(service.liveSkips, 1);
+    // The post before the LIVE is counted as soon as the feed leaves it.
+    expect(service.clock.difference(movedAt!).inSeconds, lessThan(30));
+    // The LIVE itself is not counted.
+    expect(totals!.videos, 1);
+  });
 
   test('a briefly missing WebView does not stop nurture', () async {
     final service = _Service()..unreadyFrames = 5;

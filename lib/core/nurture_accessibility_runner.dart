@@ -239,7 +239,119 @@ class NurtureVideo {
     if (candidates.isNotEmpty) {
       return candidates.length == 1 ? candidates.single : null;
     }
-    return _readStaleFeed(snapshot, nodes);
+    return _readOverlayFeed(snapshot, nodes) ?? _readStaleFeed(snapshot, nodes);
+  }
+
+  /// The For You layout seen since 2026-10-28: the scroller holds only the
+  /// media cards, and one overlay drawn over the playing card carries its
+  /// action column, author row and clock. Labelled previous/next buttons sit
+  /// beside the scroller instead of the old unlabelled pair.
+  static ({
+    String card,
+    String overlay,
+    String actions,
+    String page,
+    String author,
+    SignupNode media,
+    SignupNode comments,
+    SignupNode next,
+  })?
+  _overlayPost(SignupSnapshot s, Map<String, SignupNode> all) {
+    String parent(String id) =>
+        id.contains('.') ? id.substring(0, id.lastIndexOf('.')) : '';
+    bool shown(SignupNode n) =>
+        n.clickable &&
+        n.enabled &&
+        !n.bounds.intersect(s.viewport.bounds).isEmpty;
+    final buttons = s.nodes
+        .where((n) => shown(n) && _commentsButton.hasMatch(n.name))
+        .toList();
+    if (buttons.length != 1) return null;
+    final comments = buttons.single;
+    final actions = parent(comments.id);
+    final overlay = parent(actions);
+    // The page is the nearest ancestor that also holds the feed's Next. The
+    // overlay is either a sibling of the scroller or inside each card.
+    var page = overlay;
+    List<SignupNode> next = const [];
+    while (page.contains('.') && next.isEmpty) {
+      page = parent(page);
+      next = s.nodes
+          .where(
+            (n) =>
+                shown(n) &&
+                n.className.endsWith('Button') &&
+                n.name == 'Go to next video' &&
+                n.id.startsWith('$page.') &&
+                !n.id.startsWith('$overlay.'),
+          )
+          .toList();
+    }
+    if (next.length != 1) return null;
+    final media = s.nodes
+        .where(
+          (n) =>
+              shown(n) &&
+              n.name == 'Watch in full screen' &&
+              n.id.startsWith('$page.') &&
+              n.bounds.inflate(2).contains(comments.bounds.topLeft) &&
+              n.bounds.inflate(2).contains(comments.bounds.bottomRight),
+        )
+        .toList();
+    // The overlay is drawn over its media; the old layout's column is beside.
+    if (media.length != 1) return null;
+    // An optional row (e.g. "CapCut · Edit images now") can precede the
+    // author's avatar; it has no label at this depth.
+    String author = '';
+    for (var i = 0; author.isEmpty && all.containsKey('$overlay.1.$i'); i++) {
+      author = all['$overlay.1.$i.0']?.label.trim() ?? '';
+    }
+    if (author.isEmpty) return null;
+    return (
+      card: parent(media.single.id),
+      overlay: overlay,
+      actions: actions,
+      page: page,
+      author: author,
+      media: media.single,
+      comments: comments,
+      next: next.single,
+    );
+  }
+
+  static NurtureVideo? _readOverlayFeed(
+    SignupSnapshot s,
+    Map<String, SignupNode> nodes,
+  ) {
+    final post = _overlayPost(s, nodes);
+    if (post == null) return null;
+    final times = nodes.values
+        .where((n) => n.id.startsWith('${post.overlay}.'))
+        .where((n) => _time.hasMatch(n.text.trim()))
+        .toList();
+    if (times.length != 1) return null;
+    final match = _time.firstMatch(times.single.text.trim())!;
+    final duration = _seconds(match[2]!);
+    final position = _seconds(match[1]!);
+    if (duration <= 0 || position > duration) return null;
+    final viewport = s.viewport.bounds;
+    final settled =
+        _inside(post.media.bounds, viewport) &&
+        _inside(post.comments.bounds, viewport);
+    final like = settled
+        ? _likeIn(s.nodes.where((n) => n.id.startsWith('${post.actions}.')))
+        : null;
+    return NurtureVideo(
+      key: '${post.card}|${post.author}|$duration',
+      position: position,
+      duration: duration,
+      bounds: post.media.bounds,
+      comments: settled ? post.comments : null,
+      like: like,
+      next: post.next,
+      // Captions sit both in the overlay and in the media card.
+      root: post.page,
+    );
   }
 
   /// False for a feed card whose geometry is stale (see [read]); only the
@@ -521,6 +633,12 @@ class NurtureVideo {
       }
     }
     if (candidates.isEmpty) {
+      final overlay = _overlayPost(s, {
+        for (final n in [...s.hiddenNodes, ...s.nodes]) n.id: n,
+      });
+      if (overlay != null) {
+        return (key: '${overlay.card}|${overlay.author}', next: overlay.next);
+      }
       // Stale geometry (see [_staleCard]), e.g. a promoted LIVE without a
       // clock or comment button.
       final card = _staleCard(s);
@@ -600,11 +718,38 @@ class NurtureVideo {
       var page = badge.id;
       while (page.contains('.')) {
         page = page.substring(0, page.lastIndexOf('.'));
-        final down = _pairedDown(nodes, page, badge.bounds.right);
+        final down =
+            _pairedDown(nodes, page, badge.bounds.right) ??
+            _labelledDown(snapshot, page, badge);
         if (down != null) return down;
       }
     }
     return null;
+  }
+
+  /// The overlay layouts' "Go to next video" (see [_overlayPost]), whose
+  /// navigation column is a child of [page] beside the scroller holding
+  /// [badge]. Never for the sidebar's LIVE link, which lies outside the page.
+  static SignupNode? _labelledDown(
+    SignupSnapshot s,
+    String page,
+    SignupNode badge,
+  ) {
+    String parent(String id) => id.substring(0, id.lastIndexOf('.'));
+    final next = s.nodes.where((n) {
+      if (!n.clickable ||
+          !n.enabled ||
+          !n.className.endsWith('Button') ||
+          n.name != 'Go to next video' ||
+          n.id.split('.').length != page.split('.').length + 3 ||
+          !n.id.startsWith('$page.') ||
+          n.bounds.intersect(s.viewport.bounds).isEmpty) {
+        return false;
+      }
+      final nav = parent(parent(n.id));
+      return !badge.id.startsWith('$nav.');
+    }).toList();
+    return next.length == 1 ? next.single : null;
   }
 }
 
@@ -1855,6 +2000,16 @@ class NurtureAccessibilityRunner {
         continue;
       }
       final current = NurtureVideo.read(snapshot);
+      // A LIVE post has no clock; the feed has left this post, and the main
+      // loop skips the LIVE with its own Next.
+      if (current == null &&
+          !video.detail &&
+          NurtureVideo.liveNext(snapshot) != null) {
+        debugPrint('Nurture advance check: landed on LIVE');
+        await _finish(plan);
+        _previous = null;
+        return;
+      }
       final feed = current == null && !video.detail
           ? NurtureVideo.feedNavigation(snapshot)
           : null;

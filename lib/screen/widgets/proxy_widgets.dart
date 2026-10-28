@@ -279,7 +279,7 @@ class ProxyDetails extends StatelessWidget {
         _field(
           context,
           'Thiết bị (GPU)',
-          firefoxDesktopGpuLabel,
+          profile.desktopGpu.label,
           Icons.desktop_windows,
           valueKey: Key('${keyPrefix}GpuProfile'),
         ),

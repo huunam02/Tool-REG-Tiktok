@@ -13,9 +13,32 @@ import org.mozilla.geckoview.GeckoResult
 object FirefoxDesktopIdentity {
     const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) " +
         "Gecko/20100101 Firefox/158.0"
-    const val WEBGL_VENDOR = "Google Inc. (AMD)"
-    const val WEBGL_RENDERER =
-        "ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar"
+
+    /** Windows PC GPUs measured with Firefox; ids match Dart's DesktopGpu,
+     * renderers match desktop_identity.js, which picks its WebGL limits by
+     * the renderer these preferences expose. */
+    enum class Gpu(val id: String, val vendor: String, val renderer: String) {
+        AMD_R9_200(
+            "amd-r9-200",
+            "Google Inc. (AMD)",
+            "ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar",
+        ),
+        INTEL_HD_400(
+            "intel-hd-400",
+            "Google Inc. (Intel)",
+            "ANGLE (Intel, Intel(R) HD Graphics 400 Direct3D11 vs_5_0 ps_5_0), or similar",
+        ),
+        INTEL_HD(
+            "intel-hd",
+            "Google Inc. (Intel)",
+            "ANGLE (Intel, Intel(R) HD Graphics Direct3D11 vs_5_0 ps_5_0), or similar",
+        ),
+        ;
+
+        companion object {
+            fun byId(id: String?): Gpu = entries.firstOrNull { it.id == id } ?: AMD_R9_200
+        }
+    }
 
     const val SCREEN_WIDTH = 1920
     const val SCREEN_HEIGHT = 1080
@@ -37,7 +60,8 @@ object FirefoxDesktopIdentity {
             ),
         ))
 
-    fun apply(): GeckoResult<Map<String, Boolean>> {
+    /** Preferences are runtime-wide; the one open GeckoView sets its GPU. */
+    fun apply(gpu: Gpu = Gpu.AMD_R9_200): GeckoResult<Map<String, Boolean>> {
         val branch = GeckoPreferenceController.PREF_BRANCH_USER
         return GeckoPreferenceController.setGeckoPrefs(listOf(
             SetGeckoPreference.setStringPref("general.useragent.override", USER_AGENT, branch),
@@ -45,8 +69,8 @@ object FirefoxDesktopIdentity {
             SetGeckoPreference.setStringPref("general.oscpu.override", "Windows NT 10.0; Win64; x64", branch),
             SetGeckoPreference.setStringPref("general.appversion.override", "5.0 (Windows)", branch),
             SetGeckoPreference.setStringPref("intl.accept_languages", "en-US, en", branch),
-            SetGeckoPreference.setStringPref("webgl.override-unmasked-vendor", WEBGL_VENDOR, branch),
-            SetGeckoPreference.setStringPref("webgl.override-unmasked-renderer", WEBGL_RENDERER, branch),
+            SetGeckoPreference.setStringPref("webgl.override-unmasked-vendor", gpu.vendor, branch),
+            SetGeckoPreference.setStringPref("webgl.override-unmasked-renderer", gpu.renderer, branch),
             // The supplied renderer is already Firefox's sanitized Windows
             // value. Android's sanitizer otherwise replaces it with Generic Renderer.
             SetGeckoPreference.setBoolPref("webgl.sanitize-unmasked-renderer", false, branch),
@@ -61,6 +85,9 @@ object FirefoxDesktopIdentity {
             SetGeckoPreference.setBoolPref("media.peerconnection.ice.proxy_only", true, branch),
             // APIs desktop Firefox 158 exposes and GeckoView leaves off.
             SetGeckoPreference.setBoolPref("dom.webgpu.enabled", true, branch),
+            // Android is blocked by default even when the WebGPU DOM API is on.
+            // Let the native Vulkan backend attempt adapter/device creation.
+            SetGeckoPreference.setBoolPref("gfx.webgpu.ignore-blocklist", true, branch),
             SetGeckoPreference.setBoolPref("dom.webmidi.enabled", true, branch),
             SetGeckoPreference.setBoolPref("dom.webserial.enabled", true, branch),
             SetGeckoPreference.setBoolPref("dom.media.webcodecs.enabled", true, branch),

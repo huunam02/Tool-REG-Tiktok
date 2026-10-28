@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'desktop_gpu.dart';
 import 'nurture_data.dart';
 import 'otp_api.dart';
 import 'services/remote_config_service.dart';
@@ -24,6 +25,7 @@ class AppConfiguration {
     this.configurationId,
     this.nurtureAfterSignup = false,
     this.nurtureSettings = NurtureSettings.defaults,
+    this.desktopGpu = DesktopGpu.fallback,
     List<String> searchKeywords = const [],
   }) : comments = List.unmodifiable(comments),
        searchKeywords = List.unmodifiable(searchKeywords);
@@ -62,6 +64,9 @@ class AppConfiguration {
 
   /// Like/comment/long-watch rates and session length for nurture.
   final NurtureSettings nurtureSettings;
+
+  /// The PC GPU pages see over WebGL; fixed per configuration.
+  final DesktopGpu desktopGpu;
 
   static List<String> parseComments(String value) => value
       .split('\n')

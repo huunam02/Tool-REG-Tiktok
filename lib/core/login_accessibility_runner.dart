@@ -184,6 +184,7 @@ class LoginAccessibilityRunner {
     'log in|login|continue|next|verify|confirm|đăng nhập|tiếp tục|tiếp theo|xác nhận',
   );
   static final _login = _exact('log in|login|đăng nhập');
+
   /// The switch from the phone form; desktop TikTok labels it "Use email or
   /// username".
   @visibleForTesting

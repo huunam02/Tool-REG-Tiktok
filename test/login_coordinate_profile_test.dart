@@ -50,10 +50,9 @@ void main() {
     const desktop = SignupViewport(Rect.fromLTWH(424, 402, 1920, 955));
     expect(desktop.landscape, isTrue);
     final saved = <String, List<double>>{};
-    final profile = LoginCoordinateProfile(
-      {'open-login': const Offset(150, 220)},
-      save: (points) async => saved.addAll(points),
-    );
+    final profile = LoginCoordinateProfile({
+      'open-login': const Offset(150, 220),
+    }, save: (points) async => saved.addAll(points));
     // The 1:2 point (150, 220) would land outside this control on desktop.
     const control = Rect.fromLTWH(2200, 430, 100, 40);
     final point = await profile.target('open-login', desktop, node(control));

@@ -9,6 +9,7 @@ import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
 import 'package:test_tiktok/core/firefox_user_agent.dart';
+import 'package:test_tiktok/core/desktop_gpu.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -83,6 +84,31 @@ void main() {
     );
     await migrated.close();
     store = openStore();
+  });
+
+  test('upgrading keeps saved configurations on the AMD desktop GPU', () async {
+    await store.save(name: 'A', proxy: WebViewProxy.parse('192.0.2.7:8080')!);
+    await store.close();
+    final old = await databaseFactoryFfi.openDatabase(filename);
+    await old.execute('ALTER TABLE configurations DROP COLUMN desktop_gpu');
+    await old.setVersion(21);
+    await old.close();
+    store = openStore();
+    expect((await store.list()).single.desktopGpu, DesktopGpu.amdR9200);
+  });
+
+  test('a new configuration keeps the desktop GPU it was given', () async {
+    final proxy = WebViewProxy.parse('192.0.2.7:8080')!;
+    final id = await store.save(name: 'A', proxy: proxy);
+    final gpu = (await store.list()).single.desktopGpu;
+    await store.close();
+    final db = await databaseFactoryFfi.openDatabase(filename);
+    final stored = (await db.query('configurations')).single['desktop_gpu'];
+    await db.close();
+    expect(stored, gpu.id);
+    store = openStore();
+    await store.save(id: id, name: 'Renamed', proxy: proxy);
+    expect((await store.list()).single.desktopGpu, gpu);
   });
 
   test('persists Nuôi sau khi đăng ký per configuration', () async {
@@ -520,7 +546,7 @@ void main() {
       expect(selected.timeZoneId, isEmpty);
       await store.close();
       final migrated = await databaseFactoryFfi.openDatabase(filename);
-      expect(await migrated.getVersion(), 21);
+      expect(await migrated.getVersion(), 22);
       expect(
         (await migrated.rawQuery(
           'PRAGMA table_info(configurations)',

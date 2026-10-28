@@ -81,7 +81,9 @@ class GeckoPlatformView(
         session = GeckoSession(settings)
         bindDelegates()
         session.open(GeckoRuntimeHolder.runtime(context))
-        identityReady = FirefoxDesktopIdentity.apply()
+        identityReady = FirefoxDesktopIdentity.apply(
+            FirefoxDesktopIdentity.Gpu.byId(args["desktopGpu"] as? String),
+        )
         geckoView.setSession(session)
         // The frame can change size (window insets, split screen);
         // the page keeps the desktop's 1920 CSS px width either way.

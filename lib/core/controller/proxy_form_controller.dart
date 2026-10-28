@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../desktop_gpu.dart';
 import '../app_configuration.dart';
 import '../account_password.dart';
 import '../proxy_store.dart';
@@ -301,7 +302,8 @@ class ConfigurationFormFields {
         text: entry?.account?.mailboxPassword,
       ),
       statusAccount = entry?.statusAccount ?? AccountStatus.unregistered,
-      nurtureAfterSignup = entry?.nurtureAfterSignup ?? false {
+      nurtureAfterSignup = entry?.nurtureAfterSignup ?? false,
+      desktopGpu = entry?.desktopGpu {
     showNurtureSettings(entry?.nurtureSettings ?? NurtureSettings.defaults);
     for (final field in [url, username, password]) {
       field.addListener(() {
@@ -327,6 +329,9 @@ class ConfigurationFormFields {
   }
 
   final TextEditingController url;
+
+  /// Null for a new configuration: the store picks its GPU when saved.
+  final DesktopGpu? desktopGpu;
   String _proxyProtocol = 'http';
   String get proxyProtocol {
     final scheme = Uri.tryParse(url.text.trim())?.scheme;

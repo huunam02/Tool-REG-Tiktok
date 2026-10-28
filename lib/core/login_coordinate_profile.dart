@@ -20,6 +20,7 @@ class LoginCoordinateProfile {
   final Map<String, Offset> _points;
   final String label;
   final Future<void> Function(Map<String, List<double>>)? save;
+
   /// Points recorded in the desktop frame are kept apart from the 1:2
   /// frame's: the two design spaces do not share coordinates.
   static String key(String action, {required bool desktop}) =>

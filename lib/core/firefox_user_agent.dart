@@ -6,8 +6,6 @@ const firefoxDesktopUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:$geckoViewMajor.0) '
     'Gecko/20100101 Firefox/$geckoViewMajor.0';
 
-const firefoxDesktopGpuLabel = 'Windows 10 · AMD Radeon R9 200 Series';
-
 /// Without a proxy: Windows maps Vietnam's "SE Asia Standard Time" to
 /// Asia/Bangkok. A proxy's own zone is used otherwise.
 const firefoxDesktopTimeZone = 'Asia/Bangkok';

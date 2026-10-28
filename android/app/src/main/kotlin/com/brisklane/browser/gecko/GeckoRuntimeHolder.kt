@@ -2,6 +2,7 @@ package com.brisklane.browser.gecko
 
 import android.content.Context
 import android.util.Log
+import java.io.File
 import org.mozilla.geckoview.ContentBlocking
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
@@ -15,6 +16,19 @@ object GeckoRuntimeHolder {
     @Volatile private var extension: WebExtension? = null
     private val waiters = mutableListOf<(WebExtension) -> Unit>()
 
+    /** These graphics preferences are read once during Gecko startup. */
+    private fun startupConfig(context: Context): String {
+        val config = File(context.filesDir, "gecko-desktop-startup.yaml")
+        val contents = """
+            prefs:
+              dom.webgpu.enabled: true
+              gfx.webgpu.ignore-blocklist: true
+              dom.webgpu.allow-in-parent: true
+        """.trimIndent() + "\n"
+        if (!config.exists() || config.readText() != contents) config.writeText(contents)
+        return config.absolutePath
+    }
+
     @Synchronized
     fun runtime(context: Context): GeckoRuntime {
         runtime?.let { return it }
@@ -22,6 +36,7 @@ object GeckoRuntimeHolder {
             context.applicationContext,
             // Automation taps recorded screen points; any zoom shifts them.
             GeckoRuntimeSettings.Builder()
+                .configFilePath(startupConfig(context))
                 .javaScriptEnabled(true)
                 .locales(arrayOf("en-US", "en"))
                 // The full-width frame shows FirefoxDesktopIdentity.VIEWPORT_WIDTH

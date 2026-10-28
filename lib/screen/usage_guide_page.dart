@@ -41,7 +41,8 @@ class UsageGuidePage extends StatelessWidget {
           'Proxy HTTP, HTTPS hoặc SOCKS5; User-Agent (Firefox bật chế độ máy tính, cố định); '
               'Múi giờ GeckoView (Tra theo proxy, hoặc để trống để tự tra khi '
               'mở); Thiết bị (GPU) là GPU máy tính Windows đo từ Firefox thật '
-              '(AMD Radeon R9 200 Series), giống nhau ở mọi cấu hình; công tắc '
+              '(AMD Radeon R9 200 Series hoặc Intel HD Graphics 400), chọn ngẫu '
+              'nhiên khi tạo cấu hình rồi giữ cố định; công tắc '
               'Đã đăng ký; ô Nuôi sau khi đăng ký.',
         ),
         (

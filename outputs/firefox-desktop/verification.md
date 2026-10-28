@@ -37,3 +37,16 @@ Kết quả này xác nhận các mục trang WhatIsMyBrowser hiển thị, khô
 Bằng chứng: [ảnh đầu trang](whatismybrowser-top.png), [ảnh chi tiết](whatismybrowser-details.png), [JSON](whatismybrowser-2026-10-26.json).
 
 Không phát hiện sai lệch mới cần sửa mã nguồn trong lần đối chiếu này.
+
+## Kiểm tra bổ sung ba bộ GPU — 28/10/2026
+
+Đã chạy AMD R9 200, Intel HD Graphics 400 và Intel HD Graphics trên
+`emulator-5554` / Android 9 bằng GeckoView của app. WhatIsMyBrowser hiển thị
+đúng Firefox 158 trên Windows 10 và vendor/renderer của từng bộ. Trang dò v2
+xác nhận các tham số và danh sách extension WebGL1/2 khớp mẫu; MAX_SAMPLES
+WebGL2 lần lượt là 8, 16, 16.
+
+Đo sâu phát hiện shader MEDIUM/LOW_FLOAT trả `[15,15,10]` thay vì
+`[127,127,23]` như mẫu Windows; WebGPU requestAdapter trả null trên máy ảo.
+Vì vậy kết quả nhận diện website đạt nhưng chưa khớp toàn bộ mẫu Windows.
+Xem [báo cáo, JSON và ảnh](emulator-gpu-check-2026-10-28/report.md).

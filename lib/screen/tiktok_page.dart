@@ -336,6 +336,7 @@ class _TikTokView extends StatelessWidget {
               ? 'profile-${logic.configuration.userAgent.hashCode}'
               : geckoProfileContextId(logic.configuration.configurationId!),
           userAgent: logic.configuration.userAgent,
+          desktopGpu: logic.configuration.desktopGpu.id,
           initialScripts: [
             // The proxy's own zone, so the clock matches the IP.
             webViewTimeZoneScript(

@@ -2,10 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 class ControllerNotice {
-  const ControllerNotice(this.message,
-      {this.duration = const Duration(seconds: 4),
-      this.actionLabel,
-      this.onAction});
+  const ControllerNotice(
+    this.message, {
+    this.duration = const Duration(seconds: 4),
+    this.actionLabel,
+    this.onAction,
+  });
 
   final String message;
   final Duration duration;
@@ -24,13 +26,21 @@ abstract class AppController extends GetxController {
     update();
   }
 
-  void notify(String message,
-      {Duration duration = const Duration(seconds: 4),
-      String? actionLabel,
-      VoidCallback? onAction}) {
+  void notify(
+    String message, {
+    Duration duration = const Duration(seconds: 4),
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
     if (!active) return;
-    onNotice?.call(ControllerNotice(message,
-        duration: duration, actionLabel: actionLabel, onAction: onAction));
+    onNotice?.call(
+      ControllerNotice(
+        message,
+        duration: duration,
+        actionLabel: actionLabel,
+        onAction: onAction,
+      ),
+    );
   }
 
   @override

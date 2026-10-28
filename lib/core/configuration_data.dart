@@ -86,11 +86,11 @@ class ImportedConfiguration {
 
   ImportedConfiguration copyWith({NurtureSettings? nurtureSettings}) =>
       ImportedConfiguration(
-    proxy: proxy,
-    account: account,
-    statusAccount: statusAccount,
-    nurtureSettings: nurtureSettings ?? this.nurtureSettings,
-  );
+        proxy: proxy,
+        account: account,
+        statusAccount: statusAccount,
+        nurtureSettings: nurtureSettings ?? this.nurtureSettings,
+      );
 
   /// An empty proxy field keeps the device's own connection.
   static WebViewProxy? parseImportedProxy(String value) =>

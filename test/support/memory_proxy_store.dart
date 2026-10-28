@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:test_tiktok/core/desktop_gpu.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
@@ -186,6 +187,7 @@ class MemoryProxyStore extends ProxyStore {
         nurtureSettings:
             nurtureSettings ?? old?.nurtureSettings ?? NurtureSettings.defaults,
         signupFailed: _signupFailedOverride ?? old?.signupFailed ?? false,
+        desktopGpu: old?.desktopGpu ?? DesktopGpu.fallback,
       ),
     );
     final saved = entries.last;
@@ -241,6 +243,7 @@ class MemoryProxyStore extends ProxyStore {
         nurtureAfterSignup: entry.nurtureAfterSignup,
         nurtureSettings: entry.nurtureSettings,
         signupFailed: entry.signupFailed,
+        desktopGpu: entry.desktopGpu,
       );
     }
     return true;
@@ -291,6 +294,7 @@ class MemoryProxyStore extends ProxyStore {
       nurtureAfterSignup: entry.nurtureAfterSignup,
       nurtureSettings: entry.nurtureSettings,
       signupFailed: entry.signupFailed,
+      desktopGpu: entry.desktopGpu,
     );
   }
 

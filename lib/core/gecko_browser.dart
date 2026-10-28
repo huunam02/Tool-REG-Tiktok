@@ -118,6 +118,7 @@ class GeckoBrowserView extends StatefulWidget {
     required this.contextId,
     required this.userAgent,
     this.initialScripts = const [],
+    this.desktopGpu = '',
     required this.onCreated,
     required this.onLoadStart,
     required this.onProgressChanged,
@@ -130,6 +131,9 @@ class GeckoBrowserView extends StatefulWidget {
   final String userAgent;
 
   final List<String> initialScripts;
+
+  /// A DesktopGpu id; native falls back to the AMD GPU when unknown.
+  final String desktopGpu;
   final FutureOr<void> Function(GeckoController controller) onCreated;
   final void Function(GeckoController controller, Uri? url) onLoadStart;
   final void Function(GeckoController controller, int progress)
@@ -174,6 +178,7 @@ class _GeckoBrowserViewState extends State<GeckoBrowserView> {
             'contextId': widget.contextId,
             'userAgent': widget.userAgent,
             'initialScripts': widget.initialScripts,
+            'desktopGpu': widget.desktopGpu,
           },
           creationParamsCodec: const StandardMessageCodec(),
           onFocus: () => params.onFocusChanged(true),

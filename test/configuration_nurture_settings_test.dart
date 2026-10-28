@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
-import 'package:test_tiktok/core/firefox_user_agent.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/proxy_draft.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
@@ -132,7 +131,7 @@ void main() {
     expect(draft!.nurtureSettings, NurtureSettings.defaults);
   });
 
-  testWidgets('configurations show the fixed Windows desktop GPU after import', (
+  testWidgets('a new configuration shows its desktop GPU is picked on save', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
@@ -148,7 +147,7 @@ void main() {
     await tester.pumpAndSettle();
     String gpu() =>
         tester.widget<Text>(find.byKey(const Key('savedGpuProfile'))).data!;
-    expect(gpu(), firefoxDesktopGpuLabel);
+    expect(gpu(), 'Tự chọn ngẫu nhiên khi lưu');
     expect(find.byKey(const Key('changeGpuProfile')), findsNothing);
     await tester.enterText(
       find.byKey(const Key('proxyImportData')),
@@ -158,10 +157,7 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('applyProxyImportData')));
     await tester.tap(find.byKey(const Key('applyProxyImportData')));
     await tester.pumpAndSettle();
-    expect(gpu(), firefoxDesktopGpuLabel);
-    await tester.tap(find.byKey(const Key('saveProxyEntry')));
-    await tester.pumpAndSettle();
-    expect(find.text(firefoxDesktopGpuLabel), findsOneWidget);
+    expect(gpu(), 'Tự chọn ngẫu nhiên khi lưu');
     expect(tester.takeException(), isNull);
   });
 }

@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 
 import 'configuration_data.dart';
 import 'data_excel_layout.dart';
-import 'firefox_user_agent.dart';
 import 'nurture_data.dart';
 import 'proxy_store.dart';
 
@@ -103,7 +102,7 @@ List<List<CellValue?>> dataExportRows({
       TextCellValue(configuration.userAgent),
       TextCellValue(configuration.timeZoneId),
       IntCellValue(configuration.hasBeenUsed ? 1 : 0),
-      TextCellValue(firefoxDesktopGpuLabel),
+      TextCellValue(configuration.desktopGpu.label),
       ..._settingsCells(configuration.nurtureSettings),
       ..._nurtureCells(account),
     ]);

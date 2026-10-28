@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'app_configuration.dart';
 import 'configuration_data.dart';
 import 'proxy_draft.dart';
+import 'desktop_gpu.dart';
 import 'desktop_user_agents.dart';
 import 'firefox_user_agent.dart';
 import 'proxy_time_zone.dart';
@@ -24,6 +25,7 @@ class ProxyProfile {
     this.nurtureAfterSignup = false,
     this.nurtureSettings = NurtureSettings.defaults,
     this.signupFailed = false,
+    this.desktopGpu = DesktopGpu.fallback,
   });
 
   final WebViewProxy? proxy;
@@ -42,19 +44,24 @@ class ProxyProfile {
   /// The last automatic signup of this configuration failed.
   final bool signupFailed;
 
-  ProxyProfile copyWith({String? userAgent, String? timeZoneId}) => ProxyProfile(
-    proxy: proxy,
-    userAgent: userAgent ?? this.userAgent,
-    timeZoneId: timeZoneId ?? this.timeZoneId,
-    name: name,
-    hasBeenUsed: hasBeenUsed,
-    account: account,
-    statusAccount: statusAccount,
-    configurationId: configurationId,
-    nurtureAfterSignup: nurtureAfterSignup,
-    nurtureSettings: nurtureSettings,
-    signupFailed: signupFailed,
-  );
+  /// The PC GPU pages see; assigned once when the configuration is created.
+  final DesktopGpu desktopGpu;
+
+  ProxyProfile copyWith({String? userAgent, String? timeZoneId}) =>
+      ProxyProfile(
+        proxy: proxy,
+        userAgent: userAgent ?? this.userAgent,
+        timeZoneId: timeZoneId ?? this.timeZoneId,
+        name: name,
+        hasBeenUsed: hasBeenUsed,
+        account: account,
+        statusAccount: statusAccount,
+        configurationId: configurationId,
+        nurtureAfterSignup: nurtureAfterSignup,
+        nurtureSettings: nurtureSettings,
+        signupFailed: signupFailed,
+        desktopGpu: desktopGpu,
+      );
 }
 
 class SavedProxy extends ProxyProfile {
@@ -70,6 +77,7 @@ class SavedProxy extends ProxyProfile {
     super.nurtureAfterSignup,
     super.nurtureSettings,
     super.signupFailed,
+    super.desktopGpu,
   }) : super(configurationId: id);
   final int id;
 }
@@ -141,6 +149,7 @@ class ProxyStore {
       signup_failed INTEGER NOT NULL DEFAULT 0
         CHECK (signup_failed IN (0, 1)),
       registered_at INTEGER,
+      desktop_gpu TEXT NOT NULL DEFAULT '${DesktopGpu.fallback.id}',
       $_nurtureSettingsColumns
     )''');
     await db.execute(
@@ -233,7 +242,7 @@ class ProxyStore {
       db = await factory.openDatabase(
         filename,
         options: OpenDatabaseOptions(
-          version: 21,
+          version: 22,
           onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
           onOpen: (db) async {
             await db.update('nurture_sessions', {
@@ -281,6 +290,13 @@ class ProxyStore {
               await db.execute(
                 'ALTER TABLE configurations ADD COLUMN signup_failed '
                 'INTEGER NOT NULL DEFAULT 0 CHECK (signup_failed IN (0, 1))',
+              );
+            }
+            if (!columns.any((column) => column['name'] == 'desktop_gpu')) {
+              // Saved configurations keep the GPU they have always shown.
+              await db.execute(
+                'ALTER TABLE configurations ADD COLUMN desktop_gpu TEXT NOT NULL '
+                "DEFAULT '${DesktopGpu.fallback.id}'",
               );
             }
             if (!columns.any((column) => column['name'] == 'registered_at')) {
@@ -452,6 +468,7 @@ class ProxyStore {
     nurtureAfterSignup: row['nurture_after_signup'] == 1,
     nurtureSettings: NurtureSettings.fromMap(row),
     signupFailed: row['signup_failed'] == 1,
+    desktopGpu: DesktopGpu.byId(row['desktop_gpu'] as String? ?? ''),
   );
 
   static Future<Map<String, Object?>?> _findSaved(
@@ -535,6 +552,7 @@ class ProxyStore {
           await _selectUserAgent(),
         ),
         'listed': 0,
+        'desktop_gpu': DesktopGpu.random().id,
       });
       await _applyCurrent(txn, id);
     });
@@ -602,6 +620,7 @@ class ProxyStore {
     nurtureAfterSignup: row['nurture_after_signup'] == 1,
     nurtureSettings: NurtureSettings.fromMap(row),
     signupFailed: row['signup_failed'] == 1,
+    desktopGpu: DesktopGpu.byId(row['desktop_gpu'] as String? ?? ''),
   );
 
   Future<List<SavedProxy>> list() async {
@@ -767,7 +786,11 @@ class ProxyStore {
         (current.isNotEmpty && sameProxy(_readProxy(current.single), proxy)
             ? current.single['user_agent'] as String
             : normalizeDesktopUserAgentForPlatform(await _selectUserAgent()));
-    return txn.insert('configurations', {...values, 'user_agent': agent});
+    return txn.insert('configurations', {
+      ...values,
+      'user_agent': agent,
+      'desktop_gpu': DesktopGpu.random().id,
+    });
   }
 
   /// Fill an old active configuration after lookup without changing selection.

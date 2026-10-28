@@ -35,6 +35,9 @@ public class FirefoxDesktopIdentityTest {
         + "pointer:['(pointer: fine)','(hover: hover)','(any-pointer: coarse)','(any-hover: none)']"
         + ".map(q=>matchMedia(q).matches),"
         + "renderer:document.createElement('canvas').getContext('webgl').getParameter(0x1F01),"
+        + "shaderPrecision:(()=>{const g=document.createElement('canvas').getContext('webgl');"
+        + "const p=g.getShaderPrecisionFormat(g.FRAGMENT_SHADER,g.MEDIUM_FLOAT);"
+        + "return [p.rangeMin,p.rangeMax,p.precision]})(),"
         + "screen:[screen.width,screen.height,screen.colorDepth],"
         + "outer:[outerWidth,outerHeight],dpr:devicePixelRatio,"
         + "gpu:(()=>{const g=document.createElement('canvas').getContext('webgl');"
@@ -146,9 +149,10 @@ public class FirefoxDesktopIdentityTest {
                 assertEquals("mouse", readout.getString("pointerType"));
                 assertEquals("undefined", readout.getString("share"));
                 assertEquals("[true,true,false,false]", readout.getJSONArray("pointer").toString());
-                assertEquals(FirefoxDesktopIdentity.WEBGL_RENDERER, readout.getString("renderer"));
-                assertEquals(FirefoxDesktopIdentity.WEBGL_VENDOR, readout.getJSONArray("gpu").getString(0));
-                assertEquals(FirefoxDesktopIdentity.WEBGL_RENDERER, readout.getJSONArray("gpu").getString(1));
+                assertEquals(FirefoxDesktopIdentity.Gpu.AMD_R9_200.getRenderer(), readout.getString("renderer"));
+                assertEquals("[127,127,23]", readout.getJSONArray("shaderPrecision").toString());
+                assertEquals(FirefoxDesktopIdentity.Gpu.AMD_R9_200.getVendor(), readout.getJSONArray("gpu").getString(0));
+                assertEquals(FirefoxDesktopIdentity.Gpu.AMD_R9_200.getRenderer(), readout.getJSONArray("gpu").getString(1));
             }
             assertEquals(FirefoxDesktopIdentity.USER_AGENT, result.getJSONObject("worker").getString("ua"));
             assertEquals("Win32", result.getJSONObject("worker").getString("platform"));

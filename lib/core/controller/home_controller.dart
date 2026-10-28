@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../app_configuration.dart';
+import '../desktop_gpu.dart';
 import '../services/remote_config_service.dart';
 import '../app_session.dart';
 import '../account_sessions.dart';
@@ -882,6 +883,7 @@ class HomeController extends AppController
         nurtureAfterSignup: currentProxy?.nurtureAfterSignup ?? false,
         nurtureSettings:
             currentProxy?.nurtureSettings ?? NurtureSettings.defaults,
+        desktopGpu: currentProxy?.desktopGpu ?? DesktopGpu.fallback,
         birthday: action == TikTokLaunchAction.signup
             ? AppConfiguration.randomSignupBirthday()
             : null,

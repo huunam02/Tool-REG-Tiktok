@@ -84,18 +84,34 @@
       ? '' : canPlayType.call(this, type);
   }, page);
 
-  // The reference PC's WebGL (Firefox 158, ANGLE/D3D11 on AMD): the plain
-  // RENDERER string, limits, extension list and MSAA. Keep the renderer in
-  // step with FirefoxDesktopIdentity.WEBGL_RENDERER.
-  const renderer = 'ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar';
+  // The reference PCs' WebGL (Firefox 158, ANGLE/D3D11): the plain RENDERER
+  // string, limits, extension list and MSAA. The configuration's GPU arrives
+  // as the unmasked renderer FirefoxDesktopIdentity.Gpu sets; keep the keys
+  // in step with it. The measured GPUs differ only in these values.
+  const gpus = {
+    'ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar': { MAX_SAMPLES: 8 },
+    'ANGLE (Intel, Intel(R) HD Graphics 400 Direct3D11 vs_5_0 ps_5_0), or similar': { MAX_SAMPLES: 16 },
+    'ANGLE (Intel, Intel(R) HD Graphics Direct3D11 vs_5_0 ps_5_0), or similar': { MAX_SAMPLES: 16 },
+  };
   const common = {
-    RENDERER: renderer, MAX_TEXTURE_SIZE: 16384, MAX_CUBE_MAP_TEXTURE_SIZE: 16384,
+    MAX_TEXTURE_SIZE: 16384, MAX_CUBE_MAP_TEXTURE_SIZE: 16384,
     MAX_RENDERBUFFER_SIZE: 16384, MAX_VIEWPORT_DIMS: ['Int32Array', 32767, 32767],
     MAX_VERTEX_ATTRIBS: 16, MAX_VERTEX_UNIFORM_VECTORS: 4096, MAX_FRAGMENT_UNIFORM_VECTORS: 1024,
     MAX_VARYING_VECTORS: 30, MAX_TEXTURE_IMAGE_UNITS: 16, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 16,
     MAX_COMBINED_TEXTURE_IMAGE_UNITS: 32, ALIASED_LINE_WIDTH_RANGE: ['Float32Array', 1, 1],
     ALIASED_POINT_SIZE_RANGE: ['Float32Array', 1, 1024], SAMPLES: 4, SAMPLE_BUFFERS: 1,
   };
+  // All three Firefox 158 reference PCs report [127, 127, 23] for every
+  // supported floating-point shader format. Integer formats have precision
+  // zero and keep their native values. Preserve native objects and checks.
+  const precisionProto = page.WebGLShaderPrecisionFormat && page.WebGLShaderPrecisionFormat.prototype;
+  if (precisionProto) {
+    const nativePrecision = Object.getOwnPropertyDescriptor(precisionProto, 'precision').get;
+    for (const [index, key] of ['rangeMin', 'rangeMax', 'precision'].entries()) {
+      wrapGetter(precisionProto, key, (value, format) =>
+        nativePrecision.call(format) > 0 ? [127, 127, 23][index] : value);
+    }
+  }
   const webgl = {
     WebGLRenderingContext: {
       params: common,
@@ -112,7 +128,7 @@
     WebGL2RenderingContext: {
       params: Object.assign({}, common, {
         MAX_3D_TEXTURE_SIZE: 2048, MAX_ARRAY_TEXTURE_LAYERS: 2048, MAX_COLOR_ATTACHMENTS: 8,
-        MAX_DRAW_BUFFERS: 8, MAX_SAMPLES: 8, MAX_UNIFORM_BUFFER_BINDINGS: 24,
+        MAX_DRAW_BUFFERS: 8, MAX_UNIFORM_BUFFER_BINDINGS: 24,
         MAX_UNIFORM_BLOCK_SIZE: 65536, MAX_VERTEX_UNIFORM_COMPONENTS: 16384,
         MAX_FRAGMENT_UNIFORM_COMPONENTS: 4096, MAX_ELEMENT_INDEX: 4294967294, MAX_SERVER_WAIT_TIMEOUT: 0,
       }),
@@ -123,16 +139,39 @@
         'WEBGL_debug_renderer_info', 'WEBGL_debug_shaders', 'WEBGL_lose_context', 'WEBGL_provoking_vertex'],
     },
   };
+  // Read once per document, on the first query, from the context itself.
+  let renderer;
+  const rendererOf = (context, getParameter, getExtension) => {
+    if (renderer === undefined) {
+      let value = null;
+      try {
+        // UNMASKED_RENDERER_WEBGL; the extension must be enabled to read it.
+        if (getExtension.call(context, 'WEBGL_debug_renderer_info')) {
+          value = getParameter.call(context, 0x9246);
+        }
+      } catch (error) {
+        console.warn('Firefox desktop identity: renderer', error);
+      }
+      renderer = Object.prototype.hasOwnProperty.call(gpus, value) ? value : Object.keys(gpus)[0];
+    }
+    return renderer;
+  };
   for (const [name, spec] of Object.entries(webgl)) {
     const proto = page[name] && page[name].prototype;
     if (!proto) continue;
-    const values = new Map();
-    for (const [key, value] of Object.entries(spec.params)) {
-      if (proto[key] !== undefined) values.set(proto[key], value);
-    }
+    let values;
+    const valuesFor = (gpu) => {
+      if (values) return values;
+      values = new Map();
+      for (const [key, value] of Object.entries({ ...spec.params, ...gpus[gpu], RENDERER: gpu })) {
+        if (proto[key] !== undefined) values.set(proto[key], value);
+      }
+      return values;
+    };
     const extensions = new Set(spec.extensions);
     const { getParameter, getSupportedExtensions, getExtension, getContextAttributes } = proto;
     proto.getParameter = exportFunction(function (pname) {
+      const values = valuesFor(rendererOf(this, getParameter, getExtension));
       if (!values.has(pname)) return getParameter.call(this, pname);
       const value = values.get(pname);
       if (!Array.isArray(value)) return value;

@@ -2,12 +2,12 @@ import 'dart:typed_data';
 
 import 'package:excel_community/excel_community.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:test_tiktok/core/desktop_gpu.dart';
 import 'package:test_tiktok/core/app_configuration.dart';
 import 'package:test_tiktok/core/configuration_data.dart';
 import 'package:test_tiktok/core/configuration_file_import.dart';
 import 'package:test_tiktok/core/data_excel_layout.dart';
 import 'package:test_tiktok/core/data_file_export.dart';
-import 'package:test_tiktok/core/firefox_user_agent.dart';
 import 'package:test_tiktok/core/nurture_data.dart';
 import 'package:test_tiktok/core/proxy_store.dart';
 
@@ -432,7 +432,7 @@ void main() {
     expect(record.nurtureSettings!.likePercent, 45);
   });
 
-  test('Thiết bị GPU exports the desktop GPU and import ignores it', () {
+  test('Thiết bị GPU exports the configuration GPU and import ignores it', () {
     final bytes = encodeDataExport(
       configurations: [
         SavedProxy(
@@ -440,6 +440,7 @@ void main() {
           name: 'GPU',
           proxy: configuration.proxy,
           userAgent: 'agent',
+          desktopGpu: DesktopGpu.intelHd400,
           account: const AccountCredentials(
             email: 'gpu@example.com',
             password: 'secret',
@@ -451,7 +452,7 @@ void main() {
     );
     final rows = Excel.decodeBytes(bytes)[dataExcelSheetName].rows;
     expect(rows[0][8]!.displayText, gpuProfileExcelHeader);
-    expect(rows[1][8]!.displayText, firefoxDesktopGpuLabel);
+    expect(rows[1][8]!.displayText, DesktopGpu.intelHd400.label);
     expect(
       decodeConfigurationImportFile(
         ConfigurationImportFile('gpu.xlsx', bytes),

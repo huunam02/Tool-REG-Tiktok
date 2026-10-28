@@ -1,0 +1,460 @@
+{
+  "date": "2026-10-28",
+  "device": "emulator-5554 / Android 9 API 28 / arm64",
+  "method": "Actual GeckoPlatformView in debug fixture Activity; distinct temporary context for each GPU; local v2 measurement page and live WhatIsMyBrowser. Saved configurations were not modified.",
+  "profiles": {
+    "amd-r9-200": {
+      "reference": "outputs/firefox-desktop/khach-firefox-v2-2026-10-27.json",
+      "identityChecksPassed": true,
+      "measuredAt": "2026-10-28T07:58:04.518Z",
+      "websiteShowsSelectedRenderer": true,
+      "webgl": {
+        "parameterDifferences": {},
+        "extensionListMatches": true,
+        "precisionDifferences": {
+          "FRAGMENT_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "FRAGMENT_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          }
+        }
+      },
+      "webgl2": {
+        "parameterDifferences": {},
+        "extensionListMatches": true,
+        "precisionDifferences": {
+          "FRAGMENT_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "FRAGMENT_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          }
+        }
+      },
+      "webgpu": {
+        "actual": "null",
+        "reference": {
+          "vendor": "",
+          "architecture": "",
+          "features": [
+            "bgra8unorm-storage",
+            "core-features-and-limits",
+            "depth-clip-control",
+            "depth32float-stencil8",
+            "dual-source-blending",
+            "float32-blendable",
+            "float32-filterable",
+            "indirect-first-instance",
+            "rg11b10ufloat-renderable",
+            "shader-f16",
+            "texture-compression-bc",
+            "texture-compression-bc-sliced-3d",
+            "timestamp-query"
+          ],
+          "maxTex": 16384
+        },
+        "matchesReference": false
+      },
+      "cpu": {
+        "window": 4,
+        "worker": 4
+      },
+      "screen": [
+        1920,
+        1080,
+        1920,
+        1040,
+        0,
+        0,
+        24,
+        24
+      ],
+      "viewport": [
+        1920,
+        3264
+      ],
+      "fullReferenceMatch": false
+    },
+    "intel-hd-400": {
+      "reference": "outputs/firefox-desktop/gpu/gpu-intel-hd400-firefox158-2026-10-28.json",
+      "identityChecksPassed": true,
+      "measuredAt": "2026-10-28T07:58:10.187Z",
+      "websiteShowsSelectedRenderer": true,
+      "webgl": {
+        "parameterDifferences": {},
+        "extensionListMatches": true,
+        "precisionDifferences": {
+          "FRAGMENT_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "FRAGMENT_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          }
+        }
+      },
+      "webgl2": {
+        "parameterDifferences": {},
+        "extensionListMatches": true,
+        "precisionDifferences": {
+          "FRAGMENT_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "FRAGMENT_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          }
+        }
+      },
+      "webgpu": {
+        "actual": "null",
+        "reference": "hết giờ",
+        "matchesReference": false
+      },
+      "cpu": {
+        "window": 4,
+        "worker": 4
+      },
+      "screen": [
+        1920,
+        1080,
+        1920,
+        1040,
+        0,
+        0,
+        24,
+        24
+      ],
+      "viewport": [
+        1920,
+        3264
+      ],
+      "fullReferenceMatch": false
+    },
+    "intel-hd": {
+      "reference": "outputs/firefox-desktop/gpu/gpu-intel-hd-2026-10-28.json",
+      "identityChecksPassed": true,
+      "measuredAt": "2026-10-28T07:58:14.557Z",
+      "websiteShowsSelectedRenderer": true,
+      "webgl": {
+        "parameterDifferences": {},
+        "extensionListMatches": true,
+        "precisionDifferences": {
+          "FRAGMENT_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "FRAGMENT_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          }
+        }
+      },
+      "webgl2": {
+        "parameterDifferences": {},
+        "extensionListMatches": true,
+        "precisionDifferences": {
+          "FRAGMENT_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "FRAGMENT_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.LOW_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          },
+          "VERTEX_SHADER.MEDIUM_FLOAT": {
+            "actual": [
+              15,
+              15,
+              10
+            ],
+            "reference": [
+              127,
+              127,
+              23
+            ]
+          }
+        }
+      },
+      "webgpu": {
+        "actual": "null",
+        "reference": {
+          "vendor": "",
+          "architecture": "",
+          "features": [
+            "bgra8unorm-storage",
+            "core-features-and-limits",
+            "depth-clip-control",
+            "depth32float-stencil8",
+            "dual-source-blending",
+            "float32-blendable",
+            "float32-filterable",
+            "indirect-first-instance",
+            "rg11b10ufloat-renderable",
+            "shader-f16",
+            "texture-compression-bc",
+            "texture-compression-bc-sliced-3d",
+            "timestamp-query"
+          ],
+          "maxTex": 16384
+        },
+        "matchesReference": false
+      },
+      "cpu": {
+        "window": 4,
+        "worker": 4
+      },
+      "screen": [
+        1920,
+        1080,
+        1920,
+        1040,
+        0,
+        0,
+        24,
+        24
+      ],
+      "viewport": [
+        1920,
+        3264
+      ],
+      "fullReferenceMatch": false
+    }
+  },
+  "canvasSameAcrossProfiles": true
+}

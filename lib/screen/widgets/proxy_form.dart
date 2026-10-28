@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/proxy_store.dart';
-import '../../core/firefox_user_agent.dart';
 import '../../core/webview_user_agent.dart';
 import '../../core/app_configuration.dart';
 import '../../core/account_password.dart';
@@ -527,7 +526,7 @@ class _ProxyFormView extends StatelessWidget {
             prefixIcon: Icon(Icons.desktop_windows, size: 20),
           ),
           child: Text(
-            firefoxDesktopGpuLabel,
+            fields.desktopGpu?.label ?? 'Tự chọn ngẫu nhiên khi lưu',
             key: _configurationKey('savedGpuProfile', index),
           ),
         ),

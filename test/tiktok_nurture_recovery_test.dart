@@ -284,14 +284,21 @@ void main() {
     await logic.toggleAutoWatch();
     final notices = <String>[];
     logic.onNotice = (notice) => notices.add(notice.message);
+    // A verifying CAPTCHA is waited out quietly first.
     for (var second = 0; second < 30; second++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    expect(logic.autoWatchEnabled, isTrue);
+    expect(notices, isEmpty);
+    // Past the CAPTCHA wait it pauses and keeps the session.
+    for (var second = 0; second < 40; second++) {
       await tester.pump(const Duration(seconds: 1));
     }
     expect(logic.autoWatchEnabled, isTrue);
     expect(
       notices,
       contains(
-        'TikTok đang mở hộp thoại (Verifying...); tạm dừng nuôi. '
+        'TikTok vẫn đang xác minh CAPTCHA (Verifying...); tạm dừng nuôi. '
         'Đang chờ đọc lại trạng thái trên trang hiện tại; giữ nguyên thời hạn nuôi.',
       ),
     );

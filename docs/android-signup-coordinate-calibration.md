@@ -35,6 +35,10 @@ trong popup rồi tiếp tục từ đó; nếu đã ở **Sign up for TikTok**,
 **Use phone or email**. Popup xuất hiện trong lúc chờ cũng được nhận diện lại,
 ưu tiên hơn các nút trang chủ còn lộ trong Accessibility. Không bấm Log in
 phía sau popup. Vẫn dừng nếu nút bị tắt, lệch tọa độ hoặc trang chưa tải xong.
+Nếu sau 60 giây trang vẫn không có nút Log in/Sign up (trang treo, chỉ hiện
+video), app tải lại trang **một lần** rồi chạy lại từ đầu với phiên và proxy
+cũ; lúc đó chưa nhập hay gửi gì. Lần thứ hai vẫn treo thì báo lỗi; khi chạy
+lần lượt, cấu hình được ghi vào Cấu hình lỗi và app chuyển sang cấu hình kế.
 
 Đã xác nhận lỗi chờ Log in trên phiên giả lập: snapshot chỉ có popup đăng nhập,
 không còn control Log in của trang chủ. Sau hot reload, chạy bộ runner mới từ

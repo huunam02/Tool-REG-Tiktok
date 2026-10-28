@@ -46,6 +46,12 @@ class SignupCoordinateProfile {
       );
 }
 
+/// TikTok never showed a usable Log in / Sign up entry, before any input.
+/// Nothing was typed or submitted, so the page can be reloaded and retried.
+class SignupPageNotReady extends StateError {
+  SignupPageNotReady(super.message);
+}
+
 /// UI input uses Accessibility gestures and editor actions. No DOM input.
 /// Coordinates are recorded; Accessibility nodes validate the expected target.
 class SignupCoordinateRunner {
@@ -361,7 +367,7 @@ class SignupCoordinateRunner {
         // Diagnostics must not replace the original failure.
       }
     }
-    throw StateError(
+    throw SignupPageNotReady(
       'Trang hoặc nút đăng nhập/đăng ký chưa ổn định ($reason); '
       'đã dừng trước khi bấm.',
     );

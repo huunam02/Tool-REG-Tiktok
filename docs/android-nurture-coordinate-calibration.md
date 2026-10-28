@@ -63,6 +63,10 @@ Next lần nữa cho cùng video. Nút Tải lại vẫn do người dùng chủ
 Riêng màn “Something went wrong” kèm thông báo lỗi server và nút “Try again”,
 tool bấm đúng nút này qua Trợ năng để thử lại tại chỗ. Mỗi đợt lỗi thử tối đa
 3 lần, cách nhau ít nhất 10 giây; không bấm khi có nháp hoặc CAPTCHA/đăng nhập.
+Khi có CAPTCHA, bộ nuôi không bấm gì và chờ tối đa 60 giây để bộ giải API xử lý.
+Trạng thái "Verifying..." sau khi kéo (chỉ còn mã yêu cầu bên dưới) cũng được coi
+là CAPTCHA, không phải hộp thoại lạ. Nếu quá 60 giây vẫn Verifying, bộ nuôi tạm
+dừng và đọc lại trang, giữ nguyên phiên và hạn nuôi.
 Không cộng thời gian chờ lỗi vào thời gian xem và không đặt lại hạn nuôi.
 
 Bình luận chỉ lấy từ cấu hình, tránh lặp liên tiếp cùng mẫu. Trước khi focus

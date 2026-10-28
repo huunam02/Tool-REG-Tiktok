@@ -783,6 +783,17 @@ class NurtureAccessibilityRunner {
   /// How long a CAPTCHA may stay open while the monitor solves it.
   static const _captchaWait = Duration(seconds: 60);
 
+  /// A CAPTCHA, including its "Verifying..." state after the slider was
+  /// dragged, when only the request id is left below it.
+  static final _captchaVerifying = RegExp(
+    r'^verifying\b',
+    caseSensitive: false,
+  );
+  static final _verification = RegExp(
+    r'captcha|drag.*slider|verify to continue|kéo.*thanh trượt|^verifying\b',
+    caseSensitive: false,
+  );
+
   /// A readable clock that stops this long is a stalled player (seen when
   /// Gecko unbinds its media service mid-video); the post is skipped.
   static const _stallWait = Duration(seconds: 15);
@@ -983,15 +994,17 @@ class NurtureAccessibilityRunner {
         (n) => [n.text, n.description, n.hint].any(pattern.hasMatch),
       );
       // Verification and sign-out stop immediately, even inside a dialog.
-      if (hasPrompt(
-        RegExp(
-          r'captcha|drag.*slider|verify to continue|kéo.*thanh trượt',
-          caseSensitive: false,
-        ),
-      )) {
+      if (hasPrompt(_verification)) {
         // The CAPTCHA monitor solves it through the API meanwhile; nothing
         // is tapped until it closes.
         if (!_now().isBefore(captchaUntil)) {
+          // An answer still verifying is TikTok's to finish: pause and read
+          // the same page again instead of ending the session.
+          if (hasPrompt(_captchaVerifying)) {
+            throw NurtureDialogOpen(
+              'TikTok vẫn đang xác minh CAPTCHA (Verifying...); tạm dừng nuôi.',
+            );
+          }
           throw StateError(
             'TikTok yêu cầu xác minh; đã dừng nuôi để bạn xử lý.',
           );
@@ -1186,10 +1199,9 @@ class NurtureAccessibilityRunner {
     final viewport = s.viewport.bounds;
     final prompts = _prompts(s);
     if (prompts.any(
-      (n) => RegExp(
-        r'captcha|drag.*slider|verify to continue|^Log in to TikTok$',
-        caseSensitive: false,
-      ).hasMatch(n.label),
+      (n) =>
+          _verification.hasMatch(n.label) ||
+          RegExp(r'^Log in to TikTok$', caseSensitive: false).hasMatch(n.label),
     )) {
       return null;
     }

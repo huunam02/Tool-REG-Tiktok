@@ -219,6 +219,7 @@ class _Service extends SignupAccessibility {
 
   /// A popup outside the card is exposed until this time.
   DateTime? dialogUntil;
+  String dialogText = 'Popup';
   Completer<SignupSnapshot>? blockedSnapshot;
   final snapshotEntered = Completer<void>();
   @override
@@ -285,7 +286,7 @@ class _Service extends SignupAccessibility {
         'className': 'android.app.Dialog',
       });
       nodes.add(
-        _node('9.0', const Rect.fromLTWH(110, 310, 180, 30), text: 'Popup'),
+        _node('9.0', const Rect.fromLTWH(110, 310, 180, 30), text: dialogText),
       );
     }
     if (moved && _loadedAt != null && clock.isBefore(_loadedAt!)) {
@@ -2146,6 +2147,34 @@ void main() {
   test('a transient dialog pauses nurture without stopping it', () async {
     final service = _Service()
       ..dialogUntil = DateTime(2026).add(const Duration(seconds: 4));
+    var active = true;
+    NurtureTotals? totals;
+    await NurtureAccessibilityRunner(
+      accessibility: service,
+      profile: NurtureCoordinateProfile({}),
+      comments: [],
+      isActive: () => active,
+      isTikTok: () async => true,
+      onProgress: (t, _) async {
+        totals = t;
+        if (t.videos > 0) active = false;
+      },
+      longWatchRate: 0,
+      commentRate: 0,
+      random: _Random(false),
+      now: () => service.clock,
+      delay: service.delay,
+    ).start();
+    expect(totals!.skippedVideos, 1);
+    expect(service.swipes, 1);
+  });
+
+  test('a CAPTCHA still verifying is waited out, not reported', () async {
+    // After the slider is dragged TikTok shows only "Verifying..." and a
+    // request id for a while; longer than an ordinary popup may stay.
+    final service = _Service()
+      ..dialogText = 'Verifying...'
+      ..dialogUntil = DateTime(2026).add(const Duration(seconds: 20));
     var active = true;
     NurtureTotals? totals;
     await NurtureAccessibilityRunner(

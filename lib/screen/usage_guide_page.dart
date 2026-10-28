@@ -40,9 +40,9 @@ class UsageGuidePage extends StatelessWidget {
           'Thông tin của mỗi cấu hình',
           'Proxy HTTP, HTTPS hoặc SOCKS5; User-Agent (Firefox bật chế độ máy tính, cố định); '
               'Múi giờ GeckoView (Tra theo proxy, hoặc để trống để tự tra khi '
-              'mở); Thiết bị (GPU) điện thoại được chọn ngẫu nhiên và giữ cố '
-              'định, bấm Đổi để chọn máy khác; công tắc Đã đăng ký; ô Nuôi '
-              'sau khi đăng ký.',
+              'mở); Thiết bị (GPU) là GPU máy tính Windows đo từ Firefox thật '
+              '(AMD Radeon R9 200 Series), giống nhau ở mọi cấu hình; công tắc '
+              'Đã đăng ký; ô Nuôi sau khi đăng ký.',
         ),
         (
           'Cấu hình nuôi',
@@ -123,7 +123,8 @@ class UsageGuidePage extends StatelessWidget {
               'Xuất Excel lưu file .xlsx. Sheet Data có mỗi cấu hình một hàng: '
               'proxy, tài khoản, trạng thái, User-Agent, múi giờ, thiết bị GPU, '
               'cấu hình nuôi và thống kê nuôi. File này import lại được và '
-              'khôi phục cả cấu hình nuôi lẫn thiết bị GPU.',
+              'khôi phục cả cấu hình nuôi; cột GPU chỉ để xem vì mọi cấu hình '
+              'dùng chung một GPU.',
         ),
       ],
     ),
@@ -191,8 +192,9 @@ class UsageGuidePage extends StatelessWidget {
               const SettingsPanel(
                 child: Text(
                   'Bảo mật: WebRTC luôn bị chặn nên trang web không đọc được IP '
-                  'nội bộ của máy. Mỗi cấu hình có proxy, User-Agent, múi giờ và '
-                  'thiết bị GPU riêng. GeckoSession contextId giữ cookie và dữ liệu '
+                  'nội bộ của máy. Mỗi cấu hình có proxy và múi giờ riêng; '
+                  'User-Agent và GPU là bộ nhận diện Firefox Windows chung. '
+                  'GeckoSession contextId giữ cookie và dữ liệu '
                   'đăng nhập tách biệt theo từng cấu hình. Đăng ký luôn bắt đầu bằng phiên sạch.',
                   style: TextStyle(color: SettingsStyle.muted, height: 1.55),
                 ),

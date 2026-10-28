@@ -1680,13 +1680,14 @@ class TikTokController extends AppController with WidgetsBindingObserver {
       await stopAutoWatch();
       final profile = await SignupCoordinateProfile.load();
       if (!isActive()) return;
-      final runner = SignupCoordinateRunner(
+      SignupCoordinateRunner build() => SignupCoordinateRunner(
         profile: profile,
         accessibility: signupAccessibility,
         configuration: configuration,
         isActive: isActive,
         onUsernameSkipped: _markConfigurationRegistered,
         isPageReady: () => initialPageLoaded && pageFailure == null,
+        now: _now,
         isForeground: () => appActive,
         isTikTok: () async {
           final url = await webViewController?.getUrl();
@@ -1714,9 +1715,27 @@ class TikTokController extends AppController with WidgetsBindingObserver {
           if (isActive()) mutate(() => signupStatus = status);
         },
       );
-      _signupCoordinateRunner = runner;
-      coordinateRunner = runner;
-      await runner.run();
+      var runner = build();
+      // A page that never shows Log in / Sign up (half-rendered, stuck) gets
+      // one reload before the attempt fails and the queue moves on.
+      for (var reloaded = false; ; reloaded = true) {
+        _signupCoordinateRunner = runner;
+        coordinateRunner = runner;
+        try {
+          await runner.run();
+          break;
+        } on SignupPageNotReady catch (error) {
+          if (reloaded || !isActive() || webViewController == null) rethrow;
+          debugPrint('Signup page stuck; reloading once: ${error.message}');
+          mutate(
+            () => signupStatus =
+                'Trang TikTok bị treo; đang tải lại 1 lần rồi thử lại…',
+          );
+          await webViewController?.reload();
+          if (!isActive()) return;
+          runner = build();
+        }
+      }
       if (isActive()) {
         _signupNeedsLogin = runner.requiresLogin;
         await _markConfigurationRegistered();

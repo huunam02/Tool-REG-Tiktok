@@ -17,21 +17,39 @@ object FirefoxDesktopIdentity {
     /** Windows PC GPUs measured with Firefox; ids match Dart's DesktopGpu,
      * renderers match desktop_identity.js, which picks its WebGL limits by
      * the renderer these preferences expose. */
-    enum class Gpu(val id: String, val vendor: String, val renderer: String) {
+    enum class Gpu(
+        val id: String,
+        val vendor: String,
+        val renderer: String,
+        val maxSamples: Int,
+        val maxVertexUniformVectors: Int = 4096,
+        val maxVertexUniformComponents: Int = 16384,
+    ) {
         AMD_R9_200(
             "amd-r9-200",
             "Google Inc. (AMD)",
             "ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar",
+            8,
         ),
         INTEL_HD_400(
             "intel-hd-400",
             "Google Inc. (Intel)",
             "ANGLE (Intel, Intel(R) HD Graphics 400 Direct3D11 vs_5_0 ps_5_0), or similar",
+            16,
         ),
         INTEL_HD(
             "intel-hd",
             "Google Inc. (Intel)",
             "ANGLE (Intel, Intel(R) HD Graphics Direct3D11 vs_5_0 ps_5_0), or similar",
+            16,
+        ),
+        NVIDIA_GTX_980(
+            "nvidia-gtx-980",
+            "Google Inc. (NVIDIA)",
+            "ANGLE (NVIDIA, NVIDIA GeForce GTX 980 Direct3D11 vs_5_0 ps_5_0), or similar",
+            8,
+            4095,
+            16380,
         ),
         ;
 

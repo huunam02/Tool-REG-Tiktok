@@ -164,8 +164,15 @@ public class DesktopGpuWebCheckTest {
                 assertEquals(gpu.getRenderer(), params.getString("UNMASKED_RENDERER"));
                 assertEquals(gpu.getRenderer(), params.getString("RENDERER"));
             }
-            assertEquals(gpu == FirefoxDesktopIdentity.Gpu.AMD_R9_200 ? 8 : 16,
-                probe.getJSONObject("webgl2").getJSONObject("params").getInt("MAX_SAMPLES"));
+            JSONObject webglParams = probe.getJSONObject("webgl").getJSONObject("params");
+            JSONObject webgl2Params = probe.getJSONObject("webgl2").getJSONObject("params");
+            assertEquals(gpu.getMaxSamples(), webgl2Params.getInt("MAX_SAMPLES"));
+            assertEquals(gpu.getMaxVertexUniformVectors(),
+                webglParams.getInt("MAX_VERTEX_UNIFORM_VECTORS"));
+            assertEquals(gpu.getMaxVertexUniformVectors(),
+                webgl2Params.getInt("MAX_VERTEX_UNIFORM_VECTORS"));
+            assertEquals(gpu.getMaxVertexUniformComponents(),
+                webgl2Params.getInt("MAX_VERTEX_UNIFORM_COMPONENTS"));
             assertEquals(FirefoxDesktopIdentity.USER_AGENT, website.getString("userAgent"));
             assertEquals(gpu.getRenderer(), website.getJSONObject("webgl").getString("renderer"));
             assertEquals(gpu.getVendor(), website.getJSONObject("webgl").getString("vendor"));

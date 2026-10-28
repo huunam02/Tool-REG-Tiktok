@@ -14,7 +14,11 @@ enum DesktopGpu {
 
   /// gpu-intel-hd-2026-10-28.json, measured on Firefox 158. This renderer
   /// differs from HD Graphics 400; keep both measured groups distinct.
-  intelHd('intel-hd', 'Windows 10 · Intel HD Graphics');
+  intelHd('intel-hd', 'Windows 10 · Intel HD Graphics'),
+
+  /// gpu-nvidia-gtx980-firefox158-cpu20-2026-10-28.json, measured on
+  /// Firefox 158. Its uniform limits differ slightly from the AMD profile.
+  nvidiaGtx980('nvidia-gtx-980', 'Windows 10 · NVIDIA GeForce GTX 980');
 
   const DesktopGpu(this.id, this.label);
   final String id;

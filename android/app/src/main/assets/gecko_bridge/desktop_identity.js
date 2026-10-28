@@ -92,6 +92,9 @@
     'ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar': { MAX_SAMPLES: 8 },
     'ANGLE (Intel, Intel(R) HD Graphics 400 Direct3D11 vs_5_0 ps_5_0), or similar': { MAX_SAMPLES: 16 },
     'ANGLE (Intel, Intel(R) HD Graphics Direct3D11 vs_5_0 ps_5_0), or similar': { MAX_SAMPLES: 16 },
+    'ANGLE (NVIDIA, NVIDIA GeForce GTX 980 Direct3D11 vs_5_0 ps_5_0), or similar': {
+      MAX_SAMPLES: 8, MAX_VERTEX_UNIFORM_VECTORS: 4095, MAX_VERTEX_UNIFORM_COMPONENTS: 16380,
+    },
   };
   const common = {
     MAX_TEXTURE_SIZE: 16384, MAX_CUBE_MAP_TEXTURE_SIZE: 16384,

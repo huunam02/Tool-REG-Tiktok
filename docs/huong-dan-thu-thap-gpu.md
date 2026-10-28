@@ -78,6 +78,7 @@ Gom các file `.json` vào một thư mục (hoặc nén zip) rồi gửi kèm b
 | 5 | `outputs/firefox-desktop/gpu/gpu-amd-r9-200-firefox158-touch-2026-10-28.json` | AMD; Firefox báo nhóm "Radeon R9 200 Series" (card thật: chưa ghi) | chưa ghi | 1920×1080 (thanh tác vụ 48 px; DPR 1) | Firefox 158, 16 luồng CPU trình duyệt báo, hỗ trợ 1 điểm chạm, cửa sổ chưa phóng to (1280×843); WebGPU đo thành công; nguồn: `ket-qua-may-tinh 6.json` |
 | 6 | `outputs/firefox-desktop/gpu/gpu-amd-r9-200-firefox158-cpu12-touch5-2026-10-28.json` | AMD; Firefox báo nhóm "Radeon R9 200 Series" (card thật: chưa ghi) | chưa ghi | 1536×864 CSS px (DPR 1.25; vùng làm việc 1536×816) | Firefox 158, 12 luồng CPU trình duyệt báo, hỗ trợ 5 điểm chạm; lúc đo kích thước cửa sổ trả về 0×0; WebGPU đo thành công; nguồn: `ket-qua-may-tinh 7.json` |
 | 7 | `outputs/firefox-desktop/gpu/gpu-amd-r9-200-firefox158-cpu16-no-touch-2026-10-28.json` | AMD; Firefox báo nhóm "Radeon R9 200 Series" (card thật: chưa ghi) | chưa ghi | 1536×864 CSS px (DPR 1.25; vùng làm việc 1536×816) | Firefox 158, 16 luồng CPU trình duyệt báo, không cảm ứng, cửa sổ chưa phóng to (1280×649); WebGPU đo thành công; nguồn: `ket-qua-may-tinh 8.json` |
+| 8 | `outputs/firefox-desktop/gpu/gpu-nvidia-gtx980-firefox158-cpu20-2026-10-28.json` | NVIDIA; Firefox báo "NVIDIA GeForce GTX 980" (card thật: chưa ghi) | chưa ghi | 1536×864 CSS px (DPR 1.25; vùng làm việc 1536×816) | Firefox 158, 20 luồng CPU trình duyệt báo, không cảm ứng, cửa sổ chưa phóng to (1280×618); WebGPU đo thành công; nguồn: `ket-qua-may-tinh 9.json` |
 
 Xem tên card trên máy: Task Manager (`Ctrl+Shift+Esc`) → Hiệu suất → GPU.
 
@@ -109,8 +110,9 @@ của app. Giữ nguyên file đo; chỉ dùng dữ liệu GPU để đối chi�
 Bộ Intel HD Graphics ở dòng 2 đã được thêm vào app với mã `intel-hd`, khác
 bộ `intel-hd-400` ở dòng 1. WebGL/WebGL2 có cùng danh sách extension và độ
 chính xác shader với bộ AMD Firefox 158; `MAX_SAMPLES` của WebGL2 là 16.
-Cấu hình mới chọn ngẫu nhiên trong ba bộ AMD, Intel HD Graphics 400 và Intel
-HD Graphics, rồi lưu cố định. CPU và màn hình trong file đo chỉ để đối chiếu;
+Cấu hình mới chọn ngẫu nhiên trong bốn bộ AMD, Intel HD Graphics 400, Intel
+HD Graphics và NVIDIA GeForce GTX 980, rồi lưu cố định. CPU và màn hình trong
+file đo chỉ để đối chiếu;
 app vẫn giữ số luồng CPU native và màn hình 1920×1080 như trước.
 
 Bản ở dòng 4 là kết quả mới (`measuredAt = 2026-10-28T06:58:23.987Z`),
@@ -144,6 +146,17 @@ AMD gốc cùng các dòng 5–6. Máy báo 16 luồng CPU, không cảm ứng; 
 với 13 feature và `maxTex = 16384`; phép liệt kê thiết bị cũng thành công với
 một audio input và một video input. Đây là dữ liệu tham chiếu bổ sung gần với
 mẫu AMD desktop gốc, không tạo thêm bộ GPU và không yêu cầu sửa mã ứng dụng.
+
+Bản ở dòng 8 (`measuredAt = 2026-10-28T09:14:50.195Z`) tạo bộ GPU thứ tư
+`nvidia-gtx-980`. Firefox báo vendor `Google Inc. (NVIDIA)`, renderer
+`ANGLE (NVIDIA, NVIDIA GeForce GTX 980 Direct3D11 vs_5_0 ps_5_0), or similar`
+và WebGL2 `MAX_SAMPLES = 8`. So với bộ AMD, NVIDIA có
+`MAX_VERTEX_UNIFORM_VECTORS = 4095` ở WebGL1/2 và WebGL2
+`MAX_VERTEX_UNIFORM_COMPONENTS = 16380`; các giới hạn khác, extension, shader
+và `extras.gpuAdapter` giống bộ AMD. WebGPU có 13 feature, `maxTex = 16384`.
+Máy đo báo 20 luồng CPU, không cảm ứng; CPU và viewport chỉ được lưu để đối
+chiếu, không áp dụng theo GPU trong app. Cấu hình mới có thể được gán ngẫu
+nhiên bộ NVIDIA này và giữ cố định như ba bộ trước.
 
 ## Sau khi có file
 

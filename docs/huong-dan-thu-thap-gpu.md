@@ -79,6 +79,7 @@ Gom các file `.json` vào một thư mục (hoặc nén zip) rồi gửi kèm b
 | 6 | `outputs/firefox-desktop/gpu/gpu-amd-r9-200-firefox158-cpu12-touch5-2026-10-28.json` | AMD; Firefox báo nhóm "Radeon R9 200 Series" (card thật: chưa ghi) | chưa ghi | 1536×864 CSS px (DPR 1.25; vùng làm việc 1536×816) | Firefox 158, 12 luồng CPU trình duyệt báo, hỗ trợ 5 điểm chạm; lúc đo kích thước cửa sổ trả về 0×0; WebGPU đo thành công; nguồn: `ket-qua-may-tinh 7.json` |
 | 7 | `outputs/firefox-desktop/gpu/gpu-amd-r9-200-firefox158-cpu16-no-touch-2026-10-28.json` | AMD; Firefox báo nhóm "Radeon R9 200 Series" (card thật: chưa ghi) | chưa ghi | 1536×864 CSS px (DPR 1.25; vùng làm việc 1536×816) | Firefox 158, 16 luồng CPU trình duyệt báo, không cảm ứng, cửa sổ chưa phóng to (1280×649); WebGPU đo thành công; nguồn: `ket-qua-may-tinh 8.json` |
 | 8 | `outputs/firefox-desktop/gpu/gpu-nvidia-gtx980-firefox158-cpu20-2026-10-28.json` | NVIDIA; Firefox báo "NVIDIA GeForce GTX 980" (card thật: chưa ghi) | chưa ghi | 1536×864 CSS px (DPR 1.25; vùng làm việc 1536×816) | Firefox 158, 20 luồng CPU trình duyệt báo, không cảm ứng, cửa sổ chưa phóng to (1280×618); WebGPU đo thành công; nguồn: `ket-qua-may-tinh 9.json` |
+| 9 | `outputs/firefox-desktop/gpu/gpu-amd-r9-200-firefox158-cpu12-no-touch-2026-10-28.json` | AMD; Firefox báo nhóm "Radeon R9 200 Series" (card thật: chưa ghi) | chưa ghi | 1536×864 CSS px (DPR 1.25; vùng làm việc 1536×816) | Firefox 158, 12 luồng CPU trình duyệt báo, không cảm ứng, cửa sổ chưa phóng to (1280×628); WebGPU đo thành công; nguồn: `ket-qua-may-tinh(1).json` (không có dấu cách) |
 
 Xem tên card trên máy: Task Manager (`Ctrl+Shift+Esc`) → Hiệu suất → GPU.
 
@@ -157,6 +158,17 @@ và `extras.gpuAdapter` giống bộ AMD. WebGPU có 13 feature, `maxTex = 16384
 Máy đo báo 20 luồng CPU, không cảm ứng; CPU và viewport chỉ được lưu để đối
 chiếu, không áp dụng theo GPU trong app. Cấu hình mới có thể được gán ngẫu
 nhiên bộ NVIDIA này và giữ cố định như ba bộ trước.
+
+Bản ở dòng 9 (`measuredAt = 2026-10-28T13:33:54.243Z`) là lần đo nữa của bộ
+AMD `amd-r9-200`. Toàn bộ `webgl`, `webgl2` và `extras.gpuAdapter` trùng bản
+AMD gốc `khach-firefox-v2-2026-10-27.json` cùng các dòng 5–7: WebGL2
+`MAX_SAMPLES = 8`, WebGPU có 13 feature, vendor/architecture rỗng và
+`maxTex = 16384`. Máy báo 12 luồng CPU, không cảm ứng (`maxTouchPoints = 0`,
+không có `TouchEvent`), màn hình 1536×864 CSS px ở DPR 1.25, viewport
+1280×628 hợp lệ. Font, âm thanh và 5 giọng đọc Windows chuẩn khớp bản gốc;
+chữ ký canvas khác vì là máy khác. Đây là dữ liệu tham chiếu bổ sung: không
+thêm bộ GPU, không đổi cấu hình `amd-r9-200` và không áp dụng số luồng CPU
+vào app.
 
 ## Sau khi có file
 
